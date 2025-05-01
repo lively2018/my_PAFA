@@ -82,18 +82,11 @@ class VIDRefDataset(torchDataset):
             split result
         '''
         #kssong
-    def photo_to_sequence(self,dataset_path,lframe,gframe):
-        '''
-
-        Args:
-            dataset_path: list,every element is a list contain all frames in a video dir
-        Returns:
-            split result
-        '''
         res = []
         ref = []
         dataset = np.load(dataset_path,allow_pickle=True).tolist()
         video_idx  = 0
+        #logger.info(f"{self.mode}")
         for element in dataset:
             video_idx += 1
             ele_len = len(element)
@@ -158,7 +151,7 @@ class VIDRefDataset(torchDataset):
                         res.append(seq)
 
 
-                elif self.mode == 'linear':
+                elif self.mode == 'linear':                   
                     if lframe == 0:
                         split_num = int(ele_len / gframe)
                         for i in range(split_num):
@@ -197,14 +190,14 @@ class VIDRefDataset(torchDataset):
 
         if self.val:
             if self.tnum == -1:
-                #return res
-                return res[:100], ref
+                return res, ref
+                #return res[:15000], ref
             else:
                 return res[:self.tnum], ref
         else:
             #random.shuffle(res)
-            return res[:100], ref
-            #return res
+            return res[:15000], ref
+            #return res, ref
 
     def get_annotation(self,path,test_size):
         path = path.replace("Data","Annotations").replace("JPEG","xml")

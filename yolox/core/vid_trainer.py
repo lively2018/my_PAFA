@@ -236,7 +236,7 @@ class Trainer:
             occupy_mem(self.local_rank)
 
         if self.is_distributed:
-            model = DDP(model, device_ids=[self.local_rank], broadcast_buffers=False)
+            model = DDP(model, device_ids=[self.local_rank], broadcast_buffers=False, find_unused_parameters=True)
 
         if self.use_model_ema:
             self.ema_model = ModelEMA(model, 0.9998)
@@ -390,6 +390,8 @@ class Trainer:
         return model
 
     def evaluate_and_save_model(self):
+        self.save_ckpt(f"epoch_{self.epoch}")
+
         if self.use_model_ema:
             evalmodel = self.ema_model.ema
         else:
@@ -420,7 +422,7 @@ class Trainer:
 
         #kssong
         #synchronize() results in deadlock
-
+        
         self.save_ckpt("last_epoch", ap50_95 > self.best_ap)
         self.best_ap = max(self.best_ap, ap50_95)
 
