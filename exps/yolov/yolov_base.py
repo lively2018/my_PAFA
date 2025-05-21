@@ -77,7 +77,8 @@ class Exp(BaseExp):
         #global frames for training
         self.gframe = 16
         #globale frames for validation
-        self.gframe_val = 32
+        #self.gframe_val = 32
+        self.gframe_val = 16
         #sequence number for validation,-1 denote all
         self.tnum = -1
         #
@@ -342,7 +343,7 @@ class Exp(BaseExp):
                                      flip_prob=self.flip_prob,
                                      hsv_prob=self.hsv_prob),
                                 lframe=self.lframe,  # batch_size,
-                                gframe=self.gframe,
+                                gframe=self.gframe,                               
                                 dataset_pth=self.data_dir,
                                 local_stride=self.local_stride,
                                 )
@@ -458,7 +459,7 @@ class Exp(BaseExp):
 #                                     traj_linking=self.traj_linking, local_stride=self.local_stride,)
         dataset_val = vid.VIDRefDataset(file_path=self.vid_val_path,
                                  img_size=self.test_size, preproc=Vid_Val_Transform(), lframe=self.lframe_val,
-                                 gframe=self.gframe_val, val=True, dataset_pth=self.data_dir, tnum=tnum,formal=formal,
+                                 gframe=self.gframe_val,  val=True, mode="linear",dataset_pth=self.data_dir, tnum=tnum,formal=formal,
                                  traj_linking=self.traj_linking, local_stride=self.local_stride,)
         val_loader = vid.vid_val_loader(batch_size=batch_size,
                                         data_num_workers=data_num_workers,
