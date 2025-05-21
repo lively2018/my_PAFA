@@ -37,10 +37,10 @@ class VIDRefDataset(torchDataset):
         lframe = 18,
         gframe = 6,
         val = False,
-        #mode='random',
-        mode='uniform',
+        mode='random',
         dataset_pth = '',
         tnum = 1000,
+        tseq = 15000,
         formal = False,
         traj_linking = False,
         local_stride = 1
@@ -56,6 +56,7 @@ class VIDRefDataset(torchDataset):
         """
         super().__init__()
         self.tnum = tnum
+        self.tseq = tseq
         self.traj_linking = traj_linking
         self.input_dim = img_size
         self.file_path = file_path
@@ -196,7 +197,7 @@ class VIDRefDataset(torchDataset):
                 return res[:self.tnum], ref
         else:
             #random.shuffle(res)
-            return res[:15000], ref
+            return res[:self.tseq], ref
             #return res, ref
 
     def get_annotation(self,path,test_size):

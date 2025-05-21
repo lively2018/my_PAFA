@@ -560,7 +560,7 @@ class YOLOXHead(nn.Module):
     def select_key_feature_in_reg_feature(self, reg_features, pred_idx):
         key_features = []
         for i, reg_feature in enumerate(reg_features):
-            key_feature = reg_features[i, pred_idx[i]]
+            key_feature = reg_feature[pred_idx[i]]
             key_features.append(key_feature)
         return torch.stack(key_features, dim=0)
 

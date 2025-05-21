@@ -81,6 +81,10 @@ class Exp(BaseExp):
         self.gframe_val = 16
         #sequence number for validation,-1 denote all
         self.tnum = -1
+        #sequence number for train,-1 denote all
+        self.tseq = -1
+        #sequence ordering
+        self.mode = "random"
         #
         self.local_stride = 1
         #
@@ -345,6 +349,8 @@ class Exp(BaseExp):
                                 lframe=self.lframe,  # batch_size,
                                 gframe=self.gframe,                               
                                 dataset_pth=self.data_dir,
+                                mode=self.mode,
+                                tseq=self.tseq,
                                 local_stride=self.local_stride,
                                 )
         if self.use_aug:
@@ -459,7 +465,7 @@ class Exp(BaseExp):
 #                                     traj_linking=self.traj_linking, local_stride=self.local_stride,)
         dataset_val = vid.VIDRefDataset(file_path=self.vid_val_path,
                                  img_size=self.test_size, preproc=Vid_Val_Transform(), lframe=self.lframe_val,
-                                 gframe=self.gframe_val,  val=True, mode="linear",dataset_pth=self.data_dir, tnum=tnum,formal=formal,
+                                 gframe=self.gframe_val,  val=True, mode=self.mode,dataset_pth=self.data_dir, tnum=tnum,formal=formal,
                                  traj_linking=self.traj_linking, local_stride=self.local_stride,)
         val_loader = vid.vid_val_loader(batch_size=batch_size,
                                         data_num_workers=data_num_workers,

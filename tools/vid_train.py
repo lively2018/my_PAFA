@@ -90,6 +90,9 @@ def make_parser():
         default=None,
         nargs=argparse.REMAINDER,
     )
+    parser.add_argument("--tseq", default=15000, type=int, help="vid train sequences")
+    parser.add_argument('--tnum', default=-1, help='vid test sequences')
+    parser.add_argument('--mode', default='random', help='frame sample mode')
     return parser
 
 @logger.catch
@@ -110,7 +113,7 @@ def main(exp, args):
     cudnn.benchmark = True
     lframe = int(exp.lframe_val)
     gframe = int(exp.gframe_val)
-    val_loader = exp.get_eval_loader(batch_size=lframe+gframe,data_num_workers=6)
+    val_loader = exp.get_eval_loader(batch_size=lframe+gframe,tnum=int(exp.tnum), data_num_workers=6)
     trainer = Trainer(exp, args,val_loader,val=False)
     trainer.train()
 
@@ -124,6 +127,9 @@ if __name__ == "__main__":
     if not args.experiment_name:
         args.experiment_name = exp.exp_name
 
+    exp.tnum = args.tnum
+    exp.tseq = args.tseq
+    exp.mode = args.mode
     num_gpu = get_num_devices() if args.devices is None else args.devices
     assert num_gpu <= get_num_devices()
     args.machine_rank = 1
