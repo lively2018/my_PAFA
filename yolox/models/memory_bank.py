@@ -42,7 +42,7 @@ class MemoryBank(nn.Module):
         """
         init memory
         Args:
-            feat: tensor [n, m, c]
+            feat: tensor [m, c]
 
         Returns:
 
