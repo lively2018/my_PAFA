@@ -4,6 +4,7 @@
 import copy
 import time
 
+
 import math
 import torch
 import torch.nn as nn
@@ -18,6 +19,8 @@ from yolox.utils.box_op import box_cxcywh_to_xyxy, generalized_box_iou
 from .losses import IOUloss
 from .network_blocks import BaseConv, DWConv
 from yolox.models.mamba_aggregator import MambaAggregator
+#kssong
+import random
 
 #kssong
 def gpu_mem_usage():
@@ -257,35 +260,135 @@ class YOLOXHead(nn.Module):
         before_nms_features = []
         before_nms_regf = []
 
-        if len(imgs) == 16 or len(imgs) == 32:
+        batch_size = len(imgs)
+        if batch_size == 16 or batch_size == 32:
             need_aggregation = True            
         else:
             need_aggregation = False
         #kssong
         #reg_output_list = []
-        
+
+        if self.training:        
+            for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
+                    zip(self.cls_convs, self.cls_convs2, self.reg_convs, self.strides, xin)
+            ):   
+                x = self.stems[k](x)
+                reg_feat = reg_conv(x)
+                cls_feat = cls_conv(x)
+                cls_feat2 = cls_conv2(x)
+                        
+                # this part should be the same as the original model
+                obj_output = self.obj_preds[k](reg_feat)            
+                reg_output = self.reg_preds[k](reg_feat)            
+                cls_output = self.cls_preds[k](cls_feat)
+
+                
+                if self.training:
+                    output = torch.cat([reg_output, obj_output, cls_output], 1)                
+                    output_decode = torch.cat(
+                        [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
+                    )
+                                    
+                    output, grid = self.get_output_and_grid(
+                        output, k, stride_this_level, xin[0].type()
+                    )
+                    x_shifts.append(grid[:, :, 0])
+                    y_shifts.append(grid[:, :, 1])
+                    expanded_strides.append(
+                        torch.zeros(1, grid.shape[1])
+                        .fill_(stride_this_level)
+                        .type_as(xin[0])
+                    )
+                    if self.use_l1:
+                        batch_size = reg_output.shape[0]                    
+                        hsize, wsize = reg_output.shape[-2:]                    
+                        reg_output = reg_output.view(
+                            batch_size, self.n_anchors, 4, hsize, wsize
+                        )
+                        reg_output = reg_output.permute(0, 1, 3, 4, 2).reshape(
+                            batch_size, -1, 4
+                        )
+                        origin_preds.append(reg_output.clone())                    
+
+                    outputs.append(output)
+                    before_nms_features.append(cls_feat2)
+                    before_nms_regf.append(reg_feat)
+                else:                
+                    output_decode = torch.cat(
+                        [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
+                    )
+
+                    # which features to choose
+                    before_nms_features.append(cls_feat2)
+                    before_nms_regf.append(reg_feat)
+                outputs_decode.append(output_decode)
+            self.hw = [x.shape[-2:] for x in outputs_decode]
+
+            
+            outputs_decode = torch.cat([x.flatten(start_dim=2) for x in outputs_decode], dim=2
+                                    ).permute(0, 2, 1)
+            decode_res = self.decode_outputs(outputs_decode, dtype=xin[0].type())
+
+            if self.kwargs.get('ota_mode',False) and self.training:
+                ota_idxs,reg_targets = self.get_fg_idx( imgs,
+                    x_shifts,
+                    y_shifts,
+                    expanded_strides,
+                    labels,
+                    torch.cat(outputs, 1),)
+            else:
+                ota_idxs = None
+
+            pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
+                                                        nms_thre=self.nms_thresh,
+                                                        topK=self.Afternum,
+                                                        ota_idxs=ota_idxs,
+                                                        )
+
+            reg_feat_flatten = torch.cat(
+                [x.flatten(start_dim=2) for x in before_nms_regf], dim=2
+                ).permute(0, 2, 1)
+            self.aggregator.reset_memory_bank()
+            #Generate reference features from 16 batch files                
+            ref_feature_reg = self.select_key_feature_in_reg_feature(reg_feat_flatten, pred_idx)
+        del outputs, outputs_decode, origin_preds, x_shifts, y_shifts, expanded_strides, before_nms_features, before_nms_regf
+        outputs = []
+        outputs_decode = []
+        origin_preds = []
+        x_shifts = []
+        y_shifts = []
+        expanded_strides = []
+        before_nms_features = []
+        before_nms_regf = []
+   
         for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
                 zip(self.cls_convs, self.cls_convs2, self.reg_convs, self.strides, xin)
         ):   
             x = self.stems[k](x)
             reg_feat = reg_conv(x)
             cls_feat = cls_conv(x)
-            cls_feat2 = cls_conv2(x)
-            if need_aggregation:                
-                if first is False:
-                    agg_feats = []
-                    #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")
-                    for reg_one in reg_feat:
-                        #logger.info(f"reg_one.shape: {reg_one.shape}")
-                        channel, height, width = reg_one.shape
-                        reg_one = reg_one.reshape(-1, channel)
-                        #logger.info(f"reg_one.shape: {reg_one.shape}")
-                        agg_feat = reg_one + self.aggregator(reg_one, None)
-                        agg_feat = self.inplace_false_relu(agg_feat)
-                        #logger.info(f"agg_feat.shape: {agg_feat.shape}")
-                        agg_feat = agg_feat.reshape(channel, height, width)
-                        #logger.info(f"agg_feat.shape: {agg_feat.shape}")
-                        agg_feats.append(agg_feat)
+            cls_feat2 = cls_conv2(x)            
+            if need_aggregation:                                
+                agg_feats = []                                        
+                #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")                    
+                for i, reg_one in enumerate(reg_feat):
+                    if self.training and k == 0:
+                        ref_feat1 = ref_feature_reg[i]
+                        candidates = [j for j in range(batch_size) if j != i]
+                        random_idx = random.choice(candidates)
+                        ref_feat2 = ref_feature_reg[random_idx]
+                        ref_feats = torch.cat([ref_feat1, ref_feat2], dim=0)
+                        self.aggregator.init_memory_bank(ref_feats) 
+                    #logger.info(f"reg_one.shape: {reg_one.shape}")
+                    channel, height, width = reg_one.shape
+                    reg_one = reg_one.reshape(-1, channel)
+                    #logger.info(f"reg_one.shape: {reg_one.shape}")
+                    agg_feat = reg_one + self.aggregator(reg_one, None)
+                    agg_feat = self.inplace_false_relu(agg_feat)
+                    #logger.info(f"agg_feat.shape: {agg_feat.shape}")
+                    agg_feat = agg_feat.reshape(channel, height, width)
+                    #logger.info(f"agg_feat.shape: {agg_feat.shape}")
+                    agg_feats.append(agg_feat)
                     #logger.info(f"agg_feat.type: {agg_feat.type}")
                     reg_feat = torch.stack(agg_feats, dim=0)
                     #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")
@@ -391,21 +494,22 @@ class YOLOXHead(nn.Module):
         #reg_feat_flatten_file.write(f'{reg_feat_flatten.shape}\n')
         #reg_feat_flatten_file.close()        
      
-        if need_aggregation:
-            reg_feat_flatten_list = []
-            if first:
-                self.aggregator.reset_memory_bank()
-                #Generate reference features from 16 batch files                
-                ref_feature_reg = self.select_key_feature_in_reg_feature(reg_feat_flatten, pred_idx)
-                channel = ref_feature_reg.shape[2]
-                ref_feature_reg = ref_feature_reg.reshape(-1, channel)
-                self.aggregator.init_memory_bank(ref_feature_reg)
-            else:
-                key_features = self.select_key_feature_in_reg_feature(reg_feat_flatten, pred_idx)
-                channel = key_features.shape[2]
-                key_features = key_features.reshape(-1, channel)
-                self.aggregator.update_memory_bank(key_features)
-                
+        if not self.training:
+            if need_aggregation:                
+                if first:
+                    self.aggregator.reset_memory_bank()
+                    #Generate reference features from 16 batch files
+                    half_idx = len(pred_idx) / 2
+                    ref_feature_reg = self.select_key_feature_in_reg_feature(reg_feat_flatten, pred_idx[:half_idx])
+                    channel = ref_feature_reg.shape[2]
+                    ref_feature_reg = ref_feature_reg.reshape(-1, channel)
+                    self.aggregator.init_memory_bank(ref_feature_reg)
+                else:
+                    key_features = self.select_key_feature_in_reg_feature(reg_feat_flatten, pred_idx[:half_idx])
+                    channel = key_features.shape[2]
+                    key_features = key_features.reshape(-1, channel)
+                    self.aggregator.update_memory_bank(key_features)
+                    
         (features_cls, features_reg, cls_scores,
          fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
                                                                 pred_idx,

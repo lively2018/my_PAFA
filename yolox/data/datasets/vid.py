@@ -91,7 +91,11 @@ class VIDRefDataset(torchDataset):
         for element in dataset:
             video_idx += 1
             ele_len = len(element)
+            first_frame = True
             if ele_len<lframe+gframe:
+                if self.val and first_frame:
+                    ref.append(element[0])
+                    first_frame = False
                 #TODO fix the unsolved part
                 if self.formal:
                     res.append(element)
@@ -105,11 +109,14 @@ class VIDRefDataset(torchDataset):
                         split_num = int(ele_len / (gframe))
                         random.shuffle(element)
                         for i in range(split_num):
+                            if self.val and first_frame:
+                                ref.append(element[i * gframe])                                    
+                                first_frame = False
                             res.append(element[i * gframe:(i + 1) * gframe])
                         if self.formal and len(element[split_num * gframe:]):
                             tail = element[split_num * gframe:]
                             # padding = tail + element[:gframe-len(tail)]
-                            res.append(tail)
+                            res.append(tail)                            
                     elif lframe!=0:
                         if self.local_stride==1:
                             split_num = int(ele_len / (lframe))
@@ -120,19 +127,25 @@ class VIDRefDataset(torchDataset):
                                 else:
                                     l_frame = all_local_frame[i * lframe:(i + 1) * lframe]
                                 g_frame = random.sample(element[:i * lframe] + element[(i + 1) * lframe:], gframe)
+                                if self.val and first_frame:
+                                    ref.append(l_frame[i])
+                                    first_frame = False
                                 res.append(l_frame + g_frame)
                             if self.formal and len(element[split_num * lframe:]):
                                 if self.traj_linking:
                                     tail = element[split_num * lframe-1:]
                                 else:
-                                    tail = element[split_num * lframe:]
+                                    tail = element[split_num * lframe:]                                
                                 res.append(tail)
                         else:
                             split_num = ele_len//(lframe*self.local_stride)
                             for i in range(split_num):
-                                for j in range(self.local_stride):
+                                for j in range(self.local_stride):                                    
                                     res.append(element[lframe * self.local_stride * i:lframe * self.local_stride * (i + 1)][
                                                    j::self.local_stride])
+                                    if self.val and first_frame:
+                                        ref.append(element[lframe * self.local_stride * i])
+                                        first_frame = False
                     else:
                         print('unsupport mode, exit')
                         exit(0)
@@ -147,8 +160,9 @@ class VIDRefDataset(torchDataset):
                         #    logger.info(f"[uniform mode] Video {video_idx} sequence {i}:")                            
                         #    for f in seq:
                         #        logger.info(f"  {f}")
-                        if i == 0:
-                            ref.append(seq[0])
+                        if self.val and first_frame:
+                            ref.append(seq[i])
+                            first_frame = False
                         res.append(seq)
 
 
@@ -161,8 +175,9 @@ class VIDRefDataset(torchDataset):
                             #    logger.info(f"[Linear mode] Video {video_idx} sequence {i}:")                            
                             #    for f in seq:
                             #        logger.info(f"  {f}")
-                            if i == 0:
-                                ref.append(seq[0])        
+                            if self.val and first_frame:
+                                ref.append(seq[i])
+                                first_frame = False        
                             res.append(seq)
                         if self.formal and len(element[split_num * gframe:]):
                             tail = element[split_num * gframe:]
@@ -178,12 +193,18 @@ class VIDRefDataset(torchDataset):
                             for i in range(split_num):
                                 l_frame = all_local_frame[i * lframe:(i + 1) * lframe]
                                 g_frame = element[(i + 1) * lframe:(i + 1) * lframe + gframe]
+                                if self.val and first_frame:
+                                    ref.append(l_frame[i])
+                                    first_frame = False
                                 res.append(l_frame + g_frame)
                     else:
                         split_num = ele_len // (lframe * self.local_stride)
                         for i in range(split_num):
                             for j in range(self.local_stride):
                                 res.append(element[lframe * self.local_stride * i:lframe * self.local_stride * (i + 1)][j::self.local_stride])
+                                if self.val and first_frame:
+                                    ref.append(element[lframe * self.local_stride * i:lframe * self.local_stride * (i + 1)])
+                                    first_frame = False
 
                 else:
                     print('unsupport mode, exit')
@@ -196,7 +217,7 @@ class VIDRefDataset(torchDataset):
             else:
                 return res[:self.tnum], ref
         else:
-            #random.shuffle(res)
+            random.shuffle(res)
             return res[:self.tseq], ref
             #return res, ref
 
@@ -258,8 +279,7 @@ class VIDRefDataset(torchDataset):
                         h, w (int): original shape of the image
                     img_id (int): same as the input index. Used for evaluation.
                 """        
-        #kssong
-        img_key = path
+        #kssong        
         path = os.path.join(self.dataset_pth,path)
         annos = self.get_annotation(path, self.img_size)[0]
 
@@ -273,13 +293,17 @@ class VIDRefDataset(torchDataset):
             interpolation=cv2.INTER_LINEAR,
         ).astype(np.uint8)
 
-        #item_file = open('./item_file.txt', '+a')
-        #item_file.write(f'{path}\n')
-        #item_file.close()
+        item_file = open('./item_file.txt', '+a')
+        item_file.write(f'{path}\n')
+        item_file.close()
         return img, annos, img_info, path
         
     def __getitem__(self, path):
-        first_frame = path in self.ref
+        #kssong
+        if len(self.ref) > 0:
+            first_frame = path in self.ref
+        else:
+            first_frame = False
         img, target, img_info, path = self.pull_item(path)
     
         if self.preproc is not None:
@@ -681,9 +705,8 @@ class TrainSampler(Sampler):
         super().__init__(data_source)
         self.data_source = data_source
 
-    def __iter__(self):
-        #kssong
-        #random.shuffle(self.data_source.res)
+    def __iter__(self):        
+        random.shuffle(self.data_source.res)
         return iter(self.data_source.res)
 
     def __len__(self):
