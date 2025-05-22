@@ -705,7 +705,7 @@ class TrainSampler(Sampler):
         super().__init__(data_source)
         self.data_source = data_source
 
-    def __iter__(self):        
+    def __iter__(self):
         random.shuffle(self.data_source.res)
         return iter(self.data_source.res)
 
