@@ -16,7 +16,7 @@ class MemoryBank(nn.Module):
     #             sampling_policy='random', updating_policy='random',
     #             ):
     def __init__(self,
-                 max_length=20000, key_length=2000,
+                 max_length=4800, key_length=480,
                  sampling_policy='random', updating_policy='random',
                  ):                 
         super().__init__()

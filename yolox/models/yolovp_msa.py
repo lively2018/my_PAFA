@@ -361,19 +361,27 @@ class YOLOXHead(nn.Module):
         expanded_strides = []
         before_nms_features = []
         before_nms_regf = []
-   
+        reg_feat_list = []
+        cls_feat_list = []
+        cls_feat2_list = []
+
         for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
                 zip(self.cls_convs, self.cls_convs2, self.reg_convs, self.strides, xin)
-        ):   
+        ):  
             x = self.stems[k](x)
             reg_feat = reg_conv(x)
             cls_feat = cls_conv(x)
-            cls_feat2 = cls_conv2(x)            
+            cls_feat2 = cls_conv2(x)
+            reg_feat_list.append(reg_feat)
+            cls_feat_list.append(cls_feat)            
+            cls_feat2_list.append(cls_feat2)
+        
+
             if need_aggregation:                                
                 agg_feats = []                                        
                 #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")                    
                 for i, reg_one in enumerate(reg_feat):
-                    if self.training and k == 0:
+                    if self.training:                        
                         ref_feat1 = ref_feature_reg[i]
                         candidates = [j for j in range(batch_size) if j != i]
                         random_idx = random.choice(candidates)
@@ -599,11 +607,12 @@ class YOLOXHead(nn.Module):
                 conf_output = conf_output
             )
         else:
+            eval_nms_thresh = nms_thresh + 0.25
             result, result_ori = postprocess(copy.deepcopy(pred_result),
                                              self.num_classes,
                                              fc_output,
                                              conf_output = conf_output,
-                                             nms_thre=nms_thresh,
+                                             nms_thre=eval_nms_thresh,
                                              )
             return result, result_ori  # result
 

@@ -293,9 +293,9 @@ class VIDRefDataset(torchDataset):
             interpolation=cv2.INTER_LINEAR,
         ).astype(np.uint8)
 
-        item_file = open('./item_file.txt', '+a')
-        item_file.write(f'{path}\n')
-        item_file.close()
+        #item_file = open('./item_file.txt', '+a')
+        #item_file.write(f'{path}\n')
+        #item_file.close()
         return img, annos, img_info, path
         
     def __getitem__(self, path):
