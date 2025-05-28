@@ -94,14 +94,6 @@ class Darknet(nn.Module):
         return {k: v for k, v in outputs.items() if k in self.out_features}
 
 
-#kssong
-import torch
-import gc
-def gpu_mem_usage():
-    """
-    Compute the GPU memory usage for the current device (MB).
-    """    
-    return torch.cuda.max_memory_allocated() / (1024 * 1024)
 
 class CSPDarknet(nn.Module):
     def __init__(
@@ -174,35 +166,18 @@ class CSPDarknet(nn.Module):
         )
 
     def forward(self, x):
-        #print(f"Before CSPDarKnet: {gpu_mem_usage():.0f}")
         outputs = {}
         x = self.stem(x)
-        outputs["stem"] = x.detach()
-        
+        outputs["stem"] = x
         x = self.dark2(x)
-        outputs["dark2"] = x.detach()
-        
+        outputs["dark2"] = x
         x = self.dark3(x)
-        outputs["dark3"] = x.detach()
-        
+        outputs["dark3"] = x
         x = self.dark4(x)
-        outputs["dark4"] = x.detach()
-        #old_mem_usage = gpu_mem_usage()
-        #print(f"Before CSPDarKnet 5: {old_mem_usage:.0f}")
+        outputs["dark4"] = x
         x = self.dark5(x)
-        outputs["dark5"] = x.detach()        
-        #now_mem_usage = gpu_mem_usage()
-        #print(f"After CSPDarKnet 5: {now_mem_usage:.0f}")
-        #if now_mem_usage > old_mem_usage:
-            #print(torch.cuda.memory_summary())
-        #return {k: v for k, v in outputs.items() if k in self.out_features}
-        selected_outputs = {k: v for k, v in outputs.items() if k in self.out_features}
-
-        del x, outputs
-        gc.collect()
-        torch.cuda.empty_cache()
-        #print(f"After CSPDarKnet: {gpu_mem_usage():.0f}")
-        return selected_outputs
+        outputs["dark5"] = x
+        return {k: v for k, v in outputs.items() if k in self.out_features}
 
 class CSPDarknetP6(nn.Module):
     def __init__(

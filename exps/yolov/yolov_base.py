@@ -77,14 +77,9 @@ class Exp(BaseExp):
         #global frames for training
         self.gframe = 16
         #globale frames for validation
-        #self.gframe_val = 32
-        self.gframe_val = 16
+        self.gframe_val = 32
         #sequence number for validation,-1 denote all
         self.tnum = -1
-        #sequence number for train,-1 denote all
-        self.tseq = -1
-        #sequence ordering
-        self.mode = "random"
         #
         self.local_stride = 1
         #
@@ -141,6 +136,7 @@ class Exp(BaseExp):
         # You can uncomment this line to specify a multiscale range
         # self.random_size = (14, 26)
         # dir of dataset images, if data_dir is None, this project will use `datasets` dir
+        # kssong
         #self.data_dir = '/mnt/weka/scratch/yuheng.shi/dataset/VID'
         self.data_dir = '/home/kssong'
         # name of annotation file for training
@@ -173,10 +169,7 @@ class Exp(BaseExp):
         # epoch number used for warmup
         self.warmup_epochs = 1
         # max training epoch
-        # kssong
         self.max_epoch = 7
-        # reduce the max epoch for debuging
-        #self.max_epoch = 2
         # minimum learning rate during warmup
         self.warmup_lr = 0
         self.min_lr_ratio = 0.1
@@ -212,9 +205,9 @@ class Exp(BaseExp):
         # boxes whose scores are less than test_conf will be filtered
         self.test_conf = 0.001
         # nms threshold
-        self.nmsthre = 0.5    
-    
-    def get_model(self):        
+        self.nmsthre = 0.5
+
+    def get_model(self):
         # rewrite get model func from yolox
         if self.backbone_name == 'MCSP':
             in_channels = [256, 512, 1024]
@@ -269,8 +262,8 @@ class Exp(BaseExp):
         else:
             raise NotImplementedError('backbone not support')
         from yolox.models.yolovp_msa import YOLOXHead
-        from yolox.models.myolox import YOLOX        
-        
+        from yolox.models.myolox import YOLOX
+
         def init_yolo(M):
             for m in M.modules():
                 if isinstance(m, nn.BatchNorm2d):
@@ -288,12 +281,11 @@ class Exp(BaseExp):
                      'iou_window':self.iou_window,'globalBlocks':self.globalBlocks,'minimal_limit':self.minimal_limit,
                      'vid_cls':self.vid_cls,'vid_reg':self.vid_reg,'conf_sim_thresh':self.conf_sim_thresh,
                      }
-
         head = YOLOXHead(self.num_classes, self.width, in_channels=in_channels, heads=self.head, drop=self.drop_rate,
                          use_score=self.use_score, defualt_p=self.defualt_p, sim_thresh=self.sim_thresh,
                          pre_nms=self.pre_nms, ave=self.ave, defulat_pre=self.defualt_pre, test_conf=self.test_conf,
                          use_mask=self.use_mask,gmode=self.gmode,lmode=self.lmode,both_mode=self.both_mode,
-                         localBlocks = self.localBlocks, **more_args)
+                         localBlocks = self.localBlocks,**more_args)
 
         for layer in head.stems.parameters():
             layer.requires_grad = False  # set stem fixed
@@ -328,31 +320,17 @@ class Exp(BaseExp):
         from yolox.data import TrainTransform
         from yolox.data.datasets.mosaicdetection import MosaicDetection_VID
         assert batch_size == self.lframe + self.gframe
-        #kssong
-        #dataset = vid.VIDDataset(file_path=self.vid_train_path,
-        #                         img_size=self.input_size,
-        #                         preproc=TrainTransform(
-        #                             max_labels=50,
-        #                             flip_prob=self.flip_prob,
-        #                             hsv_prob=self.hsv_prob),
-        #                        lframe=self.lframe,  # batch_size,
-        #                         gframe=self.gframe,
-        #                         dataset_pth=self.data_dir,
-        #                         local_stride=self.local_stride,
-        #                         )
-        dataset = vid.VIDRefDataset(file_path=self.vid_train_path,
-                                img_size=self.input_size,
-                                preproc=TrainTransform(
+        dataset = vid.VIDDataset(file_path=self.vid_train_path,
+                                 img_size=self.input_size,
+                                 preproc=TrainTransform(
                                      max_labels=50,
                                      flip_prob=self.flip_prob,
                                      hsv_prob=self.hsv_prob),
-                                lframe=self.lframe,  # batch_size,
-                                gframe=self.gframe,                               
-                                dataset_pth=self.data_dir,
-                                mode=self.mode,
-                                tseq=self.tseq,
-                                local_stride=self.local_stride,
-                                )
+                                 lframe=self.lframe,  # batch_size,
+                                 gframe=self.gframe,
+                                 dataset_pth=self.data_dir,
+                                 local_stride=self.local_stride,
+                                 )
         if self.use_aug:
             # NO strong aug by defualt
             dataset = MosaicDetection_VID(
@@ -458,15 +436,10 @@ class Exp(BaseExp):
         if tnum == None:
             tnum = self.tnum
         assert batch_size == self.lframe_val+self.gframe_val
-        #kssong
-#        dataset_val = vid.VIDDataset(file_path=self.vid_val_path,
-#                                     img_size=self.test_size, preproc=Vid_Val_Transform(), lframe=self.lframe_val,
-#                                     gframe=self.gframe_val, val=True, dataset_pth=self.data_dir, tnum=tnum,formal=formal,
-#                                     traj_linking=self.traj_linking, local_stride=self.local_stride,)
-        dataset_val = vid.VIDRefDataset(file_path=self.vid_val_path,
-                                 img_size=self.test_size, preproc=Vid_Val_Transform(), lframe=self.lframe_val,
-                                 gframe=self.gframe_val,  val=True, mode=self.mode,dataset_pth=self.data_dir, tnum=tnum,formal=formal,
-                                 traj_linking=self.traj_linking, local_stride=self.local_stride,)
+        dataset_val = vid.VIDDataset(file_path=self.vid_val_path,
+                                     img_size=self.test_size, preproc=Vid_Val_Transform(), lframe=self.lframe_val,
+                                     gframe=self.gframe_val, val=True, dataset_pth=self.data_dir, tnum=tnum,formal=formal,
+                                     traj_linking=self.traj_linking, local_stride=self.local_stride,)
         val_loader = vid.vid_val_loader(batch_size=batch_size,
                                         data_num_workers=data_num_workers,
                                         dataset=dataset_val, )

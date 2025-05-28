@@ -18,6 +18,10 @@ from yolox.utils import configure_nccl, configure_omp, get_num_devices
 from yolox.data.data_augment import ValTransform,Vid_Val_Transform
 from yolox.data.datasets import vid
 import os
+
+#kssong
+import torch.distributed as dist
+
 def make_parser():
     parser = argparse.ArgumentParser("YOLOX train parser")
     parser.add_argument("-expn", "--experiment-name", type=str, default=None)
@@ -90,9 +94,6 @@ def make_parser():
         default=None,
         nargs=argparse.REMAINDER,
     )
-    parser.add_argument("--tseq", default=15000, type=int, help="vid train sequences")
-    parser.add_argument('--tnum', default=-1, help='vid test sequences')
-    parser.add_argument('--mode', default='random', help='frame sample mode')
     return parser
 
 @logger.catch
@@ -108,12 +109,31 @@ def main(exp, args):
         )
 
     # set environment variables for distributed training
+    #kssong
+    if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
+        rank = int(os.environ["RANK"])
+        world_size = int(os.environ["WORLD_SIZE"])
+    else:
+        rank = 0
+        world_size = 1
+
+    if not dist.is_initialized():
+        dist.init_process_group(
+            backend="nccl",
+            init_method="tcp://127.0.0.1:29500",
+            world_size=world_size,
+            rank=rank
+        )
+
+    torch.cuda.set_device(rank)
+    print(f"Rank {rank} assigned to GPU {torch.cuda.current_device()}")
+
     configure_nccl()
     configure_omp()
     cudnn.benchmark = True
     lframe = int(exp.lframe_val)
     gframe = int(exp.gframe_val)
-    val_loader = exp.get_eval_loader(batch_size=lframe+gframe,tnum=int(exp.tnum), data_num_workers=6)
+    val_loader = exp.get_eval_loader(batch_size=lframe+gframe,data_num_workers=6)
     trainer = Trainer(exp, args,val_loader,val=False)
     trainer.train()
 
@@ -127,9 +147,6 @@ if __name__ == "__main__":
     if not args.experiment_name:
         args.experiment_name = exp.exp_name
 
-    exp.tnum = args.tnum
-    exp.tseq = args.tseq
-    exp.mode = args.mode
     num_gpu = get_num_devices() if args.devices is None else args.devices
     assert num_gpu <= get_num_devices()
     args.machine_rank = 1

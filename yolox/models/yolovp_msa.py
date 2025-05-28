@@ -4,7 +4,6 @@
 import copy
 import time
 
-
 import math
 import torch
 import torch.nn as nn
@@ -18,16 +17,7 @@ from yolox.utils import bboxes_iou
 from yolox.utils.box_op import box_cxcywh_to_xyxy, generalized_box_iou
 from .losses import IOUloss
 from .network_blocks import BaseConv, DWConv
-from yolox.models.mamba_aggregator import MambaAggregator
-#kssong
-import random
 
-#kssong
-def gpu_mem_usage():
-    """
-    Compute the GPU memory usage for the current device (MB).
-    """    
-    return torch.cuda.max_memory_allocated() / (1024 * 1024)
 
 class YOLOXHead(nn.Module):
     def __init__(
@@ -52,7 +42,6 @@ class YOLOXHead(nn.Module):
             lmode=False,
             both_mode=False,
             localBlocks=1,
-            #eval=False,
             **kwargs
     ):
         """
@@ -212,13 +201,6 @@ class YOLOXHead(nn.Module):
         self.iou_loss = IOUloss(reduction="none")
         self.strides = strides
         self.grids = [torch.zeros(1)] * len(in_channels)
-        #kssong
-        # self.eval = eval        
-        #if self.eval:
-        self.aggregator = MambaAggregator(in_channels=128, num_attention_blocks=4)
-        #kssong
-        self.inplace_false_relu = nn.ReLU(inplace=False)
-
 
     def initialize_biases(self, prior_prob):
         for conv in self.cls_preds:
@@ -230,27 +212,8 @@ class YOLOXHead(nn.Module):
             b = conv.bias.view(self.n_anchors, -1)
             b.data.fill_(-math.log((1 - prior_prob) / prior_prob))
             conv.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
-    #kssong
-    def first_frame_preprocess(self, xin, ref_xin):
-        # initialize memory bank
-        self.aggreator.reset_memory_bank()
-        # aggreate xin and ref_xin
-        new_xin = xin + self.aggreator(xin, ref_xin)
-        return new_xin
-    # kssong
-    def forward(self, xin, first, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32):
-    #def forward(self, xin, ref_xin, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32):
-        #kssong
-        #if len(ref_xin) > 0:
-        #    print("first frame\n")
-            # check ref_xin and xin
-        #    new_xin = []
-        #    for xin_one in xin:
-        #        new_xin.append(xin_one)
-        #    for ref_xin_one in ref_xin:
-        #        new_xin.append(ref_xin_one)
-        #else:
-        #    new_xin = xin        
+
+    def forward(self, xin, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32):
         outputs = []
         outputs_decode = []
         origin_preds = []
@@ -259,163 +222,24 @@ class YOLOXHead(nn.Module):
         expanded_strides = []
         before_nms_features = []
         before_nms_regf = []
-
-        batch_size = len(imgs)
-        if batch_size == 16 or batch_size == 32:
-            need_aggregation = True            
-        else:
-            need_aggregation = False
-        #kssong
-        #reg_output_list = []
-
-        if self.training:        
-            for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
-                    zip(self.cls_convs, self.cls_convs2, self.reg_convs, self.strides, xin)
-            ):   
-                x = self.stems[k](x)
-                reg_feat = reg_conv(x)
-                cls_feat = cls_conv(x)
-                cls_feat2 = cls_conv2(x)
-                        
-                # this part should be the same as the original model
-                obj_output = self.obj_preds[k](reg_feat)            
-                reg_output = self.reg_preds[k](reg_feat)            
-                cls_output = self.cls_preds[k](cls_feat)
-
-                
-                if self.training:
-                    output = torch.cat([reg_output, obj_output, cls_output], 1)                
-                    output_decode = torch.cat(
-                        [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
-                    )
-                                    
-                    output, grid = self.get_output_and_grid(
-                        output, k, stride_this_level, xin[0].type()
-                    )
-                    x_shifts.append(grid[:, :, 0])
-                    y_shifts.append(grid[:, :, 1])
-                    expanded_strides.append(
-                        torch.zeros(1, grid.shape[1])
-                        .fill_(stride_this_level)
-                        .type_as(xin[0])
-                    )
-                    if self.use_l1:
-                        batch_size = reg_output.shape[0]                    
-                        hsize, wsize = reg_output.shape[-2:]                    
-                        reg_output = reg_output.view(
-                            batch_size, self.n_anchors, 4, hsize, wsize
-                        )
-                        reg_output = reg_output.permute(0, 1, 3, 4, 2).reshape(
-                            batch_size, -1, 4
-                        )
-                        origin_preds.append(reg_output.clone())                    
-
-                    outputs.append(output)
-                    before_nms_features.append(cls_feat2)
-                    before_nms_regf.append(reg_feat)
-                else:                
-                    output_decode = torch.cat(
-                        [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
-                    )
-
-                    # which features to choose
-                    before_nms_features.append(cls_feat2)
-                    before_nms_regf.append(reg_feat)
-                outputs_decode.append(output_decode)
-            self.hw = [x.shape[-2:] for x in outputs_decode]
-
-            
-            outputs_decode = torch.cat([x.flatten(start_dim=2) for x in outputs_decode], dim=2
-                                    ).permute(0, 2, 1)
-            decode_res = self.decode_outputs(outputs_decode, dtype=xin[0].type())
-
-            if self.kwargs.get('ota_mode',False) and self.training:
-                ota_idxs,reg_targets = self.get_fg_idx( imgs,
-                    x_shifts,
-                    y_shifts,
-                    expanded_strides,
-                    labels,
-                    torch.cat(outputs, 1),)
-            else:
-                ota_idxs = None
-
-            pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
-                                                        nms_thre=self.nms_thresh,
-                                                        topK=self.Afternum,
-                                                        ota_idxs=ota_idxs,
-                                                        )
-
-            reg_feat_flatten = torch.cat(
-                [x.flatten(start_dim=2) for x in before_nms_regf], dim=2
-                ).permute(0, 2, 1)
-            #Generate reference features from 16 batch files
-            fourth = (len(pred_idx[1]) // 4) * 4
-            new_idx = [p[:fourth] for p in pred_idx]
-            ref_feature_reg = self.select_key_feature_in_reg_feature(reg_feat_flatten, new_idx)
-        del outputs, outputs_decode, origin_preds, x_shifts, y_shifts, expanded_strides, before_nms_features, before_nms_regf
-        outputs = []
-        outputs_decode = []
-        origin_preds = []
-        x_shifts = []
-        y_shifts = []
-        expanded_strides = []
-        before_nms_features = []
-        before_nms_regf = []
-        reg_feat_list = []
-        cls_feat_list = []
-        cls_feat2_list = []
 
         for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
                 zip(self.cls_convs, self.cls_convs2, self.reg_convs, self.strides, xin)
-        ):  
+        ):
             x = self.stems[k](x)
             reg_feat = reg_conv(x)
             cls_feat = cls_conv(x)
             cls_feat2 = cls_conv2(x)
-            reg_feat_list.append(reg_feat)
-            cls_feat_list.append(cls_feat)            
-            cls_feat2_list.append(cls_feat2)
-        
 
-            if need_aggregation:                                
-                agg_feats = []                                        
-                #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")                    
-                for i, reg_one in enumerate(reg_feat):
-                    if self.training:                        
-                        ref_feat1 = ref_feature_reg[i]
-                        candidates = [j for j in range(batch_size) if j != i]
-                        random_idx = random.choice(candidates)
-                        ref_feat2 = ref_feature_reg[random_idx]
-                        ref_feats = torch.cat([ref_feat1, ref_feat2], dim=0)
-                        self.aggregator.reset_memory_bank()
-                        self.aggregator.init_memory_bank(ref_feats)
-                    if self.training or (not self.training and not first):
-                        #logger.info(f"reg_one.shape: {reg_one.shape}")
-                        channel, height, width = reg_one.shape
-                        reg_one = reg_one.reshape(-1, channel)
-                        #logger.info(f"reg_one.shape: {reg_one.shape}")
-                        agg_feat = reg_one + self.aggregator(reg_one, None)
-                        agg_feat = self.inplace_false_relu(agg_feat)
-                        #logger.info(f"agg_feat.shape: {agg_feat.shape}")
-                        agg_feat = agg_feat.reshape(channel, height, width)
-                        #logger.info(f"agg_feat.shape: {agg_feat.shape}")
-                        agg_feats.append(agg_feat)
-                        #logger.info(f"agg_feat.type: {agg_feat.type}")
-                        reg_feat = torch.stack(agg_feats, dim=0)
-                        #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")
-                    
             # this part should be the same as the original model
-            obj_output = self.obj_preds[k](reg_feat)            
-            reg_output = self.reg_preds[k](reg_feat)            
+            obj_output = self.obj_preds[k](reg_feat)
+            reg_output = self.reg_preds[k](reg_feat)
             cls_output = self.cls_preds[k](cls_feat)
-
-            
             if self.training:
-                output = torch.cat([reg_output, obj_output, cls_output], 1)                
+                output = torch.cat([reg_output, obj_output, cls_output], 1)
                 output_decode = torch.cat(
                     [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
                 )
-                                
                 output, grid = self.get_output_and_grid(
                     output, k, stride_this_level, xin[0].type()
                 )
@@ -427,20 +251,19 @@ class YOLOXHead(nn.Module):
                     .type_as(xin[0])
                 )
                 if self.use_l1:
-                    batch_size = reg_output.shape[0]                    
-                    hsize, wsize = reg_output.shape[-2:]                    
+                    batch_size = reg_output.shape[0]
+                    hsize, wsize = reg_output.shape[-2:]
                     reg_output = reg_output.view(
                         batch_size, self.n_anchors, 4, hsize, wsize
                     )
                     reg_output = reg_output.permute(0, 1, 3, 4, 2).reshape(
                         batch_size, -1, 4
                     )
-                    origin_preds.append(reg_output.clone())                    
-
+                    origin_preds.append(reg_output.clone())
                 outputs.append(output)
                 before_nms_features.append(cls_feat2)
                 before_nms_regf.append(reg_feat)
-            else:                
+            else:
                 output_decode = torch.cat(
                     [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
                 )
@@ -450,23 +273,8 @@ class YOLOXHead(nn.Module):
                 before_nms_regf.append(reg_feat)
             outputs_decode.append(output_decode)
         self.hw = [x.shape[-2:] for x in outputs_decode]
-
-        
         outputs_decode = torch.cat([x.flatten(start_dim=2) for x in outputs_decode], dim=2
                                    ).permute(0, 2, 1)
-        #kssong
-        #reg_output_file = open('./reg_output.txt', 'a')
-        #reg_output_file.write(f'{len(reg_output_list), reg_output_list[0].shape}\n')
-        #reg_output_file.close()
-        #before_nms_features_file = open('./before_nms_features.txt', 'a')
-        #before_nms_features_file.write(f'{len(before_nms_features), before_nms_features[0].shape }\n')
-        #before_nms_features_file.close()
-
-        #kssong
-        #outputs_decode_file = open('./outputs_decode.txt', 'a')
-        #outputs_decode_file.write(f'{outputs_decode.shape}\n')
-        #outputs_decode_file.close()
-
         decode_res = self.decode_outputs(outputs_decode, dtype=xin[0].type())
 
         if self.kwargs.get('ota_mode',False) and self.training:
@@ -484,15 +292,9 @@ class YOLOXHead(nn.Module):
                                                      topK=self.Afternum,
                                                      ota_idxs=ota_idxs,
                                                      )
-        #kssong
-        #pred_result_file = open('./pred_result.txt', 'a')
-        #pred_result_file.write(f'{len(pred_result), pred_result[0].shape}\n')
-        #pred_result_file.close()
 
         if not self.training and imgs.shape[0] == 1:
             return self.postprocess_single_img(pred_result, self.num_classes)
-
-
 
         cls_feat_flatten = torch.cat(
             [x.flatten(start_dim=2) for x in before_nms_features], dim=2
@@ -500,45 +302,15 @@ class YOLOXHead(nn.Module):
         reg_feat_flatten = torch.cat(
             [x.flatten(start_dim=2) for x in before_nms_regf], dim=2
         ).permute(0, 2, 1)
-        #kssong
-        #reg_feat_flatten_file = open('./reg_feat_flatten.txt', 'a')
-        #reg_feat_flatten_file.write(f'{reg_feat_flatten.shape}\n')
-        #reg_feat_flatten_file.close()        
-     
-        if not self.training:
-            if need_aggregation:
-                half = len(pred_idx[1]) // 2
-                new_idx = [p[:half] for p in pred_idx]
-                if first:
-                    self.aggregator.reset_memory_bank()
-                    #Generate reference features from 16 batch files
-                    ref_feature_reg = self.select_key_feature_in_reg_feature(reg_feat_flatten, new_idx)
-                    channel = ref_feature_reg.shape[2]
-                    ref_feature_reg = ref_feature_reg.reshape(-1, channel)
-                    self.aggregator.init_memory_bank(ref_feature_reg)
-                else:
-                    key_features = self.select_key_feature_in_reg_feature(reg_feat_flatten, new_idx)
-                    channel = key_features.shape[2]
-                    key_features = key_features.reshape(-1, channel)
-                    self.aggregator.update_memory_bank(key_features)
-                    
+
         (features_cls, features_reg, cls_scores,
          fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
                                                                 pred_idx,
                                                                 reg_feat_flatten,
                                                                 imgs,
                                                                 pred_result)
-        
-                             
-        #kssong
-        #features_reg_file = open('./features_reg.txt', 'a')
-        #features_reg_file.write(f'{features_reg.shape}\n')
-        #features_reg_file.close()       
-
-        features_reg = features_reg.unsqueeze(0)        
+        features_reg = features_reg.unsqueeze(0)
         features_cls = features_cls.unsqueeze(0)  # [1,features,channels]
-        
-        
 
         if not self.training:
             cls_scores = cls_scores.to(cls_feat_flatten.dtype)
@@ -547,14 +319,12 @@ class YOLOXHead(nn.Module):
         if self.gmode:
             kwargs = self.kwargs
             kwargs.update({'lframe': lframe, 'gframe': gframe, 'afternum': self.Afternum})
-            if self.use_score:                
+            if self.use_score:
                 features_cls,fg_scores = self.trans(features_cls, features_reg, cls_scores, fg_scores, sim_thresh=self.sim_thresh,
                                           ave=self.ave, use_mask=self.use_mask, **kwargs)
-                
-            else:                
+            else:
                 features_cls = self.trans(features_cls, features_reg, None, None,
                                           sim_thresh=self.sim_thresh, ave=self.ave, **kwargs)
-
         if self.lmode:
             if self.both_mode:
                 features_cls = self.g2l(features_cls).unsqueeze(0)
@@ -562,16 +332,13 @@ class YOLOXHead(nn.Module):
                          'cls_score': cls_scores,'all_scores':all_scores,'lframe':lframe,
                          'afternum':self.Afternum,'gframe':gframe,'use_score':self.use_score}
             #st = time.time()
-            
             features_cls,features_reg = self.LocalAggregation(features_cls[:, :lframe * self.Afternum],
                                                               features_reg[:, :lframe * self.Afternum],
                                                               locs[:lframe * self.Afternum].view(-1, self.Afternum, 4),
                                                               **more_args)
-
             if self.kwargs.get('globalBlocks',0):
                 kwargs = self.kwargs
                 kwargs.update({'lframe': lframe, 'gframe': gframe, 'afternum': self.Afternum})
-                
                 features_cls,fg_scores = self.GlobalAggregation(features_cls, features_reg, cls_scores, fg_scores, sim_thresh=self.sim_thresh,
                                           ave=self.ave, use_mask=self.use_mask, **kwargs)
 
@@ -583,12 +350,12 @@ class YOLOXHead(nn.Module):
         fc_output = torch.reshape(fc_output, [-1, self.Afternum, self.num_classes + 1])[:, :, :-1] # [b,afternum,cls]
 
         if self.kwargs.get('reconf', False):
-            
-            conf_output = self.conf_pred(features_reg)            
+            conf_output = self.conf_pred(features_reg)
             conf_output = torch.reshape(conf_output, [-1, self.Afternum])
         else:
             conf_output = None
-        
+
+
         if self.training:
             if self.both_mode:
                 labels = labels[:lframe]
@@ -607,12 +374,11 @@ class YOLOXHead(nn.Module):
                 conf_output = conf_output
             )
         else:
-            eval_nms_thresh = nms_thresh + 0.25
             result, result_ori = postprocess(copy.deepcopy(pred_result),
                                              self.num_classes,
                                              fc_output,
                                              conf_output = conf_output,
-                                             nms_thre=eval_nms_thresh,
+                                             nms_thre=nms_thresh,
                                              )
             return result, result_ori  # result
 
@@ -673,16 +439,6 @@ class YOLOXHead(nn.Module):
         locs = torch.cat(locs)
         all_scores = torch.cat(all_scores)
         return features_cls, features_reg, cls_scores, fg_scores, locs, all_scores
-
-    def select_key_feature_in_reg_feature(self, reg_features, pred_idx):
-        key_features_list = []
-        for reg_feature, idx_list  in zip(reg_features, pred_idx):
-            key_features = []
-            for idx in idx_list:
-                key_features.append(reg_feature[idx])
-            key_features = torch.stack(key_features, dim=0)
-            key_features_list.append(key_features)
-        return torch.stack(key_features_list, dim=0)
 
     def get_losses(
             self,
@@ -823,8 +579,8 @@ class YOLOXHead(nn.Module):
                 ref_target = outputs.new_zeros((idx[batch_idx].shape[0], self.num_classes + 1))
                 conf_target = outputs.new_zeros((idx[batch_idx].shape[0], 1))
                 fg = 0
-                #gt_xyxy = box_cxcywh_to_xyxy(torch.tensor(reg_target))
-                gt_xyxy = box_cxcywh_to_xyxy(reg_target.clone().detach())
+
+                gt_xyxy = box_cxcywh_to_xyxy(torch.tensor(reg_target))
                 pred_box = pred_res[batch_idx][:, :4]
                 cost_giou, iou = generalized_box_iou(pred_box, gt_xyxy)
                 max_iou = torch.max(iou, dim=-1)

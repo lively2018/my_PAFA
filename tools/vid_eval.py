@@ -19,7 +19,6 @@ from yolox.utils import configure_nccl, configure_omp, get_num_devices
 from yolox.data.data_augment import Vid_Val_Transform
 from yolox.data.datasets import vid
 
-
 def make_parser():
     parser = argparse.ArgumentParser("YOLOX train parser")
     parser.add_argument("-expn", "--experiment-name", type=str, default=None)
@@ -127,17 +126,11 @@ def main(exp, args):
     lframe = int(args.lframe)
     gframe = int(args.gframe)
 
-#    dataset_val = vid.VIDDataset(file_path='./yolox/data/datasets/val_seq.npy',
-#                                 img_size=(args.tsize, args.tsize), preproc=Vid_Val_Transform(), lframe=lframe,
-#                                 gframe=gframe, val=True,mode=args.mode,dataset_pth=exp.data_dir,tnum=int(args.tnum),
-#                                 formal=args.formal,local_stride=exp.local_stride,)
-# kssong
-    dataset_val = vid.VIDRefDataset(file_path='./yolox/data/datasets/val_seq.npy',
+    dataset_val = vid.VIDDataset(file_path='./yolox/data/datasets/val_seq.npy',
                                  img_size=(args.tsize, args.tsize), preproc=Vid_Val_Transform(), lframe=lframe,
                                  gframe=gframe, val=True,mode=args.mode,dataset_pth=exp.data_dir,tnum=int(args.tnum),
                                  formal=args.formal,local_stride=exp.local_stride,)
     val_loader = vid.vid_val_loader(batch_size=lframe + gframe, data_num_workers=4, dataset=dataset_val,)
-    
 
 
     ##  customed dataset here:

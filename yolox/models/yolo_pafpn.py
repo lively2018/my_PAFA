@@ -8,12 +8,6 @@ import torch.nn as nn
 from .darknet import CSPDarknet
 from .network_blocks import BaseConv, CSPLayer, DWConv
 
-#kssong
-def gpu_mem_usage():
-    """
-    Compute the GPU memory usage for the current device (MB).
-    """    
-    return torch.cuda.max_memory_allocated() / (1024 * 1024)
 
 class YOLOPAFPN(nn.Module):
     """
@@ -94,26 +88,20 @@ class YOLOPAFPN(nn.Module):
         Returns:
             Tuple[Tensor]: FPN feature.
         """
-        #kssong
-        #print(f"Before YOLOPAFPN forward: {gpu_mem_usage():.0f}")
 
         #  backbone
-        
-        #print(f"Before CSPDarkNet: {gpu_mem_usage():.0f}")
         out_features = self.backbone(input)
-        #print(f"After CSPDarkNet: {gpu_mem_usage():.0f}")
         features = [out_features[f] for f in self.in_features]
         [x2, x1, x0] = features
 
         fpn_out0 = self.lateral_conv0(x0)  # 1024->512/32
-        f_out0 = self.upsample(fpn_out0)  # 512/16            
-        f_out0 = torch.cat([f_out0, x1], 1)  # 512->1024/16            
+        f_out0 = self.upsample(fpn_out0)  # 512/16
+        f_out0 = torch.cat([f_out0, x1], 1)  # 512->1024/16
         f_out0 = self.C3_p4(f_out0)  # 1024->512/16
-            
 
         fpn_out1 = self.reduce_conv1(f_out0)  # 512->256/16
-        f_out1 = self.upsample(fpn_out1)  # 256/8            
-        f_out1 = torch.cat([f_out1, x2], 1)  # 256->512/8            
+        f_out1 = self.upsample(fpn_out1)  # 256/8
+        f_out1 = torch.cat([f_out1, x2], 1)  # 256->512/8
         pan_out2 = self.C3_p3(f_out1)  # 512->256/8
 
         p_out1 = self.bu_conv2(pan_out2)  # 256->256/16
@@ -122,13 +110,9 @@ class YOLOPAFPN(nn.Module):
 
         p_out0 = self.bu_conv1(pan_out1)  # 512->512/32
         p_out0 = torch.cat([p_out0, fpn_out0], 1)  # 512->1024/32
-        pan_out0 = self.C3_n4(p_out0)  # 1024->1024/32        
+        pan_out0 = self.C3_n4(p_out0)  # 1024->1024/32
 
         outputs = (pan_out2, pan_out1, pan_out0)
-        del x0, x1, x2, f_out0, f_out1, p_out0, p_out1, out_features, features        
-        torch.cuda.empty_cache()
-
-        #print(f"After YOLOPAFPN forward: {gpu_mem_usage():.0f}")
         return outputs
 
 

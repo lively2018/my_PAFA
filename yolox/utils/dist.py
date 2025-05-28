@@ -61,7 +61,9 @@ def wait_for_the_master(local_rank: int = None):
         local_rank = get_local_rank()
 
     if local_rank > 0:
-        dist.barrier()
+        #kssong
+        #dist.barrier()
+        dist.barrier(device_ids=[torch.cuda.current_device()])
     yield
     if local_rank == 0:
         if not dist.is_available():
@@ -69,7 +71,9 @@ def wait_for_the_master(local_rank: int = None):
         if not dist.is_initialized():
             return
         else:
-            dist.barrier()
+        #kssong
+            dist.barrier(device_ids=[torch.cuda.current_device()])
+            #dist.barrier()
 
 
 def synchronize():
@@ -82,7 +86,10 @@ def synchronize():
         return
     world_size = dist.get_world_size()
     if world_size == 1:
-        return    
+        return
+
+    #kssong
+    #dist.barrier(device_ids=[torch.cuda.current_device()])
     dist.barrier()
 
 

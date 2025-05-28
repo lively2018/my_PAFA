@@ -377,10 +377,10 @@ class Vid_Val_Transform:
             img = img[::-1, :, :].copy()
             img /= 255.0
             img -= np.array([0.485, 0.456, 0.406]).reshape(3, 1, 1)
-            img /= np.array([0.229, 0.224, 0.225]).reshape(3, 1, 1)        
+            img /= np.array([0.229, 0.224, 0.225]).reshape(3, 1, 1)
         boxes = res[:, :4].copy()
         labels = res[:, 4].copy()
         boxes *= r_
         labels_t = np.expand_dims(labels, 1)
         targets_t = np.hstack((labels_t, boxes))
-        return img, targets_t        
+        return img, targets_t

@@ -121,13 +121,6 @@ class ResLayer(nn.Module):
         out = self.layer2(self.layer1(x))
         return x + out
 
-#kssong
-import gc
-def gpu_mem_usage():
-    """
-    Compute the GPU memory usage for the current device (MB).
-    """    
-    return torch.cuda.max_memory_allocated() / (1024 * 1024)
 
 class SPPBottleneck(nn.Module):
     """Spatial pyramid pooling layer used in YOLOv3-SPP"""
@@ -148,17 +141,9 @@ class SPPBottleneck(nn.Module):
         self.conv2 = BaseConv(conv2_channels, out_channels, 1, stride=1, act=activation)
 
     def forward(self, x):
-        #print(f"Before SPPBottleneck: {gpu_mem_usage():.0f}")
         x = self.conv1(x)
-        pooled_feature = [m(x) for m in self.m]
-        x = x.detach()        
-        x = torch.cat([x] + pooled_feature, dim=1)
-        #x = torch.cat([x] + [m(x) for m in self.m], dim=1)
-        del pooled_feature
-        gc.collect()
-        torch.cuda.empty_cache()
+        x = torch.cat([x] + [m(x) for m in self.m], dim=1)
         x = self.conv2(x)
-        #print(f"After SPPBottleneck: {gpu_mem_usage():.0f}")
         return x
 
 
@@ -196,12 +181,10 @@ class CSPLayer(nn.Module):
         self.m = nn.Sequential(*module_list)
 
     def forward(self, x):
-        #print(f"Before CSPLayer: {gpu_mem_usage():.0f}")
         x_1 = self.conv1(x)
         x_2 = self.conv2(x)
         x_1 = self.m(x_1)
         x = torch.cat((x_1, x_2), dim=1)
-        #print(f"After CSPLayer: {gpu_mem_usage():.0f}")
         return self.conv3(x)
 
 

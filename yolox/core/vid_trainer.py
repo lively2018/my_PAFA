@@ -74,12 +74,6 @@ def extract_values(text):
         'AR_large': float(AR_large)
     }
 
-#kssong
-def gpu_mem_usage():
-    """
-    Compute the GPU memory usage for the current device (MB).
-    """    
-    return torch.cuda.max_memory_allocated() / (1024 * 1024)
 
 class Trainer:
     def __init__(self, exp, args, val_loader,val=False):
@@ -126,7 +120,6 @@ class Trainer:
         self.before_train()
         try:
             self.train_in_epoch()
-            
         except Exception:
             raise
         finally:
@@ -144,41 +137,27 @@ class Trainer:
             self.train_one_iter()
             self.after_iter()
 
-    def train_one_iter(self):        
-
-        #kssong
-        torch.cuda.empty_cache()
-
+    def train_one_iter(self):
         iter_start_time = time.time()
 
-        #kssong
-        #inps, targets,_ = self.prefetcher.next()
-        inps, targets, _, _, paths, _, first_frame_flags = self.prefetcher.next()
+        inps, targets,_ = self.prefetcher.next()
         inps = inps.to(self.data_type)
         targets = targets.to(self.data_type)
-        first_frame_flags = torch.tensor(first_frame_flags, dtype=torch.bool).to(self.data_type)
         targets.requires_grad = False
         inps, targets = self.exp.preprocess(inps, targets, self.input_size,
                                             )
         data_end_time = time.time()
 
         with torch.cuda.amp.autocast(enabled=self.amp_training):
-            #kssong
-            #outputs = self.model(inps, targets, lframe = self.exp.lframe,gframe = self.exp.gframe)
-            first_frame = any(first_frame_flags)
-            outputs = self.model(inps, first_frame, targets, lframe = self.exp.lframe,gframe = self.exp.gframe)
+            outputs = self.model(inps, targets, lframe = self.exp.lframe,gframe = self.exp.gframe)
 
         loss = outputs["total_loss"]
-        
 
         self.optimizer.zero_grad()
-        #kssong
-        #self.scaler.scale(loss).backward(retain_graph=True)        
-        self.scaler.scale(loss).backward()
+        self.scaler.scale(loss).backward(retain_graph=True)
         self.scaler.step(self.optimizer)
         self.scaler.update()
 
-        
         if self.use_model_ema:
             self.ema_model.update(self.model)
 
@@ -191,14 +170,9 @@ class Trainer:
         self.meter.update(
             iter_time=iter_end_time - iter_start_time,
             data_time=data_end_time - iter_start_time,
-            lr=lr,            
+            lr=lr,
             **outputs,
         )
-        #kssong
-        # Free up memory
-        del inps, targets, outputs, loss
-        torch.cuda.empty_cache()
-        
 
     def before_train(self):
         logger.info("args: {}".format(self.args))
@@ -236,7 +210,7 @@ class Trainer:
             occupy_mem(self.local_rank)
 
         if self.is_distributed:
-            model = DDP(model, device_ids=[self.local_rank], broadcast_buffers=False, find_unused_parameters=True)
+            model = DDP(model, device_ids=[self.local_rank], broadcast_buffers=False)
 
         if self.use_model_ema:
             self.ema_model = ModelEMA(model, 0.9998)
@@ -390,8 +364,6 @@ class Trainer:
         return model
 
     def evaluate_and_save_model(self):
-        self.save_ckpt(f"epoch_{self.epoch}")
-
         if self.use_model_ema:
             evalmodel = self.ema_model.ema
         else:
@@ -410,19 +382,17 @@ class Trainer:
         ap50 = summary[1]
 
         summary_info = summary[-1]
-        #kssong
-        #detail_info = extract_values(summary_info) results in deadlock
+        detail_info = extract_values(summary_info)
         if self.rank == 0:
             self.tblogger.add_scalar("val/COCOAP50", ap50, self.epoch + 1)
             self.tblogger.add_scalar("val/COCOAP50_95", ap50_95, self.epoch + 1)
-            #for k, v in detail_info.items(): results in deadlock
-            #    self.tblogger.add_scalar("val/{}".format(k), v, self.epoch + 1)
+            for k, v in detail_info.items():
+                self.tblogger.add_scalar("val/{}".format(k), v, self.epoch + 1)
             self.tblogger.add_scalar("lr", self.lr, self.epoch + 1)
             logger.info('\n'+ str(summary[-1]))
 
-        #kssong
-        #synchronize() results in deadlock
-        
+        synchronize()
+
         self.save_ckpt("last_epoch", ap50_95 > self.best_ap)
         self.best_ap = max(self.best_ap, ap50_95)
 

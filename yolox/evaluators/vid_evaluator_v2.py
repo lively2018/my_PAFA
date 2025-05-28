@@ -194,31 +194,17 @@ class VIDEvaluator:
         nms_time = 0
         n_samples = max(len(self.dataloader) - 1, 1)
 
-        #kssong
-#        for cur_iter, (imgs, _, info_imgs, label, path, time_embedding) in enumerate(
-#                progress_bar(self.dataloader)
-#        ):
-
-        for cur_iter, (imgs, label, info_imgs, _, path, time_embedding, frist_frame_flags) in enumerate(
+        for cur_iter, (imgs, _, info_imgs, label, path, time_embedding) in enumerate(
                 progress_bar(self.dataloader)
         ):
-        
+
             with torch.no_grad():
                 imgs = imgs.type(tensor_type)
                 # skip the the last iters since batchsize might be not enough for batch inference
                 is_time_record = cur_iter < len(self.dataloader) - 1
                 if is_time_record:
                     start = time.time()
-                #kssong
-                #outputs, ori_res = model(imgs, 
-                #                         lframe=self.lframe,
-                #                         gframe = self.gframe)
-                first_frame = any(frist_frame_flags)
-                #if first_frame is True:
-                #    first_frame_file = open('./first_frame_val_file.txt', 'a')
-                #    first_frame_file.write('first_frame_true\n')
-                #    first_frame_file.close()
-                outputs, ori_res = model(imgs, first_frame,
+                outputs, ori_res = model(imgs,
                                          lframe=self.lframe,
                                          gframe = self.gframe)
 
@@ -248,8 +234,7 @@ class VIDEvaluator:
         del data_list
         self.vid_to_coco['annotations'] = []
 
-        #kssong
-        #synchronize() results in deadlock
+        synchronize()
         return eval_results
 
     def convert_to_coco_format(self, outputs, info_imgs, labels):
