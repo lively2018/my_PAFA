@@ -94,6 +94,9 @@ def make_parser():
         default=None,
         nargs=argparse.REMAINDER,
     )
+    parser.add_argument(
+        "--path", default="./yolox/data/datasets/val_seq.npy", help="path to images or video"
+    )
     return parser
 
 @logger.catch
@@ -144,6 +147,7 @@ if __name__ == "__main__":
 
     exp.merge(args.opts)
     exp.test_size = (args.tsize, args.tsize)
+    exp.vid_val_path = args.path
     if not args.experiment_name:
         args.experiment_name = exp.exp_name
 
