@@ -90,6 +90,9 @@ def make_parser():
         default=None,
         nargs=argparse.REMAINDER,
     )
+    parser.add_argument(
+        "--path", default="./yolox/data/datasets/val_seq.npy", help="path to images or video"
+    )
     parser.add_argument("--tseq", default=15000, type=int, help="vid train sequences")
     parser.add_argument('--tnum', default=-1, help='vid test sequences')
     parser.add_argument('--mode', default='random', help='frame sample mode')
@@ -124,6 +127,7 @@ if __name__ == "__main__":
 
     exp.merge(args.opts)
     exp.test_size = (args.tsize, args.tsize)
+    exp.vid_val_path = args.path
     if not args.experiment_name:
         args.experiment_name = exp.exp_name
 

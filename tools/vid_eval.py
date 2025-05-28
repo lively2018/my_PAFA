@@ -98,7 +98,9 @@ def make_parser():
         default=None,
         nargs=argparse.REMAINDER,
     )
-
+    parser.add_argument(
+        "--path", default="./yolox/data/datasets/val_seq.npy", help="path to images or video"
+    )
     parser.add_argument('--lframe', default=0,type=int, help='local frame num')
     parser.add_argument('--gframe', default=32,type=int, help='global frame num')
     parser.add_argument('--mode', default='random', help='frame sample mode')
@@ -126,13 +128,13 @@ def main(exp, args):
     cudnn.benchmark = True
     lframe = int(args.lframe)
     gframe = int(args.gframe)
-
+    exp.vid_val_path = args.path
 #    dataset_val = vid.VIDDataset(file_path='./yolox/data/datasets/val_seq.npy',
 #                                 img_size=(args.tsize, args.tsize), preproc=Vid_Val_Transform(), lframe=lframe,
 #                                 gframe=gframe, val=True,mode=args.mode,dataset_pth=exp.data_dir,tnum=int(args.tnum),
 #                                 formal=args.formal,local_stride=exp.local_stride,)
 # kssong
-    dataset_val = vid.VIDRefDataset(file_path='./yolox/data/datasets/val_seq.npy',
+    dataset_val = vid.VIDRefDataset(file_path=exp.vid_val_path,
                                  img_size=(args.tsize, args.tsize), preproc=Vid_Val_Transform(), lframe=lframe,
                                  gframe=gframe, val=True,mode=args.mode,dataset_pth=exp.data_dir,tnum=int(args.tnum),
                                  formal=args.formal,local_stride=exp.local_stride,)
