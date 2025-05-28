@@ -218,7 +218,7 @@ class VIDEvaluator:
             if self.kwargs.get('first_only',False):
                 info_imgs = [info_imgs[0]]
                 label = [label[0]]
-            temp_data_list, temp_label_list = self.convert_to_coco_format(outputs, info_imgs, copy.deepcopy(label))
+            temp_data_list, temp_label_list = self.convert_to_coco_format(outputs, info_imgs, copy.deepcopy(label), path)
             data_list.extend(temp_data_list)
             labels_list.extend(temp_label_list)
 
@@ -237,7 +237,7 @@ class VIDEvaluator:
         synchronize()
         return eval_results
 
-    def convert_to_coco_format(self, outputs, info_imgs, labels):
+    def convert_to_coco_format(self, outputs, info_imgs, labels, path):
         data_list = []
         label_list = []
         frame_now = 0
@@ -265,8 +265,12 @@ class VIDEvaluator:
                 }  # COCO json format
                 self.box_id = self.box_id + 1
                 label_list.append(label_pred_data)
-            self.vid_to_coco['images'].append({'id': self.id})
-
+            #kssong
+            #self.vid_to_coco['images'].append({'id': self.id})
+            self.vid_to_coco['images'].append({
+                'id': self.id,
+                'file_name': path[frame_now]
+            })
             if output is None:
                 self.id = self.id + 1
                 continue
@@ -324,9 +328,8 @@ class VIDEvaluator:
                 label_list.append(label_pred_data)
 
                 # print('label:',label_pred_data)
-
+            
             self.vid_to_coco_ori['images'].append({'id': self.id_ori})
-
             if output is None:
                 self.id_ori = self.id_ori + 1
                 continue
@@ -411,6 +414,14 @@ class VIDEvaluator:
             cocoEval = COCOeval(cocoGt, cocoDt, annType[1])
             cocoEval.evaluate()
             cocoEval.accumulate()
+            #kssong
+            image_id_to_path = {img['id']: img['file_name'] for img in self.vid_to_coco['images'] }
+            bad_images = [(img_id, image_id_to_path.get(img_id, 'unknown')) for img_id in cocoEval.low_iou_image_ids]
+
+            for img_id, path in bad_images:
+                bad_images_file = open('./bad_image_files.txt', 'a')
+                bad_images_file.write(f"Image {img_id} Path: {path}\n")
+                bad_images_file.close()
             redirect_string = io.StringIO()
 
             cat_ids = list(cocoGt.cats.keys())

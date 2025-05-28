@@ -21,6 +21,8 @@ class COCOeval_opt(COCOeval):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        #kssong
+        self.low_iou_image_ids = set()
         self.module = FastCOCOEvalOp().load()
 
     def evaluate(self):
@@ -66,6 +68,15 @@ class COCOeval_opt(COCOeval):
             for imgId in p.imgIds
             for catId in catIds
         }
+        # kssong
+        for img_id in p.imgIds:
+            image_ious = []
+            for cat_id in catIds:
+                ious = self.ious.get((img_id, cat_id))
+                if ious is not None and len(ious) > 0:
+                    image_ious.append(ious.max())
+            if len(image_ious) > 0 and all(iou < 0.4 for iou in image_ious):
+                self.low_iou_image_ids.add(img_id)
 
         maxDet = p.maxDets[-1]
 

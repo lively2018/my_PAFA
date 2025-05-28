@@ -145,8 +145,8 @@ class VIDDataset(torchDataset):
                 return res[:self.tnum]
         else:
             random.shuffle(res)
-            #return res[:15000]
-            return res
+            return res[:15000]
+            #return res
 
 
     def get_annotation(self,path,test_size):
