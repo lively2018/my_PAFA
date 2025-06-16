@@ -55,9 +55,9 @@ class MemoryBank(nn.Module):
         
         if self.feat is None:
             #self.feat = reshaped_feat
-            self.feat = feat.detach().clone()
+            self.feat = feat.detach().clone().to('cuda')
         else:
-            new_feat = torch.cat([self.feat, feat], dim=0).detach().clone()
+            new_feat = torch.cat([self.feat, feat], dim=0).detach().clone().to('cuda')
             del self.feat
             torch.cuda.empty_cache()
             self.feat = new_feat
@@ -74,12 +74,12 @@ class MemoryBank(nn.Module):
         feat_length = len(self.feat)
         if feat_length < self.key_length:
             #print(f"sample, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}")             
-            return self.feat.detach().clone()
+            return self.feat.detach().clone().to('cuda')
                        
         if self.sampling_policy == 'random':
             sampled_ind = torch.randperm(len(self.feat), device=self.feat.device)[:self.key_length]
             #print(f"sample, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}") 
-            return self.feat[sampled_ind].detach().clone()
+            return self.feat[sampled_ind].detach().clone().to('cuda')
         else:
             raise NotImplementedError
 
@@ -90,9 +90,10 @@ class MemoryBank(nn.Module):
             #self.feat = new_feat
             #return       
         #print(f"Before update: {torch.cuda.memory_allocated()} / {torch.cuda.memory_reserved()}")    
+        new_feat = new_feat.to('cuda')
         if self.feat is None:
             self.feat = new_feat.detach().clone()
-            return        
+            return
         
         if len(self.feat) < self.max_length:
             new_feat_combined = torch.cat([self.feat, new_feat], dim=0).detach().clone()
