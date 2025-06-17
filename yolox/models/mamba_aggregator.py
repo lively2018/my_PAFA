@@ -50,7 +50,11 @@ class MambaAggregator(nn.Module):
         #logger.info(f"ref_x shape: {ref_x.shape} x shape: {x.shape}")        
         #print(f"After sampling: {gpu_mem_usage():.0f}")
         # fort he rest frames
-        aggregated_x = self.forward_with_ref_x(x, ref_x)            
+        if len(ref_x) != 0:
+            aggregated_x = self.forward_with_ref_x(x, ref_x)
+        else:
+            #logger.info(f"ref_x shape: {ref_x.shape}")
+            aggregated_x = torch.zeros_like(x)
         return aggregated_x
         
     
@@ -105,12 +109,14 @@ class MambaAggregator(nn.Module):
         roi_n = x.shape[0]
         ref_roi_n = ref_x.shape[0]
         
-        #logger.info(f"roi_n: {roi_n} ref_roi_n: {ref_roi_n}")        
+        x = x.half()
+        #logger.info(f"roi_n: {roi_n} ref_roi_n: {ref_roi_n}")
         x_embed = self.fc_embed(x)
         # [num_attention_blocks, roi_n, C / num_attention_blocks]
         x_embed = x_embed.view(roi_n, self.num_attention_blocks,
                                -1).permute(1, 0, 2)
         
+        ref_x = ref_x.half()
         ref_x_embed = self.ref_fc_embed(ref_x)
         # [num_attention_blocks, C / num_attention_blocks, ref_roi_n]
         ref_x_embed = ref_x_embed.view(ref_roi_n, self.num_attention_blocks,
