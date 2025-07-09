@@ -96,18 +96,21 @@ def make_parser():
     parser.add_argument('--save_result', default=True)
     parser.add_argument('--post', default=False,action="store_true")
     parser.add_argument('--repp_cfg', default='./tools/yolo_repp_cfg.json' ,help='repp cfg filename', type=str)
+    parser.add_argument("--format", default="video", type=str, help="input format files or video")
     return parser
 
 
 def get_image_list(path):
     image_names = []
+    file_names = []
     for maindir, subdir, file_name_list in os.walk(path):
         for filename in file_name_list:
             apath = os.path.join(maindir, filename)
             ext = os.path.splitext(apath)[1]
             if ext in IMAGE_EXT:
                 image_names.append(apath)
-    return image_names
+                file_names.append(filename)
+    return file_names, image_names
 
 def image_demo(predictor, vis_folder, path, current_time, save_result):
     if os.path.isdir(path):
@@ -129,6 +132,98 @@ def image_demo(predictor, vis_folder, path, current_time, save_result):
         ch = cv2.waitKey(0)
         if ch == 27 or ch == ord("q") or ch == ord("Q"):
             break
+def imagedir_demo(predictor, vis_folder, current_time, args,exp):
+    gframe = exp.gframe_val
+    lframe = exp.lframe_val
+    traj_linking = exp.traj_linking
+    P, Cls = exp.defualt_p, exp.num_classes
+
+    save_folder = os.path.join(
+        vis_folder, time.strftime("%Y_%m_%d_%H_%M_%S", current_time)
+    )
+
+    os.makedirs(save_folder, exist_ok=True)        
+    img_save_path = save_folder    
+    
+    if os.path.isdir(args.path):
+        file_names, files = get_image_list(args.path)
+    else:
+        raise ValueError(f"{args.path} is invalid!")
+    
+    frames = []
+    outputs = []
+    ori_frames = []
+    for file in files:
+        frame = cv2.imread(file)
+        height, width = frame.shape[:2]        
+        ori_frames.append(frame)
+        frame, _ = predictor.preproc(frame, None, exp.test_size)
+        frames.append(torch.tensor(frame))
+  
+    res = []
+    frame_len = len(frames)
+    index_list = list(range(frame_len))
+    if gframe != 0:
+        #random.seed(41)
+        #random.shuffle(index_list)
+        #random.seed(41)
+        #random.shuffle(frames)
+        split_num = int(frame_len / (gframe))#
+        for i in range(split_num):
+            res.append(frames[i * gframe:(i + 1) * gframe])
+        res.append(frames[(i + 1) * gframe:])
+    else:
+        split_num = int(frame_len / (lframe))
+        for i in range(split_num):
+            if traj_linking and i != 0:
+                res.append(frames[i * lframe-1:(i + 1) * lframe])
+            else:
+                res.append(frames[i * lframe:(i + 1) * lframe])
+        if traj_linking:
+            tail = frames[split_num * lframe - 1:]
+        else:
+            tail = frames[split_num * lframe:]
+        res.append(tail)
+
+    outputs, adj_lists, fc_outputs, names = [], [], [], []
+    first_frame = True
+    for ele_id,ele in enumerate(res):
+        if ele == []: continue
+        frame_num = len(ele)
+        ele = torch.stack(ele)
+        t0 = time.time()
+        if traj_linking:
+            pred_result, adj_list, fc_output = predictor.inference(ele, first_frame, lframe=frame_num, gframe=0)
+            if first_frame:
+                first_frame = False
+            if len(outputs) != 0:  # skip the connection frame
+                pred_result = pred_result[1:]
+                fc_output = fc_output[1:]
+            outputs.extend(pred_result)
+            adj_lists.extend(adj_list)
+            fc_outputs.append(fc_output)
+        else:
+            outputs.extend(predictor.inference(ele, first_frame, lframe=lframe,gframe=gframe))
+            if first_frame:
+                first_frame = False
+    if traj_linking:
+        outputs = post_linking(fc_outputs, adj_lists, outputs, P, Cls, names, exp)
+
+    outputs = [j for _,j in sorted(zip(index_list,outputs))]
+    ratio = min(predictor.test_size[0] / height, predictor.test_size[1] / width)
+    if args.post:
+        logger.info("Post processing...")
+        out_post_format = predictor.convert_to_post(outputs, ratio, [height, width])
+        out_post = predictor.post(out_post_format)
+        outputs = predictor.convert_to_ori(out_post, frame_len)
+
+    logger.info("Saving detection result in {}".format(img_save_path))
+    for (output,img, file_name) in zip(outputs,ori_frames[:len(outputs)],file_names):
+        if args.post:
+            ratio = 1
+        result_frame = predictor.visual(output,img,ratio,cls_conf=args.conf)
+        if args.save_result:
+            cv2.imwrite(os.path.join(img_save_path, file_name), result_frame)            
 
 def imageflow_demo(predictor, vis_folder, current_time, args,exp):
     gframe = exp.gframe_val
@@ -295,7 +390,10 @@ def main(exp, args):
         predictor = Predictor(model, exp, COCO_CLASSES, trt_file, decoder, args.device, args.legacy)
     current_time = time.localtime()
 
-    imageflow_demo(predictor, vis_folder, current_time, args,exp)
+    if args.format == "video":
+        imageflow_demo(predictor, vis_folder, current_time, args,exp)
+    elif args.format == "files":
+        imagedir_demo(predictor, vis_folder,  current_time, args,exp)
 
 
 if __name__ == "__main__":
