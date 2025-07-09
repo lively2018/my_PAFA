@@ -189,13 +189,17 @@ def imageflow_demo(predictor, vis_folder, current_time, args,exp):
         res.append(tail)
 
     outputs, adj_lists, fc_outputs, names = [], [], [], []
+    first_frame = True
     for ele_id,ele in enumerate(res):
         if ele == []: continue
         frame_num = len(ele)
         ele = torch.stack(ele)
         t0 = time.time()
         if traj_linking:
-            pred_result, adj_list, fc_output = predictor.inference(ele, lframe=frame_num, gframe=0)
+            pred_result, adj_list, fc_output = predictor.inference(ele, first_frame, lframe=frame_num, gframe=0)
+            if first_frame:
+                first_frame = False
+
             if len(outputs) != 0:  # skip the connection frame
                 pred_result = pred_result[1:]
                 fc_output = fc_output[1:]
@@ -203,7 +207,9 @@ def imageflow_demo(predictor, vis_folder, current_time, args,exp):
             adj_lists.extend(adj_list)
             fc_outputs.append(fc_output)
         else:
-            outputs.extend(predictor.inference(ele,lframe=lframe,gframe=gframe))
+            outputs.extend(predictor.inference(ele, first_frame, lframe=lframe,gframe=gframe))
+            if first_frame:
+                first_frame = False
     if traj_linking:
         outputs = post_linking(fc_outputs, adj_lists, outputs, P, Cls, names, exp)
 

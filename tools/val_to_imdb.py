@@ -135,7 +135,7 @@ class Predictor(object):
         else:
             self.traj_linking = False
         self.post = post
-    def inference(self, img,img_path=None,lframe=0,gframe=32):
+    def inference(self, img, first_frame, img_path=None,lframe=0,gframe=32):
 
         if self.device == "gpu":
             img = img.type(self.tensor_type)
@@ -144,10 +144,10 @@ class Predictor(object):
         with torch.no_grad():
             t0 = time.time()
             if not self.traj_linking:
-                outputs,outputs_ori = self.model(img,lframe=lframe,gframe=gframe)
+                outputs,outputs_ori = self.model(img,first_frame, lframe=lframe,gframe=gframe)
                 if len(outputs) <= 4: outputs = outputs_ori
             else:
-                pred_result, adj_list, fc_output = self.model(img,lframe=lframe,gframe=gframe)
+                pred_result, adj_list, fc_output = self.model(img, first_frame, lframe=lframe,gframe=gframe)
                 outputs = [pred_result, adj_list, fc_output]
         return outputs
 
