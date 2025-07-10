@@ -229,7 +229,7 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
     for (output,img, file_name) in zip(outputs,ori_frames[:len(outputs)],file_names):
         if args.post:
             ratio = 1
-        result_frame = predictor.visual(output,img,ratio,cls_conf=args.conf)
+        result_frame = predictor.visual(output,img,ratio,cls_conf=args.conf,color_idx=12)
         if args.save_result:
             cv2.imwrite(os.path.join(img_save_path, file_name), result_frame)            
 

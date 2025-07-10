@@ -8,7 +8,7 @@ import numpy as np
 __all__ = ["vis"]
 
 
-def vis(img, boxes, scores, cls_ids, conf=0.5, class_names=None,t_size = 0.4):
+def vis(img, boxes, scores, cls_ids, conf=0.5, class_names=None,t_size = 0.4, color_idx=None):
 
     for i in range(len(boxes)):
         box = boxes[i]
@@ -20,8 +20,10 @@ def vis(img, boxes, scores, cls_ids, conf=0.5, class_names=None,t_size = 0.4):
         y0 = int(box[1])
         x1 = int(box[2])
         y1 = int(box[3])
-
-        color = (_COLORS[cls_id%len(_COLORS)] * 255).astype(np.uint8).tolist()
+        if color_idx:
+            color = (_COLORS[color_idx] * 255).astype(np.uint8).tolist()
+        else:
+            color = (_COLORS[cls_id%len(_COLORS)] * 255).astype(np.uint8).tolist()
         text = '{}:{:.1f}%'.format(class_names[cls_id], score * 100)
         txt_color = (0, 0, 0) if np.mean(_COLORS[cls_id%len(_COLORS)]) > 0.5 else (255, 255, 255)
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -40,6 +42,7 @@ def vis(img, boxes, scores, cls_ids, conf=0.5, class_names=None,t_size = 0.4):
         cv2.putText(img, text, (x0, y0 + txt_size[1]), font, t_size, txt_color, thickness=1)
 
     return img
+
 
 
 _COLORS = np.array(
