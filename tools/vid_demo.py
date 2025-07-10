@@ -163,6 +163,7 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
     res = []
     frame_len = len(frames)
     index_list = list(range(frame_len))
+    gframe_index_list = []
     if gframe != 0:
         #random.seed(41)
         #random.shuffle(index_list)
@@ -171,7 +172,9 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
         split_num = int(frame_len / (gframe))#
         for i in range(split_num):
             res.append(frames[i * gframe:(i + 1) * gframe])
+            gframe_index_list.append(index_list[i * gframe:(i + 1) * gframe])
         res.append(frames[(i + 1) * gframe:])
+        gframe_index_list.append(index_list[(i + 1) * gframe:])
     else:
         split_num = int(frame_len / (lframe))
         for i in range(split_num):
@@ -184,7 +187,12 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
         else:
             tail = frames[split_num * lframe:]
         res.append(tail)
-
+    gframe_list_file = open(os.path.join(img_save_path, "gframe_list_file_name.txt"), "w")
+    for i, glist in enumerate(gframe_index_list):
+        gframe_list_file.write(f"{i} set\n")
+        for idx in range(len(glist)):
+            gframe_list_file.write(file_names[glist[idx]] + "\n")
+    gframe_list_file.close()
     outputs, adj_lists, fc_outputs, names = [], [], [], []
     first_frame = True
     for ele_id,ele in enumerate(res):
