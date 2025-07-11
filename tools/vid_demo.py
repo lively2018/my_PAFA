@@ -23,6 +23,7 @@ import random
 import json
 import REPP
 import numpy as np
+from collections import OrderedDict
 
 IMAGE_EXT = [".jpg", ".jpeg", ".webp", ".bmp", ".png",".JPEG"]
 
@@ -228,20 +229,27 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
         outputs = predictor.convert_to_ori(out_post, frame_len)
 
     logger.info("Saving detection result in {}".format(img_save_path))
-    annotation_list = []
+    img_anno_res = {}    
     for (output,img, file_name) in zip(outputs,ori_frames[:len(outputs)],file_names):
         if args.post:
             ratio = 1
         result_frame = predictor.visual(output,img,ratio,cls_conf=args.conf,color_idx=12)
-        bboxes_cls = torch.cat([output[:, 0:4], output[:, 6].unsqueeze(1)], dim=1)
+        bboxes = output[:, 0:4]               
+        cls = output[:, 6].unsqueeze(1)
+        scores = (output[:, 4] * output[:, 5]).unsqueeze(1)
+        bboxes_cls = torch.cat([bboxes, scores, cls], dim=1)
         bboxes_cls_cpu = bboxes_cls.cpu().numpy()
-        annotation_list.append(bboxes_cls_cpu)
+        img_anno_res[file_name] = bboxes_cls_cpu
         if args.save_result:
             cv2.imwrite(os.path.join(img_save_path, file_name), result_frame)            
     if args.save_annotation:        
         anno_save_path = os.path.join(img_save_path, "my_model_annotation.npy")
         logger.info("Saving gt annotation in {}".format(anno_save_path))
-        np.save(anno_save_path, np.array(annotation_list, dtype=object)) 
+        sorted_img_anno_res = OrderedDict(sorted(img_anno_res.items(), key=lambda x: x[0]))
+        annotation_list = []
+        for _, bboxes_scores_cls in sorted_img_anno_res.items():            
+            annotation_list.append(bboxes_scores_cls)
+        np.save(anno_save_path, np.array(annotation_list, dtype=object))
 
 def imageflow_demo(predictor, vis_folder, current_time, args,exp):
     gframe = exp.gframe_val
