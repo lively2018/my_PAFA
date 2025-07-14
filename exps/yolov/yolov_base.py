@@ -45,7 +45,7 @@ class Exp(BaseExp):
         # similarity thresh hold for ave pooling
         self.sim_thresh = 0.75
         # first stage preposal nms threshold
-        self.pre_nms = 0.75
+        self.pre_nms = 0.50
         # use ave pooling
         self.ave = True
         # topK proposal number for first stage
