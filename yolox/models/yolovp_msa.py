@@ -628,12 +628,11 @@ class YOLOXHead(nn.Module):
                 conf_output = conf_output
             )
         else:
-            eval_nms_thresh = nms_thresh + 0.25
             result, result_ori = postprocess(copy.deepcopy(pred_result),
                                              self.num_classes,
                                              fc_output,
                                              conf_output = conf_output,
-                                             nms_thre=eval_nms_thresh,
+                                             nms_thre=nms_thresh,
                                              )
             return result, result_ori  # result
 
