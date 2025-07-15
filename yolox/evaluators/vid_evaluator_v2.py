@@ -218,7 +218,7 @@ class VIDEvaluator:
                 #    first_frame_file = open('./first_frame_val_file.txt', 'a')
                 #    first_frame_file.write('first_frame_true\n')
                 #    first_frame_file.close()
-                outputs, ori_res = model(imgs, first_frame,
+                outputs, ori_res = model(imgs, first_frame, nms_thresh=self.nmsthre,
                                          lframe=self.lframe,
                                          gframe = self.gframe)
 

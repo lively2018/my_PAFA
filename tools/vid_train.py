@@ -94,7 +94,9 @@ def make_parser():
         "--path", default="./yolox/data/datasets/val_seq.npy", help="path to images or video"
     )
     parser.add_argument("--tseq", default=15000, type=int, help="vid train sequences")
-    parser.add_argument('--tnum', default=-1, help='vid test sequences')
+    parser.add_argument('--tnum', default=-1, type=int,help='vid test sequences')
+    parser.add_argument('--pre_nms', default=0.75, type=float,help='pre nms threshold')
+    parser.add_argument('--nms', default=0.5, type=float,help='final nms threshold')
     parser.add_argument('--mode', default='random', help='frame sample mode')
     return parser
 
@@ -134,6 +136,9 @@ if __name__ == "__main__":
     exp.tnum = args.tnum
     exp.tseq = args.tseq
     exp.mode = args.mode
+    
+    exp.nmsthre = args.nms
+    exp.pre_nms = args.pre_nms
     num_gpu = get_num_devices() if args.devices is None else args.devices
     assert num_gpu <= get_num_devices()
     args.machine_rank = 1

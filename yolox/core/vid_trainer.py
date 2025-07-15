@@ -166,7 +166,7 @@ class Trainer:
             #kssong
             #outputs = self.model(inps, targets, lframe = self.exp.lframe,gframe = self.exp.gframe)
             first_frame = any(first_frame_flags)
-            outputs = self.model(inps, first_frame, targets, lframe = self.exp.lframe,gframe = self.exp.gframe)
+            outputs = self.model(inps, first_frame, targets, nms_thresh=self.exp.nmsthre, lframe = self.exp.lframe,gframe = self.exp.gframe)
 
         loss = outputs["total_loss"]
         

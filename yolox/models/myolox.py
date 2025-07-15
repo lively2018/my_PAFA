@@ -39,7 +39,7 @@ class YOLOX(nn.Module):
             #    fpn_outs, targets, x, lframe=lframe,gframe=gframe
             #)
             loss, iou_loss, conf_loss, cls_loss, l1_loss, rconf_loss,num_fg = self.head(
-                fpn_outs, first, targets, x, lframe=lframe,gframe=gframe
+                fpn_outs, first, targets, x, nms_thresh=nms_thresh,lframe=lframe,gframe=gframe
             )
             outputs = {
                 "total_loss": loss,

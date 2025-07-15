@@ -106,7 +106,7 @@ def make_parser():
     parser.add_argument('--mode', default='random', help='frame sample mode')
     parser.add_argument('--tnum', default=-1, help='vid test sequences')
     parser.add_argument('--formal', default=False, action="store_true",help='vid test sequences')
-
+    parser.add_argument('--nms', default=0.5, type=float,help='final nms threshold')
     return parser
 
 
@@ -157,7 +157,7 @@ if __name__ == "__main__":
 
     exp = get_exp(args.exp_file, args.name)
     exp.test_size = (args.tsize, args.tsize)
-
+    exp.nmsthre = args.nms
 
     if args.lframe != None: exp.lframe_val = int(args.lframe)
     if args.gframe != None: exp.gframe_val = int(args.gframe)
