@@ -136,7 +136,7 @@ if __name__ == "__main__":
     exp.tnum = args.tnum
     exp.tseq = args.tseq
     exp.mode = args.mode
-    
+
     exp.nmsthre = args.nms
     exp.pre_nms = args.pre_nms
     num_gpu = get_num_devices() if args.devices is None else args.devices

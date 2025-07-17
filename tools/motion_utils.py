@@ -17,9 +17,9 @@ import numpy as np
 def coco_preds_to_imdb(preds_filename, imageset_filename, store_filename=None):
 	"""
 	Convert predictions in COCO format to IMDB format
-	Each ouput line represent an image and its predictions and has the format: 
+	Each ouput line represent an image and its predictions and has the format:
 		img_id object_labels object_confs object_boxes
-	
+
 	Parameters
 	----------
 	preds_filename : str
@@ -38,16 +38,16 @@ def coco_preds_to_imdb(preds_filename, imageset_filename, store_filename=None):
 	if store_filename is None:
 		store_filename = preds_filename.replace('.json', '_imdb.txt')
 
-	if os.path.isfile(store_filename): 
+	if os.path.isfile(store_filename):
 		print('IMDB predictions already computed:', store_filename)
 		return store_filename
 	print('Computing IMDB predictions')
 
 	preds_orig = json.load(open(preds_filename, 'r'))
-	
+
 	with open(imageset_filename, 'r') as f: image_set = f.read().splitlines()
 	image_set = { l.split()[0]:int(l.split()[1]) for l in image_set }
-	
+
 	imdb_lines = []
 #	for p in tqdm(preds_orig):
 	for p in preds_orig:
@@ -58,13 +58,13 @@ def coco_preds_to_imdb(preds_filename, imageset_filename, store_filename=None):
 	            p['score'],
 	            p['bbox'][0], p['bbox'][1], p['bbox'][0]+p['bbox'][2], p['bbox'][1]+p['bbox'][3]
 	        ))
-	
+
 	with open(store_filename, 'w') as f:
 	    for ann in imdb_lines:
 	        f.write(ann + '\n')
-	
+
 	print('Stored:', store_filename)
-	
+
 	return store_filename
 
 
@@ -73,7 +73,7 @@ def annotations_to_imageset(annotations_filename, store_filename=None):
 	"""
 	Creates an ImageSet from an annotations file.
 	The ImageSet has the format: image_label image_id (str, int)
-	
+
 	Parameters
 	----------
 	annotations_filename : str
@@ -91,33 +91,33 @@ def annotations_to_imageset(annotations_filename, store_filename=None):
 
 	if store_filename is None:
 		store_filename = annotations_filename.replace('.txt', '_image_set.txt')
-		
-	if os.path.isfile(store_filename): 
+
+	if os.path.isfile(store_filename):
 		print('ImageSet already computed:', store_filename)
 		return store_filename
 	print('Computing ImageSet')
-		
+
 	with open(annotations_filename, 'r') as f: annotations = f.read().splitlines()
-	
+
 	# image_set = [ '{} {}'.format(ann.split()[0][:-5], i+1) for i,ann in enumerate(annotations) ]
 	image_set = [ '{} {}'.format('/'.join(ann.split()[0][:-5].split('/')[-2:]), i+1) for i,ann in enumerate(annotations) ]
 	image_set = sorted(image_set)
-	
+
 
 	with open(store_filename, 'w') as f:
 	    for s in image_set:
 	        f.write(s + '\n')
-	
+
 	print('Stored:', store_filename)
-	
+
 	return store_filename
 
 
 
 def image_set_to_motion_file(motion_iou_file_orig, imageset_filename_orig, imageset_filename_dest, motion_iou_dest_filename=None):
 	"""
-	Given the original ImageNet motion file (.mat), its original ImageSet 
-	and a sub set of the original ImageSet, parses the motion file to fit the 
+	Given the original ImageNet motion file (.mat), its original ImageSet
+	and a sub set of the original ImageSet, parses the motion file to fit the
 	new ImageSet
 
 	Parameters
@@ -137,33 +137,33 @@ def image_set_to_motion_file(motion_iou_file_orig, imageset_filename_orig, image
 	motion_iou_dest_filename : str
 		Path where the new motion file is stored.
 	"""
-	
+
 	if motion_iou_dest_filename is None:
 		motion_iou_dest_filename = imageset_filename_dest.replace('_image_set.txt', '_motion_iou.mat')
-		
-	if os.path.isfile(motion_iou_dest_filename): 
+
+	if os.path.isfile(motion_iou_dest_filename):
 		print('Motion File already computed:', motion_iou_dest_filename)
 		return motion_iou_dest_filename
 	print('Computing Motion File:', motion_iou_dest_filename)
-		
+
 	motion_iou = sio.loadmat(motion_iou_file_orig)['motion_iou']
-	
+
 	with open(imageset_filename_orig, 'r') as f: image_set_orig = f.read().splitlines()
 	image_set_orig = [ s.split()[0] for s in image_set_orig ]
-	
+
 	with open(imageset_filename_dest, 'r') as f: image_set_dest = f.read().splitlines()
 	image_set_dest = [ s.split()[0] for s in image_set_dest ]
-	
+
 #	inds = [ s in image_set_dest for s in tqdm(image_set_orig) ]
 	inds = [ s in image_set_dest for s in image_set_orig ]
 	# motion_iou_dest = np.expand_dims(motion_iou[inds], axis=1)
 	motion_iou_dest = motion_iou[inds]
-	
+
 
 	sio.savemat(motion_iou_dest_filename, {'motion_iou': motion_iou_dest})
-	
+
 	print('Stored:', motion_iou_dest_filename)
-	
+
 	return motion_iou_dest_filename
 
 

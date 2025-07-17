@@ -100,7 +100,7 @@ import gc
 def gpu_mem_usage():
     """
     Compute the GPU memory usage for the current device (MB).
-    """    
+    """
     return torch.cuda.max_memory_allocated() / (1024 * 1024)
 
 class CSPDarknet(nn.Module):
@@ -178,19 +178,19 @@ class CSPDarknet(nn.Module):
         outputs = {}
         x = self.stem(x)
         outputs["stem"] = x.detach()
-        
+
         x = self.dark2(x)
         outputs["dark2"] = x.detach()
-        
+
         x = self.dark3(x)
         outputs["dark3"] = x.detach()
-        
+
         x = self.dark4(x)
         outputs["dark4"] = x.detach()
         #old_mem_usage = gpu_mem_usage()
         #print(f"Before CSPDarKnet 5: {old_mem_usage:.0f}")
         x = self.dark5(x)
-        outputs["dark5"] = x.detach()        
+        outputs["dark5"] = x.detach()
         #now_mem_usage = gpu_mem_usage()
         #print(f"After CSPDarKnet 5: {now_mem_usage:.0f}")
         #if now_mem_usage > old_mem_usage:

@@ -145,24 +145,24 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
         vis_folder, time.strftime("%Y_%m_%d_%H_%M_%S", current_time)
     )
 
-    os.makedirs(save_folder, exist_ok=True)        
-    img_save_path = save_folder    
-    
+    os.makedirs(save_folder, exist_ok=True)
+    img_save_path = save_folder
+
     if os.path.isdir(args.path):
         file_names, files = get_image_list(args.path)
     else:
         raise ValueError(f"{args.path} is invalid!")
-    
+
     frames = []
     outputs = []
     ori_frames = []
     for file in files:
         frame = cv2.imread(file)
-        height, width = frame.shape[:2]        
+        height, width = frame.shape[:2]
         ori_frames.append(frame)
         frame, _ = predictor.preproc(frame, None, exp.test_size)
         frames.append(torch.tensor(frame))
-  
+
     res = []
     frame_len = len(frames)
     index_list = list(range(frame_len))
@@ -229,25 +229,25 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
         outputs = predictor.convert_to_ori(out_post, frame_len)
 
     logger.info("Saving detection result in {}".format(img_save_path))
-    img_anno_res = {}    
+    img_anno_res = {}
     for (output,img, file_name) in zip(outputs,ori_frames[:len(outputs)],file_names):
         if args.post:
             ratio = 1
         result_frame = predictor.visual(output,img,ratio,cls_conf=args.conf,color_idx=12)
-        bboxes = output[:, 0:4]               
+        bboxes = output[:, 0:4]
         cls = output[:, 6].unsqueeze(1)
         scores = (output[:, 4] * output[:, 5]).unsqueeze(1)
         bboxes_cls = torch.cat([bboxes, scores, cls], dim=1)
         bboxes_cls_cpu = bboxes_cls.cpu().numpy()
         img_anno_res[file_name] = bboxes_cls_cpu
         if args.save_result:
-            cv2.imwrite(os.path.join(img_save_path, file_name), result_frame)            
-    if args.save_annotation:        
+            cv2.imwrite(os.path.join(img_save_path, file_name), result_frame)
+    if args.save_annotation:
         anno_save_path = os.path.join(img_save_path, "my_model_annotation.npy")
         logger.info("Saving gt annotation in {}".format(anno_save_path))
         sorted_img_anno_res = OrderedDict(sorted(img_anno_res.items(), key=lambda x: x[0]))
         annotation_list = []
-        for _, bboxes_scores_cls in sorted_img_anno_res.items():            
+        for _, bboxes_scores_cls in sorted_img_anno_res.items():
             annotation_list.append(bboxes_scores_cls)
         np.save(anno_save_path, np.array(annotation_list, dtype=object))
 

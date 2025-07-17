@@ -78,7 +78,7 @@ def extract_values(text):
 def gpu_mem_usage():
     """
     Compute the GPU memory usage for the current device (MB).
-    """    
+    """
     return torch.cuda.max_memory_allocated() / (1024 * 1024)
 
 class Trainer:
@@ -126,7 +126,7 @@ class Trainer:
         self.before_train()
         try:
             self.train_in_epoch()
-            
+
         except Exception:
             raise
         finally:
@@ -144,7 +144,7 @@ class Trainer:
             self.train_one_iter()
             self.after_iter()
 
-    def train_one_iter(self):        
+    def train_one_iter(self):
 
         #kssong
         torch.cuda.empty_cache()
@@ -169,16 +169,16 @@ class Trainer:
             outputs = self.model(inps, first_frame, targets, nms_thresh=self.exp.nmsthre, lframe = self.exp.lframe,gframe = self.exp.gframe)
 
         loss = outputs["total_loss"]
-        
+
 
         self.optimizer.zero_grad()
         #kssong
-        #self.scaler.scale(loss).backward(retain_graph=True)        
+        #self.scaler.scale(loss).backward(retain_graph=True)
         self.scaler.scale(loss).backward()
         self.scaler.step(self.optimizer)
         self.scaler.update()
 
-        
+
         if self.use_model_ema:
             self.ema_model.update(self.model)
 
@@ -191,14 +191,14 @@ class Trainer:
         self.meter.update(
             iter_time=iter_end_time - iter_start_time,
             data_time=data_end_time - iter_start_time,
-            lr=lr,            
+            lr=lr,
             **outputs,
         )
         #kssong
         # Free up memory
         del inps, targets, outputs, loss
         torch.cuda.empty_cache()
-        
+
 
     def before_train(self):
         logger.info("args: {}".format(self.args))
@@ -422,7 +422,7 @@ class Trainer:
 
         #kssong
         #synchronize() results in deadlock
-        
+
         self.save_ckpt("last_epoch", ap50_95 > self.best_ap)
         self.best_ap = max(self.best_ap, ap50_95)
 

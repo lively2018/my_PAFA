@@ -7,7 +7,7 @@ Created on Thu Jul 30 12:11:43 2020
 """
 
 import pickle
-import math 
+import math
 import numpy as np
 
 
@@ -24,19 +24,19 @@ def get_video_frame_iterator(filename, from_python_2=False):
 			except Exception as e:
 				print('Unable to load data ', filename, ':', e)
 				raise ValueError('Unable to load data ', filename, ':', e)
-		
-		
+
+
 
 # Computes a set of similarity features between two detections
 def get_pair_features(p1, p2, feat_names=[]): 			# , iw, ih ||| , euclidean_dist=True, correlation=True
-	
+
 	feats = {}
-	
+
 	if 'width_rel' in feat_names or len(feat_names)==0:
 		feats['width_rel'] = min(p1['bbox'][2], p2['bbox'][2]) / max(p1['bbox'][2], p2['bbox'][2])
 	if 'height_rel' in feat_names or len(feat_names)==0:
 		feats['height_rel'] = min(p1['bbox'][3], p2['bbox'][3]) / max(p1['bbox'][3], p2['bbox'][3])
-		
+
 	if 'iou' in feat_names or len(feat_names)==0:
 		feats['iou'] =  get_iou(p1['bbox'].copy(), p2['bbox'].copy())
 
@@ -45,7 +45,7 @@ def get_pair_features(p1, p2, feat_names=[]): 			# , iw, ih ||| , euclidean_dist
 
 	if 'descriptor_dist' in feat_names or len(feat_names)==0:
 		feats['descriptor_dist'] = np.linalg.norm(p1['emb'] - p2['emb'])
-		
+
 	return feats
 
 

@@ -46,7 +46,7 @@ class FocalModulation(nn.Module):
         use_postln (bool, default=False): Whether use post-modulation layernorm
     """
 
-    def __init__(self, dim, proj_drop=0., focal_level=2, focal_window=7, focal_factor=2, use_postln=False, 
+    def __init__(self, dim, proj_drop=0., focal_level=2, focal_window=7, focal_factor=2, use_postln=False,
         use_postln_in_modulation=False, normalize_modulator=False):
 
         super().__init__()
@@ -74,7 +74,7 @@ class FocalModulation(nn.Module):
             kernel_size = self.focal_factor*k + self.focal_window
             self.focal_layers.append(
                 nn.Sequential(
-                    nn.Conv2d(dim, dim, kernel_size=kernel_size, stride=1, groups=dim, 
+                    nn.Conv2d(dim, dim, kernel_size=kernel_size, stride=1, groups=dim,
                         padding=kernel_size//2, bias=False),
                     nn.GELU(),
                     )
@@ -90,9 +90,9 @@ class FocalModulation(nn.Module):
         x = self.f(x)
         x = x.permute(0, 3, 1, 2).contiguous()
         q, ctx, gates = torch.split(x, (C, C, self.focal_level+1), 1)
-        
+
         ctx_all = 0
-        for l in range(self.focal_level):                     
+        for l in range(self.focal_level):
             ctx = self.focal_layers[l](ctx)
             ctx_all = ctx_all + ctx*gates[:, l:l+1]
         ctx_global = self.act(ctx.mean(2, keepdim=True).mean(3, keepdim=True))
@@ -103,7 +103,7 @@ class FocalModulation(nn.Module):
         x_out = q * self.h(ctx_all)
         x_out = x_out.permute(0, 2, 3, 1).contiguous()
         if self.use_postln_in_modulation:
-            x_out = self.ln(x_out)            
+            x_out = self.ln(x_out)
         x_out = self.proj(x_out)
         x_out = self.proj_drop(x_out)
         return x_out
@@ -122,12 +122,12 @@ class FocalModulationBlock(nn.Module):
         focal_window (int): focal kernel size at level 1
     """
 
-    def __init__(self, dim, mlp_ratio=4., drop=0., drop_path=0., 
+    def __init__(self, dim, mlp_ratio=4., drop=0., drop_path=0.,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm,
-                 focal_level=2, focal_window=9, 
-                 use_postln=False, use_postln_in_modulation=False, 
-                 normalize_modulator=False, 
-                 use_layerscale=False, 
+                 focal_level=2, focal_window=9,
+                 use_postln=False, use_postln_in_modulation=False,
+                 normalize_modulator=False,
+                 use_layerscale=False,
                  layerscale_value=1e-4):
         super().__init__()
         self.dim = dim
@@ -139,10 +139,10 @@ class FocalModulationBlock(nn.Module):
 
         self.norm1 = norm_layer(dim)
         self.modulation = FocalModulation(
-            dim, focal_window=self.focal_window, focal_level=self.focal_level, proj_drop=drop, 
-            use_postln_in_modulation=use_postln_in_modulation, 
-            normalize_modulator=normalize_modulator, 
-        )            
+            dim, focal_window=self.focal_window, focal_level=self.focal_level, proj_drop=drop,
+            use_postln_in_modulation=use_postln_in_modulation,
+            normalize_modulator=normalize_modulator,
+        )
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
@@ -173,7 +173,7 @@ class FocalModulationBlock(nn.Module):
         if not self.use_postln:
             x = self.norm1(x)
         x = x.view(B, H, W, C)
-        
+
         # FM
         x = self.modulation(x).view(B, H * W, C)
         if self.use_postln:
@@ -214,13 +214,13 @@ class BasicLayer(nn.Module):
                  drop_path=0.,
                  norm_layer=nn.LayerNorm,
                  downsample=None,
-                 focal_window=9, 
-                 focal_level=2, 
-                 use_conv_embed=False,     
-                 use_postln=False,          
-                 use_postln_in_modulation=False, 
-                 normalize_modulator=False, 
-                 use_layerscale=False,                   
+                 focal_window=9,
+                 focal_level=2,
+                 use_conv_embed=False,
+                 use_postln=False,
+                 use_postln_in_modulation=False,
+                 normalize_modulator=False,
+                 use_layerscale=False,
                  use_checkpoint=False
         ):
         super().__init__()
@@ -234,22 +234,22 @@ class BasicLayer(nn.Module):
                 mlp_ratio=mlp_ratio,
                 drop=drop,
                 drop_path=drop_path[i] if isinstance(drop_path, list) else drop_path,
-                focal_window=focal_window, 
-                focal_level=focal_level, 
-                use_postln=use_postln, 
-                use_postln_in_modulation=use_postln_in_modulation, 
-                normalize_modulator=normalize_modulator, 
-                use_layerscale=use_layerscale, 
+                focal_window=focal_window,
+                focal_level=focal_level,
+                use_postln=use_postln,
+                use_postln_in_modulation=use_postln_in_modulation,
+                normalize_modulator=normalize_modulator,
+                use_layerscale=use_layerscale,
                 norm_layer=norm_layer)
             for i in range(depth)])
 
         # patch merging layer
         if downsample is not None:
             self.downsample = downsample(
-                patch_size=2, 
-                in_chans=dim, embed_dim=2*dim, 
-                use_conv_embed=use_conv_embed, 
-                norm_layer=norm_layer, 
+                patch_size=2,
+                in_chans=dim, embed_dim=2*dim,
+                use_conv_embed=use_conv_embed,
+                norm_layer=norm_layer,
                 is_stem=False
             )
 
@@ -272,8 +272,8 @@ class BasicLayer(nn.Module):
                 x = blk(x)
         if self.downsample is not None:
             x_reshaped = x.transpose(1, 2).view(x.shape[0], x.shape[-1], H, W)
-            x_down = self.downsample(x_reshaped)      
-            x_down = x_down.flatten(2).transpose(1, 2)            
+            x_down = self.downsample(x_reshaped)
+            x_down = x_down.flatten(2).transpose(1, 2)
             Wh, Ww = (H + 1) // 2, (W + 1) // 2
             return x, H, W, x_down, Wh, Ww
         else:
@@ -289,7 +289,7 @@ class PatchEmbed(nn.Module):
         embed_dim (int): Number of linear projection output channels. Default: 96.
         norm_layer (nn.Module, optional): Normalization layer. Default: None
         use_conv_embed (bool): Whether use overlapped convolution for patch embedding. Default: False
-        is_stem (bool): Is the stem block or not. 
+        is_stem (bool): Is the stem block or not.
     """
 
     def __init__(self, patch_size=4, in_chans=3, embed_dim=96, norm_layer=None, use_conv_embed=False, is_stem=False):
@@ -306,7 +306,7 @@ class PatchEmbed(nn.Module):
                 kernel_size = 7; padding = 2; stride = 4
             else:
                 kernel_size = 3; padding = 1; stride = 2
-            self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=kernel_size, stride=stride, padding=padding)                    
+            self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=kernel_size, stride=stride, padding=padding)
         else:
             self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
 
@@ -370,14 +370,14 @@ class FocalNet(nn.Module):
                  patch_norm=True,
                  out_indices=(0, 1, 2, 3),
                  frozen_stages=-1,
-                 focal_levels=[3,3,3,3], 
+                 focal_levels=[3,3,3,3],
                  focal_windows=[3,3,3,3],
-                 use_conv_embed=False, 
-                 use_postln=False, 
-                 use_postln_in_modulation=False, 
-                 use_layerscale=False, 
-                 normalize_modulator=False, 
-                 use_checkpoint=False,                  
+                 use_conv_embed=False,
+                 use_postln=False,
+                 use_postln_in_modulation=False,
+                 use_layerscale=False,
+                 normalize_modulator=False,
+                 use_checkpoint=False,
         ):
         super().__init__()
 
@@ -391,7 +391,7 @@ class FocalNet(nn.Module):
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
             patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim,
-            norm_layer=norm_layer if self.patch_norm else None, 
+            norm_layer=norm_layer if self.patch_norm else None,
             use_conv_embed=use_conv_embed, is_stem=True)
 
         self.pos_drop = nn.Dropout(p=drop_rate)
@@ -410,13 +410,13 @@ class FocalNet(nn.Module):
                 drop_path=dpr[sum(depths[:i_layer]):sum(depths[:i_layer + 1])],
                 norm_layer=norm_layer,
                 downsample=PatchEmbed if (i_layer < self.num_layers - 1) else None,
-                focal_window=focal_windows[i_layer], 
-                focal_level=focal_levels[i_layer], 
+                focal_window=focal_windows[i_layer],
+                focal_level=focal_levels[i_layer],
                 use_conv_embed=use_conv_embed,
-                use_postln=use_postln, 
-                use_postln_in_modulation=use_postln_in_modulation, 
-                normalize_modulator=normalize_modulator, 
-                use_layerscale=use_layerscale, 
+                use_postln=use_postln,
+                use_postln_in_modulation=use_postln_in_modulation,
+                normalize_modulator=normalize_modulator,
+                use_layerscale=use_layerscale,
                 use_checkpoint=use_checkpoint)
             self.layers.append(layer)
 
@@ -483,7 +483,7 @@ class FocalNet(nn.Module):
         outs_dict = {}
         for i in range(self.num_layers):
             layer = self.layers[i]
-            x_out, H, W, x, Wh, Ww = layer(x, Wh, Ww)            
+            x_out, H, W, x, Wh, Ww = layer(x, Wh, Ww)
             if i in self.out_indices:
                 norm_layer = getattr(self, f'norm{i}')
                 x_out = norm_layer(x_out)
@@ -500,12 +500,12 @@ class FocalNet(nn.Module):
 
 def build_focalnet(modelname, **kw):
     assert modelname in [
-        'focalnet_L_384_22k', 
-        'focalnet_L_384_22k_fl4', 
-        'focalnet_XL_384_22k', 
-        'focalnet_XL_384_22k_fl4', 
-        'focalnet_H_224_22k', 
-        'focalnet_H_224_22k_fl4',         
+        'focalnet_L_384_22k',
+        'focalnet_L_384_22k_fl4',
+        'focalnet_XL_384_22k',
+        'focalnet_XL_384_22k_fl4',
+        'focalnet_H_224_22k',
+        'focalnet_H_224_22k_fl4',
         ]
 
     if 'focal_levels' in kw:
@@ -518,69 +518,69 @@ def build_focalnet(modelname, **kw):
         'focalnet_L_384_22k': dict(
             embed_dim=192,
             depths=[ 2, 2, 18, 2 ],
-            focal_levels=kw.get('focal_levels', [3, 3, 3, 3]), 
-            focal_windows=kw.get('focal_windows', [5, 5, 5, 5]), 
-            use_conv_embed=True, 
-            use_postln=True, 
-            use_postln_in_modulation=False, 
-            use_layerscale=True, 
-            normalize_modulator=False, 
+            focal_levels=kw.get('focal_levels', [3, 3, 3, 3]),
+            focal_windows=kw.get('focal_windows', [5, 5, 5, 5]),
+            use_conv_embed=True,
+            use_postln=True,
+            use_postln_in_modulation=False,
+            use_layerscale=True,
+            normalize_modulator=False,
         ),
         'focalnet_L_384_22k_fl4': dict(
             embed_dim=192,
             depths=[ 2, 2, 18, 2 ],
-            focal_levels=kw.get('focal_levels', [4, 4, 4, 4]), 
-            focal_windows=kw.get('focal_windows', [3, 3, 3, 3]), 
-            use_conv_embed=True, 
-            use_postln=True, 
-            use_postln_in_modulation=False, 
-            use_layerscale=True, 
-            normalize_modulator=True, 
+            focal_levels=kw.get('focal_levels', [4, 4, 4, 4]),
+            focal_windows=kw.get('focal_windows', [3, 3, 3, 3]),
+            use_conv_embed=True,
+            use_postln=True,
+            use_postln_in_modulation=False,
+            use_layerscale=True,
+            normalize_modulator=True,
         ),
         'focalnet_XL_384_22k': dict(
             embed_dim=256,
             depths=[ 2, 2, 18, 2 ],
-            focal_levels=kw.get('focal_levels', [3, 3, 3, 3]), 
-            focal_windows=kw.get('focal_windows', [5, 5, 5, 5]), 
-            use_conv_embed=True, 
-            use_postln=True, 
-            use_postln_in_modulation=False, 
-            use_layerscale=True, 
-            normalize_modulator=False, 
-        ),   
+            focal_levels=kw.get('focal_levels', [3, 3, 3, 3]),
+            focal_windows=kw.get('focal_windows', [5, 5, 5, 5]),
+            use_conv_embed=True,
+            use_postln=True,
+            use_postln_in_modulation=False,
+            use_layerscale=True,
+            normalize_modulator=False,
+        ),
         'focalnet_XL_384_22k_fl4': dict(
             embed_dim=256,
             depths=[ 2, 2, 18, 2 ],
-            focal_levels=kw.get('focal_levels', [4, 4, 4, 4]), 
-            focal_windows=kw.get('focal_windows', [3, 3, 3, 3]), 
-            use_conv_embed=True, 
-            use_postln=True, 
-            use_postln_in_modulation=False, 
-            use_layerscale=True, 
-            normalize_modulator=True, 
-        ),           
+            focal_levels=kw.get('focal_levels', [4, 4, 4, 4]),
+            focal_windows=kw.get('focal_windows', [3, 3, 3, 3]),
+            use_conv_embed=True,
+            use_postln=True,
+            use_postln_in_modulation=False,
+            use_layerscale=True,
+            normalize_modulator=True,
+        ),
         'focalnet_H_224_22k': dict(
             embed_dim=352,
             depths=[ 2, 2, 18, 2 ],
-            focal_levels=kw.get('focal_levels', [3, 3, 3, 3]), 
-            focal_windows=kw.get('focal_windows', [3, 3, 3, 3]), 
-            use_conv_embed=True, 
-            use_postln=True, 
-            use_layerscale=True, 
-            use_postln_in_modulation=True, 
-            normalize_modulator=False, 
-        ),   
+            focal_levels=kw.get('focal_levels', [3, 3, 3, 3]),
+            focal_windows=kw.get('focal_windows', [3, 3, 3, 3]),
+            use_conv_embed=True,
+            use_postln=True,
+            use_layerscale=True,
+            use_postln_in_modulation=True,
+            normalize_modulator=False,
+        ),
         'focalnet_H_224_22k_fl4': dict(
             embed_dim=352,
             depths=[ 2, 2, 18, 2 ],
-            focal_levels=kw.get('focal_levels', [4, 4, 4, 4]), 
-            focal_windows=kw.get('focal_windows', [3, 3, 3, 3]), 
-            use_conv_embed=True, 
-            use_postln=True, 
-            use_postln_in_modulation=True, 
-            use_layerscale=True, 
-            normalize_modulator=False, 
-        ),                        
+            focal_levels=kw.get('focal_levels', [4, 4, 4, 4]),
+            focal_windows=kw.get('focal_windows', [3, 3, 3, 3]),
+            use_conv_embed=True,
+            use_postln=True,
+            use_postln_in_modulation=True,
+            use_layerscale=True,
+            normalize_modulator=False,
+        ),
     }
 
     kw_cgf = model_para_dict[modelname]

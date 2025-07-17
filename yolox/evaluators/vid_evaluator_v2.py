@@ -14,7 +14,7 @@ from tqdm import tqdm
 from yolox.evaluators.coco_evaluator import per_class_AR_table, per_class_AP_table
 import torch
 import pycocotools.coco
-
+import os
 from yolox.utils import (
     gather,
     is_main_process,
@@ -198,11 +198,16 @@ class VIDEvaluator:
 #        for cur_iter, (imgs, _, info_imgs, label, path, time_embedding) in enumerate(
 #                progress_bar(self.dataloader)
 #        ):
-
-        for cur_iter, (imgs, label, info_imgs, _, path, time_embedding, frist_frame_flags) in enumerate(
+        prev_video_path = "None"
+        for cur_iter, (imgs, label, info_imgs, _, path, time_embedding) in enumerate(
                 progress_bar(self.dataloader)
         ):
-        
+            video_path = os.path.basename(os.path.dirname(path[0]))
+            if prev_video_path == video_path:
+                first_frame = False
+            else:
+                first_frame = True
+                prev_video_path = video_path
             with torch.no_grad():
                 imgs = imgs.type(tensor_type)
                 # skip the the last iters since batchsize might be not enough for batch inference
@@ -210,14 +215,6 @@ class VIDEvaluator:
                 if is_time_record:
                     start = time.time()
                 #kssong
-                #outputs, ori_res = model(imgs, 
-                #                         lframe=self.lframe,
-                #                         gframe = self.gframe)
-                first_frame = any(frist_frame_flags)
-                #if first_frame is True:
-                #    first_frame_file = open('./first_frame_val_file.txt', 'a')
-                #    first_frame_file.write('first_frame_true\n')
-                #    first_frame_file.close()
                 outputs, ori_res = model(imgs, first_frame, nms_thresh=self.nmsthre,
                                          lframe=self.lframe,
                                          gframe = self.gframe)

@@ -126,7 +126,7 @@ import gc
 def gpu_mem_usage():
     """
     Compute the GPU memory usage for the current device (MB).
-    """    
+    """
     return torch.cuda.max_memory_allocated() / (1024 * 1024)
 
 class SPPBottleneck(nn.Module):
@@ -151,7 +151,7 @@ class SPPBottleneck(nn.Module):
         #print(f"Before SPPBottleneck: {gpu_mem_usage():.0f}")
         x = self.conv1(x)
         pooled_feature = [m(x) for m in self.m]
-        x = x.detach()        
+        x = x.detach()
         x = torch.cat([x] + pooled_feature, dim=1)
         #x = torch.cat([x] + [m(x) for m in self.m], dim=1)
         del pooled_feature

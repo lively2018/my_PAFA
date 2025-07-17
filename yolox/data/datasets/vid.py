@@ -68,7 +68,7 @@ class VIDRefDataset(torchDataset):
         self.local_stride = local_stride
         #kssong
         #self.res = self.photo_to_sequence(self.file_path,lframe,gframe)
-        self.res, self.ref = self.photo_to_sequence(self.file_path,lframe,gframe)
+        self.res = self.photo_to_sequence(self.file_path,lframe,gframe)
         self.dataset_pth = dataset_pth
 
     def __len__(self):
@@ -84,18 +84,13 @@ class VIDRefDataset(torchDataset):
         '''
         #kssong
         res = []
-        ref = []
         dataset = np.load(dataset_path,allow_pickle=True).tolist()
         video_idx  = 0
         #logger.info(f"{self.mode}")
         for element in dataset:
             video_idx += 1
             ele_len = len(element)
-            first_frame = True
             if ele_len<lframe+gframe:
-                if self.val and first_frame:
-                    ref.append(element[0])
-                    first_frame = False
                 #TODO fix the unsolved part
                 if self.formal:
                     res.append(element)
@@ -109,14 +104,11 @@ class VIDRefDataset(torchDataset):
                         split_num = int(ele_len / (gframe))
                         random.shuffle(element)
                         for i in range(split_num):
-                            if self.val and first_frame:
-                                ref.append(element[i * gframe])                                    
-                                first_frame = False
                             res.append(element[i * gframe:(i + 1) * gframe])
                         if self.formal and len(element[split_num * gframe:]):
                             tail = element[split_num * gframe:]
                             # padding = tail + element[:gframe-len(tail)]
-                            res.append(tail)                            
+                            res.append(tail)
                     elif lframe!=0:
                         if self.local_stride==1:
                             split_num = int(ele_len / (lframe))
@@ -127,25 +119,19 @@ class VIDRefDataset(torchDataset):
                                 else:
                                     l_frame = all_local_frame[i * lframe:(i + 1) * lframe]
                                 g_frame = random.sample(element[:i * lframe] + element[(i + 1) * lframe:], gframe)
-                                if self.val and first_frame:
-                                    ref.append(l_frame[i])
-                                    first_frame = False
                                 res.append(l_frame + g_frame)
                             if self.formal and len(element[split_num * lframe:]):
                                 if self.traj_linking:
                                     tail = element[split_num * lframe-1:]
                                 else:
-                                    tail = element[split_num * lframe:]                                
+                                    tail = element[split_num * lframe:]
                                 res.append(tail)
                         else:
                             split_num = ele_len//(lframe*self.local_stride)
                             for i in range(split_num):
-                                for j in range(self.local_stride):                                    
+                                for j in range(self.local_stride):
                                     res.append(element[lframe * self.local_stride * i:lframe * self.local_stride * (i + 1)][
                                                    j::self.local_stride])
-                                    if self.val and first_frame:
-                                        ref.append(element[lframe * self.local_stride * i])
-                                        first_frame = False
                     else:
                         print('unsupport mode, exit')
                         exit(0)
@@ -154,30 +140,27 @@ class VIDRefDataset(torchDataset):
                     split_num = int(ele_len / (gframe))
                     all_uniform_frame = element[:split_num * gframe]
                     for i in range(split_num):
-                        #res.append(all_uniform_frame[i::split_num])                    
+                        #res.append(all_uniform_frame[i::split_num])
                         seq = all_uniform_frame[i::split_num]
                         #if (video_idx < 3):
-                        #    logger.info(f"[uniform mode] Video {video_idx} sequence {i}:")                            
+                        #    logger.info(f"[uniform mode] Video {video_idx} sequence {i}:")
                         #    for f in seq:
                         #        logger.info(f"  {f}")
-                        if self.val and first_frame:
-                            ref.append(seq[i])
-                            first_frame = False
                         res.append(seq)
 
 
-                elif self.mode == 'linear':                   
+                elif self.mode == 'linear':
                     if lframe == 0:
                         split_num = int(ele_len / gframe)
                         for i in range(split_num):
                             seq = element[i * gframe:(i + 1) * gframe]
                             #if (video_idx < 3):
-                            #    logger.info(f"[Linear mode] Video {video_idx} sequence {i}:")                            
+                            #    logger.info(f"[Linear mode] Video {video_idx} sequence {i}:")
                             #    for f in seq:
                             #        logger.info(f"  {f}")
                             if self.val and first_frame:
                                 ref.append(seq[i])
-                                first_frame = False        
+                                first_frame = False
                             res.append(seq)
                         if self.formal and len(element[split_num * gframe:]):
                             tail = element[split_num * gframe:]
@@ -212,13 +195,13 @@ class VIDRefDataset(torchDataset):
 
         if self.val:
             if self.tnum == -1:
-                return res, ref
+                return res
                 #return res[:15000], ref
             else:
-                return res[:self.tnum], ref
+                return res[:self.tnum]
         else:
             random.shuffle(res)
-            return res[:self.tseq], ref
+            return res[:self.tseq]
             #return res, ref
 
     def get_annotation(self,path,test_size):
@@ -230,7 +213,6 @@ class VIDRefDataset(torchDataset):
         files.sort()
         anno_res = []
         for xmls in files:
-            photoname = xmls.replace("Annotations","Data").replace("xml","JPEG")
             file = minidom.parse(xmls)
             root = file.documentElement
             objs = root.getElementsByTagName("object")
@@ -278,11 +260,10 @@ class VIDRefDataset(torchDataset):
                     info_img : tuple of h, w.
                         h, w (int): original shape of the image
                     img_id (int): same as the input index. Used for evaluation.
-                """        
-        #kssong        
+                """
+        #kssong
         path = os.path.join(self.dataset_pth,path)
         annos = self.get_annotation(path, self.img_size)[0]
-
         img = cv2.imread(path)
         height, width = img.shape[:2]
         img_info = (height, width)
@@ -297,20 +278,17 @@ class VIDRefDataset(torchDataset):
         #item_file.write(f'{path}\n')
         #item_file.close()
         return img, annos, img_info, path
-        
+
     def __getitem__(self, path):
         #kssong
-        if len(self.ref) > 0:
-            first_frame = path in self.ref
-        else:
-            first_frame = False
+
         img, target, img_info, path = self.pull_item(path)
-    
+
         if self.preproc is not None:
             img, target = self.preproc(img, target, self.input_dim)
-        return img, target, img_info,path, first_frame        
+        return img, target, img_info,path
 
-        
+
 
 class Arg_VID(torchDataset):
     """
@@ -606,7 +584,7 @@ class OVIS(Arg_VID):
                         res.append(all_local_frame[i * lframe:(i + 1) * lframe] + g_frame)
                 else:
                     print('unsupport mode, exit')
-                    exit(0) 
+                    exit(0)
 
         if self.val:
             random.seed(42)
@@ -758,12 +736,11 @@ def collate_fn(batch):
         tar.append(tar_tensor)
         ims_info.append(sample[2])
         path.append(sample[3])
-        is_first_frame_flags.append(sample[4])
         #path_sequence.append(int(sample[3][sample[3].rfind('/')+1:sample[3].rfind('.')]))
     # path_sequence= torch.tensor(path_sequence)
     # time_embedding = get_timing_signal_1d(path_sequence,256)
-    return torch.stack(imgs),torch.stack(tar),ims_info,tar_ori,path,None,is_first_frame_flags
-    
+    return torch.stack(imgs),torch.stack(tar),ims_info,tar_ori,path,None
+
 
 def get_vid_loader(batch_size,data_num_workers,dataset):
     sampler = VIDBatchSampler(TrainSampler(dataset), batch_size, drop_last=False)

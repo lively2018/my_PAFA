@@ -7,7 +7,7 @@ from loguru import logger
 def gpu_mem_usage():
     """
     Compute the GPU memory usage for the current device (MB).
-    """    
+    """
     return torch.cuda.max_memory_allocated() / (1024 * 1024)
 
 class MambaAggregator(nn.Module):
@@ -47,7 +47,7 @@ class MambaAggregator(nn.Module):
             ref_x = self.memory_bank_p4.sample()
         elif type == 2:
             ref_x = self.memory_bank_p5.sample()
-        #logger.info(f"ref_x shape: {ref_x.shape} x shape: {x.shape}")        
+        #logger.info(f"ref_x shape: {ref_x.shape} x shape: {x.shape}")
         #print(f"After sampling: {gpu_mem_usage():.0f}")
         # fort he rest frames
         if len(ref_x) != 0:
@@ -56,8 +56,8 @@ class MambaAggregator(nn.Module):
             #logger.info(f"ref_x shape: {ref_x.shape}")
             aggregated_x = torch.zeros_like(x)
         return aggregated_x
-        
-    
+
+
     def reset_memory_bank(self, type):
         #logger.info("reset_memory_bank")
         if type == 0:
@@ -75,7 +75,7 @@ class MambaAggregator(nn.Module):
             self.memory_bank_p4.update(x)
         elif type == 2:
             self.memory_bank_p5.update(x)
-    
+
     def init_memory_bank(self, x, type):
         #logger.info("init_memory_bank")
         if type == 0:
@@ -104,18 +104,18 @@ class MambaAggregator(nn.Module):
             [N, C].    for first in firsts:
                 feat_firsts.append(first)
                 feat_firsts.append(first)
-                feat_firsts.append(firsts)     
-        """        
+                feat_firsts.append(firsts)
+        """
         roi_n = x.shape[0]
         ref_roi_n = ref_x.shape[0]
-        
+
         x = x.half()
         #logger.info(f"roi_n: {roi_n} ref_roi_n: {ref_roi_n}")
         x_embed = self.fc_embed(x)
         # [num_attention_blocks, roi_n, C / num_attention_blocks]
         x_embed = x_embed.view(roi_n, self.num_attention_blocks,
                                -1).permute(1, 0, 2)
-        
+
         ref_x = ref_x.half()
         ref_x_embed = self.ref_fc_embed(ref_x)
         # [num_attention_blocks, C / num_attention_blocks, ref_roi_n]
@@ -135,5 +135,5 @@ class MambaAggregator(nn.Module):
         x_new = torch.bmm(weights, ref_x_new).permute(1, 0, 2).contiguous()
         # [roi_n, C]
         x_new = self.fc(x_new.view(roi_n, -1))
-        
+
         return x_new

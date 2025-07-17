@@ -7,7 +7,7 @@ import gc
 def gpu_mem_usage():
     """
     Compute the GPU memory usage for the current device (MB).
-    """    
+    """
     return torch.cuda.max_memory_allocated() / (1024 * 1024)
 
 class MemoryBank(nn.Module):
@@ -18,10 +18,10 @@ class MemoryBank(nn.Module):
     def __init__(self,
                  max_length=4800, key_length=480,
                  sampling_policy='random', updating_policy='random',
-                 ):                 
+                 ):
         super().__init__()
         #kssong
-        self.max_length = max_length        
+        self.max_length = max_length
         self.key_length = key_length
         self.sampling_policy = sampling_policy
         self.updating_policy = updating_policy
@@ -34,10 +34,10 @@ class MemoryBank(nn.Module):
         #kssong
         if self.feat is not None:
             del self.feat  # Explicitly delete the tensor
-            torch.cuda.empty_cache()  # Free GPU memory        
+            torch.cuda.empty_cache()  # Free GPU memory
         self.feat = None
-        #print(f"reset_memory")            
-    
+        #print(f"reset_memory")
+
     def init_memory(self, feat):
         """
         init memory
@@ -52,7 +52,7 @@ class MemoryBank(nn.Module):
         #self.feat_num, self.feat_dim, self.feat_channel  = feat.shape
         # reshape [ n*m, c]
         #reshaped_feat = feat.view(-1, self.feat_channel)
-        
+
         if self.feat is None:
             #self.feat = reshaped_feat
             self.feat = feat.detach().clone().to('cuda')
@@ -61,7 +61,7 @@ class MemoryBank(nn.Module):
             del self.feat
             torch.cuda.empty_cache()
             self.feat = new_feat
-        #print(f"init_memory, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}")                    
+        #print(f"init_memory, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}")
 
     def sample(self):
         #kssong
@@ -70,15 +70,15 @@ class MemoryBank(nn.Module):
             return []
 
         #if len(self.feat) < self.key_length:
-        #    return self.feat        
+        #    return self.feat
         feat_length = len(self.feat)
         if feat_length < self.key_length:
-            #print(f"sample, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}")             
+            #print(f"sample, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}")
             return self.feat.detach().clone().to('cuda')
-                       
+
         if self.sampling_policy == 'random':
             sampled_ind = torch.randperm(len(self.feat), device=self.feat.device)[:self.key_length]
-            #print(f"sample, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}") 
+            #print(f"sample, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}")
             return self.feat[sampled_ind].detach().clone().to('cuda')
         else:
             raise NotImplementedError
@@ -88,39 +88,39 @@ class MemoryBank(nn.Module):
         #if self.feat is None:
             # first time
             #self.feat = new_feat
-            #return       
-        #print(f"Before update: {torch.cuda.memory_allocated()} / {torch.cuda.memory_reserved()}")    
+            #return
+        #print(f"Before update: {torch.cuda.memory_allocated()} / {torch.cuda.memory_reserved()}")
         new_feat = new_feat.to('cuda')
         if self.feat is None:
             self.feat = new_feat.detach().clone()
             return
-        
+
         if len(self.feat) < self.max_length:
             new_feat_combined = torch.cat([self.feat, new_feat], dim=0).detach().clone()
-            
+
         elif self.updating_policy == "random":
-            new_num = len(new_feat)            
-            reserved_ind = torch.randperm(len(self.feat), device=self.feat.device)[:-new_num]            
+            new_num = len(new_feat)
+            reserved_ind = torch.randperm(len(self.feat), device=self.feat.device)[:-new_num]
             new_feat_combined = torch.cat([self.feat[reserved_ind], new_feat], dim=0).detach().clone()
-            
+
 
         else:
-            raise NotImplementedError("not implemented")        
-        
-        
+            raise NotImplementedError("not implemented")
+
+
         del self.feat
-        torch.cuda.empty_cache()            
+        torch.cuda.empty_cache()
         self.feat = new_feat_combined
 
         gc.collect()
         torch.cuda.empty_cache()
-        #print(f"memory bank update, memory bank size: {len(self.feat)} gpu memory usage: {gpu_mem_usage():.0f}")    
+        #print(f"memory bank update, memory bank size: {len(self.feat)} gpu memory usage: {gpu_mem_usage():.0f}")
 
     def __len__(self):
         if self.feat is None:
             return 0
-        return len(self.feat)        
- 
+        return len(self.feat)
+
 
     # def forward(self, x, x_support=None):
     #     # inference

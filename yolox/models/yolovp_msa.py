@@ -26,7 +26,7 @@ import random
 def gpu_mem_usage():
     """
     Compute the GPU memory usage for the current device (MB).
-    """    
+    """
     return torch.cuda.max_memory_allocated() / (1024 * 1024)
 
 class YOLOXHead(nn.Module):
@@ -213,7 +213,7 @@ class YOLOXHead(nn.Module):
         self.strides = strides
         self.grids = [torch.zeros(1)] * len(in_channels)
         #kssong
-        # self.eval = eval        
+        # self.eval = eval
         #if self.eval:
         #self.aggregator = MambaAggregator(in_channels=128, num_attention_blocks=4)
         self.aggregator = MambaAggregator(in_channels=128, num_attention_blocks=1)
@@ -251,7 +251,7 @@ class YOLOXHead(nn.Module):
         #    for ref_xin_one in ref_xin:
         #        new_xin.append(ref_xin_one)
         #else:
-        #    new_xin = xin        
+        #    new_xin = xin
         outputs = []
         outputs_decode = []
         origin_preds = []
@@ -263,33 +263,33 @@ class YOLOXHead(nn.Module):
 
         batch_size = len(imgs)
         if batch_size == 16 or batch_size == 32:
-            need_aggregation = True            
+            need_aggregation = True
         else:
             need_aggregation = False
         #kssong
         #reg_output_list = []
 
-        if self.training:        
+        if self.training:
             for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
                     zip(self.cls_convs, self.cls_convs2, self.reg_convs, self.strides, xin)
-            ):   
+            ):
                 x = self.stems[k](x)
                 reg_feat = reg_conv(x)
                 cls_feat = cls_conv(x)
                 cls_feat2 = cls_conv2(x)
-                        
+
                 # this part should be the same as the original model
-                obj_output = self.obj_preds[k](reg_feat)            
-                reg_output = self.reg_preds[k](reg_feat)            
+                obj_output = self.obj_preds[k](reg_feat)
+                reg_output = self.reg_preds[k](reg_feat)
                 cls_output = self.cls_preds[k](cls_feat)
 
-                
+
                 if self.training:
-                    output = torch.cat([reg_output, obj_output, cls_output], 1)                
+                    output = torch.cat([reg_output, obj_output, cls_output], 1)
                     output_decode = torch.cat(
                         [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
                     )
-                                    
+
                     output, grid = self.get_output_and_grid(
                         output, k, stride_this_level, xin[0].type()
                     )
@@ -301,20 +301,20 @@ class YOLOXHead(nn.Module):
                         .type_as(xin[0])
                     )
                     if self.use_l1:
-                        batch_size = reg_output.shape[0]                    
-                        hsize, wsize = reg_output.shape[-2:]                    
+                        batch_size = reg_output.shape[0]
+                        hsize, wsize = reg_output.shape[-2:]
                         reg_output = reg_output.view(
                             batch_size, self.n_anchors, 4, hsize, wsize
                         )
                         reg_output = reg_output.permute(0, 1, 3, 4, 2).reshape(
                             batch_size, -1, 4
                         )
-                        origin_preds.append(reg_output.clone())                    
+                        origin_preds.append(reg_output.clone())
 
                     outputs.append(output)
                     before_nms_features.append(cls_feat2)
                     before_nms_regf.append(reg_feat)
-                else:                
+                else:
                     output_decode = torch.cat(
                         [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
                     )
@@ -325,7 +325,7 @@ class YOLOXHead(nn.Module):
                 outputs_decode.append(output_decode)
             self.hw = [x.shape[-2:] for x in outputs_decode]
 
-            
+
             outputs_decode = torch.cat([x.flatten(start_dim=2) for x in outputs_decode], dim=2
                                     ).permute(0, 2, 1)
             decode_res = self.decode_outputs(outputs_decode, dtype=xin[0].type())
@@ -366,21 +366,21 @@ class YOLOXHead(nn.Module):
 
         for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
                 zip(self.cls_convs, self.cls_convs2, self.reg_convs, self.strides, xin)
-        ):  
+        ):
             x = self.stems[k](x)
             reg_feat = reg_conv(x)
             cls_feat = cls_conv(x)
             cls_feat2 = cls_conv2(x)
             reg_feat_list.append(reg_feat)
-            cls_feat_list.append(cls_feat)            
+            cls_feat_list.append(cls_feat)
             cls_feat2_list.append(cls_feat2)
-        
 
-            if need_aggregation:                                
-                agg_feats = []                                        
-                #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")                    
+
+            if need_aggregation:
+                agg_feats = []
+                #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")
                 for i, reg_one in enumerate(reg_feat):
-                    if self.training:                        
+                    if self.training:
                         ref_feat1 = ref_feature_reg[i][k]
                         if len(ref_feat1) == 0:
                             agg_feat = reg_one
@@ -393,7 +393,7 @@ class YOLOXHead(nn.Module):
                                     break
                             ref_feats = torch.cat([ref_feat1, ref_feat2], dim=0)
                             self.aggregator.reset_memory_bank(k)
-                            self.aggregator.init_memory_bank(ref_feats, k)                        
+                            self.aggregator.init_memory_bank(ref_feats, k)
                             #logger.info(f"reg_one.shape: {reg_one.shape}")
                             channel, height, width = reg_one.shape
                             reg_one = reg_one.reshape(-1, channel)
@@ -419,19 +419,19 @@ class YOLOXHead(nn.Module):
                     #logger.info(f"agg_feat.type: {agg_feat.type}")
                 reg_feat = torch.stack(agg_feats, dim=0)
                 #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")
-                    
+
             # this part should be the same as the original model
-            obj_output = self.obj_preds[k](reg_feat)            
-            reg_output = self.reg_preds[k](reg_feat)            
+            obj_output = self.obj_preds[k](reg_feat)
+            reg_output = self.reg_preds[k](reg_feat)
             cls_output = self.cls_preds[k](cls_feat)
 
-            
+
             if self.training:
-                output = torch.cat([reg_output, obj_output, cls_output], 1)                
+                output = torch.cat([reg_output, obj_output, cls_output], 1)
                 output_decode = torch.cat(
                     [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
                 )
-                                
+
                 output, grid = self.get_output_and_grid(
                     output, k, stride_this_level, xin[0].type()
                 )
@@ -443,20 +443,20 @@ class YOLOXHead(nn.Module):
                     .type_as(xin[0])
                 )
                 if self.use_l1:
-                    batch_size = reg_output.shape[0]                    
-                    hsize, wsize = reg_output.shape[-2:]                    
+                    batch_size = reg_output.shape[0]
+                    hsize, wsize = reg_output.shape[-2:]
                     reg_output = reg_output.view(
                         batch_size, self.n_anchors, 4, hsize, wsize
                     )
                     reg_output = reg_output.permute(0, 1, 3, 4, 2).reshape(
                         batch_size, -1, 4
                     )
-                    origin_preds.append(reg_output.clone())                    
+                    origin_preds.append(reg_output.clone())
 
                 outputs.append(output)
                 before_nms_features.append(cls_feat2)
                 before_nms_regf.append(reg_feat)
-            else:                
+            else:
                 output_decode = torch.cat(
                     [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
                 )
@@ -467,7 +467,7 @@ class YOLOXHead(nn.Module):
             outputs_decode.append(output_decode)
         self.hw = [x.shape[-2:] for x in outputs_decode]
 
-        
+
         outputs_decode = torch.cat([x.flatten(start_dim=2) for x in outputs_decode], dim=2
                                    ).permute(0, 2, 1)
         #kssong
@@ -519,8 +519,8 @@ class YOLOXHead(nn.Module):
         #kssong
         #reg_feat_flatten_file = open('./reg_feat_flatten.txt', 'a')
         #reg_feat_flatten_file.write(f'{reg_feat_flatten.shape}\n')
-        #reg_feat_flatten_file.close()        
-     
+        #reg_feat_flatten_file.close()
+
         if not self.training and need_aggregation:
             half = len(pred_idx[1]) // 2
             new_idx = [p[:half] for p in pred_idx]
@@ -542,24 +542,24 @@ class YOLOXHead(nn.Module):
                 self.aggregator.update_memory_bank(key_features_p3, 0)
                 self.aggregator.update_memory_bank(key_features_p4, 1)
                 self.aggregator.update_memory_bank(key_features_p5, 2)
-                    
+
         (features_cls, features_reg, cls_scores,
          fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
                                                                 pred_idx,
                                                                 reg_feat_flatten,
                                                                 imgs,
                                                                 pred_result)
-        
-                             
+
+
         #kssong
         #features_reg_file = open('./features_reg.txt', 'a')
         #features_reg_file.write(f'{features_reg.shape}\n')
-        #features_reg_file.close()       
+        #features_reg_file.close()
 
-        features_reg = features_reg.unsqueeze(0)        
+        features_reg = features_reg.unsqueeze(0)
         features_cls = features_cls.unsqueeze(0)  # [1,features,channels]
-        
-        
+
+
 
         if not self.training:
             cls_scores = cls_scores.to(cls_feat_flatten.dtype)
@@ -568,11 +568,11 @@ class YOLOXHead(nn.Module):
         if self.gmode:
             kwargs = self.kwargs
             kwargs.update({'lframe': lframe, 'gframe': gframe, 'afternum': self.Afternum})
-            if self.use_score:                
+            if self.use_score:
                 features_cls,fg_scores = self.trans(features_cls, features_reg, cls_scores, fg_scores, sim_thresh=self.sim_thresh,
                                           ave=self.ave, use_mask=self.use_mask, **kwargs)
-                
-            else:                
+
+            else:
                 features_cls = self.trans(features_cls, features_reg, None, None,
                                           sim_thresh=self.sim_thresh, ave=self.ave, **kwargs)
 
@@ -583,7 +583,7 @@ class YOLOXHead(nn.Module):
                          'cls_score': cls_scores,'all_scores':all_scores,'lframe':lframe,
                          'afternum':self.Afternum,'gframe':gframe,'use_score':self.use_score}
             #st = time.time()
-            
+
             features_cls,features_reg = self.LocalAggregation(features_cls[:, :lframe * self.Afternum],
                                                               features_reg[:, :lframe * self.Afternum],
                                                               locs[:lframe * self.Afternum].view(-1, self.Afternum, 4),
@@ -592,7 +592,7 @@ class YOLOXHead(nn.Module):
             if self.kwargs.get('globalBlocks',0):
                 kwargs = self.kwargs
                 kwargs.update({'lframe': lframe, 'gframe': gframe, 'afternum': self.Afternum})
-                
+
                 features_cls,fg_scores = self.GlobalAggregation(features_cls, features_reg, cls_scores, fg_scores, sim_thresh=self.sim_thresh,
                                           ave=self.ave, use_mask=self.use_mask, **kwargs)
 
@@ -604,12 +604,12 @@ class YOLOXHead(nn.Module):
         fc_output = torch.reshape(fc_output, [-1, self.Afternum, self.num_classes + 1])[:, :, :-1] # [b,afternum,cls]
 
         if self.kwargs.get('reconf', False):
-            
-            conf_output = self.conf_pred(features_reg)            
+
+            conf_output = self.conf_pred(features_reg)
             conf_output = torch.reshape(conf_output, [-1, self.Afternum])
         else:
             conf_output = None
-        
+
         if self.training:
             if self.both_mode:
                 labels = labels[:lframe]

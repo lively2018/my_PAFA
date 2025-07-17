@@ -139,7 +139,7 @@ def main(exp, args):
                                  gframe=gframe, val=True,mode=args.mode,dataset_pth=exp.data_dir,tnum=int(args.tnum),
                                  formal=args.formal,local_stride=exp.local_stride,)
     val_loader = vid.vid_val_loader(batch_size=lframe + gframe, data_num_workers=4, dataset=dataset_val,)
-    
+
 
 
     ##  customed dataset here:

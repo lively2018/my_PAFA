@@ -9,7 +9,7 @@ import torch
 def gpu_mem_usage():
     """
     Compute the GPU memory usage for the current device (MB).
-    """    
+    """
     return torch.cuda.max_memory_allocated() / (1024 * 1024)
 
 class YOLOX(nn.Module):
@@ -24,14 +24,14 @@ class YOLOX(nn.Module):
         self.backbone = backbone
         self.head = head
 
-    
+
     #kssong
     #def forward(self, x, targets=None,nms_thresh=0.5,lframe=0,gframe=32):
     def forward(self, x, first, targets=None,nms_thresh=0.5,lframe=0,gframe=32):
-        #print(f"Before YOLOX forward: {gpu_mem_usage():.0f}")        
-        # fpn output content features of [dark3, dark4, dark5]        
+        #print(f"Before YOLOX forward: {gpu_mem_usage():.0f}")
+        # fpn output content features of [dark3, dark4, dark5]
         fpn_outs = self.backbone(x)
-        #print(f"After backbone in YOLOX forward: {gpu_mem_usage():.0f}")        
+        #print(f"After backbone in YOLOX forward: {gpu_mem_usage():.0f}")
         if self.training:
             assert targets is not None
             #kssong
@@ -54,5 +54,5 @@ class YOLOX(nn.Module):
             #kssong
             #outputs = self.head(fpn_outs,targets,x,nms_thresh=nms_thresh, lframe=lframe,gframe=gframe)
             outputs = self.head(fpn_outs,first,targets,x,nms_thresh=nms_thresh, lframe=lframe,gframe=gframe)
-        #print(f"After YOLOX forward: {gpu_mem_usage():.0f}")            
+        #print(f"After YOLOX forward: {gpu_mem_usage():.0f}")
         return outputs
