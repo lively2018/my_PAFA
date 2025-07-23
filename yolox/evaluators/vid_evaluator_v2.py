@@ -199,9 +199,10 @@ class VIDEvaluator:
 #                progress_bar(self.dataloader)
 #        ):
         prev_video_path = "None"
-        for cur_iter, (imgs, label, info_imgs, _, path, time_embedding) in enumerate(
+        for cur_iter, (imgs, _, info_imgs, label, path, time_embedding) in enumerate(
                 progress_bar(self.dataloader)
         ):
+            #logger.info("path: {}".format(path))
             video_path = os.path.basename(os.path.dirname(path[0]))
             if prev_video_path == video_path:
                 first_frame = False
@@ -229,11 +230,14 @@ class VIDEvaluator:
             if self.kwargs.get('first_only',False):
                 info_imgs = [info_imgs[0]]
                 label = [label[0]]
+            #logger.info("label: {}".format(label))
             temp_data_list, temp_label_list = self.convert_to_coco_format(outputs, info_imgs, copy.deepcopy(label))
             data_list.extend(temp_data_list)
             labels_list.extend(temp_label_list)
+            #logger.info("temp_labels_list: {}".format(temp_label_list))
 
         self.vid_to_coco['annotations'].extend(labels_list)
+        #json.dump(self.vid_to_coco, open("gt_annotations.json", 'w'))
         statistics = torch.cuda.FloatTensor([inference_time, nms_time, n_samples])
         if distributed:
             data_list = gather(data_list, dst=0)
@@ -246,7 +250,7 @@ class VIDEvaluator:
         self.vid_to_coco['annotations'] = []
 
         #kssong
-        #synchronize() results in deadlock
+        synchronize() #results in deadlock
         return eval_results
 
     def convert_to_coco_format(self, outputs, info_imgs, labels):

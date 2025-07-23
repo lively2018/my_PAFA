@@ -159,7 +159,6 @@ class VIDRefDataset(torchDataset):
                             #    for f in seq:
                             #        logger.info(f"  {f}")
                             if self.val and first_frame:
-                                ref.append(seq[i])
                                 first_frame = False
                             res.append(seq)
                         if self.formal and len(element[split_num * gframe:]):
@@ -177,7 +176,6 @@ class VIDRefDataset(torchDataset):
                                 l_frame = all_local_frame[i * lframe:(i + 1) * lframe]
                                 g_frame = element[(i + 1) * lframe:(i + 1) * lframe + gframe]
                                 if self.val and first_frame:
-                                    ref.append(l_frame[i])
                                     first_frame = False
                                 res.append(l_frame + g_frame)
                     else:
@@ -186,7 +184,6 @@ class VIDRefDataset(torchDataset):
                             for j in range(self.local_stride):
                                 res.append(element[lframe * self.local_stride * i:lframe * self.local_stride * (i + 1)][j::self.local_stride])
                                 if self.val and first_frame:
-                                    ref.append(element[lframe * self.local_stride * i:lframe * self.local_stride * (i + 1)])
                                     first_frame = False
 
                 else:
@@ -196,13 +193,13 @@ class VIDRefDataset(torchDataset):
         if self.val:
             if self.tnum == -1:
                 return res
-                #return res[:15000], ref
+                #return res[:15000]
             else:
                 return res[:self.tnum]
         else:
             random.shuffle(res)
             return res[:self.tseq]
-            #return res, ref
+            #return res
 
     def get_annotation(self,path,test_size):
         path = path.replace("Data","Annotations").replace("JPEG","xml")
@@ -281,7 +278,7 @@ class VIDRefDataset(torchDataset):
 
     def __getitem__(self, path):
         #kssong
-
+        #logger.info("path: {}".format(path))
         img, target, img_info, path = self.pull_item(path)
 
         if self.preproc is not None:
