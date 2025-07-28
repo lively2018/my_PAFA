@@ -103,6 +103,7 @@ class Trainer:
         self.data_type = torch.float16 if args.fp16 else torch.float32
         self.input_size = exp.input_size
         self.best_ap = 0
+        self.prev_video_path = "None"
 
         # metric record
         self.meter = MeterBuffer(window_size=exp.print_interval)
@@ -153,19 +154,25 @@ class Trainer:
 
         #kssong
         #inps, targets,_ = self.prefetcher.next()
-        inps, targets, _, _, paths, _, first_frame_flags = self.prefetcher.next()
+        inps, targets, _, _, paths, _ = self.prefetcher.next()
         inps = inps.to(self.data_type)
         targets = targets.to(self.data_type)
-        first_frame_flags = torch.tensor(first_frame_flags, dtype=torch.bool).to(self.data_type)
         targets.requires_grad = False
-        inps, targets = self.exp.preprocess(inps, targets, self.input_size,
-                                            )
-        data_end_time = time.time()
+        inps, targets = self.exp.preprocess(inps, targets, self.input_size,)
+        video_path = os.path.basename(os.path.dirname(paths[0]))
+        prev_video_path = self.prev_video_path
+        if prev_video_path == video_path:
+            first_frame = False
+        else:
+            first_frame = True
+            #if prev_video_path is not None:
+                #logger.info("previous path: {} video path: {}", prev_video_path, video_path)
+            self.prev_video_path = video_path
 
+        data_end_time = time.time()
         with torch.cuda.amp.autocast(enabled=self.amp_training):
             #kssong
             #outputs = self.model(inps, targets, lframe = self.exp.lframe,gframe = self.exp.gframe)
-            first_frame = any(first_frame_flags)
             outputs = self.model(inps, first_frame, targets, nms_thresh=self.exp.nmsthre, lframe = self.exp.lframe,gframe = self.exp.gframe)
 
         loss = outputs["total_loss"]
@@ -274,6 +281,7 @@ class Trainer:
         #         cache_img=self.args.cache,
         #     )
         #     logger.info('Refreshing dataloader')
+        self.prev_video_path = "None"
         if self.epoch + 1 >= self.max_epoch - self.exp.no_aug_epochs or self.no_aug:
             logger.info("--->No mosaic aug now!")
             self.train_loader.dataset.enable_mosaic = False

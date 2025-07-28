@@ -723,7 +723,6 @@ def collate_fn(batch):
     tar_ori = []
     path = []
     path_sequence = []
-    is_first_frame_flags = []
 
     for sample in batch:
         tar_tensor = torch.zeros([120,5])
@@ -815,7 +814,7 @@ class DataPrefetcher:
         try:
             #kssong
             #self.next_input, self.next_target,_,_,_,self.time_ebdding = next(self.loader)
-            self.next_input, self.next_target,self.next_ims_info,self.next_tar_ori,self.next_paths,self.time_ebdding, self.next_first_frame_flags = next(self.loader)
+            self.next_input, self.next_target,self.next_ims_info,self.next_tar_ori,self.next_paths,self.time_ebdding = next(self.loader)
         except StopIteration:
             self.next_input = None
             self.next_target = None
@@ -837,14 +836,13 @@ class DataPrefetcher:
         ims_info = self.next_ims_info
         tar_ori = self.next_tar_ori
         paths = self.next_paths
-        time_ebdding = self.time_ebdding
-        first_frame_flags = self.next_first_frame_flags
+        time_ebdding = self.time_ebdding        
         if input is not None:
             self.record_stream(input)
         if target is not None:
             target.record_stream(torch.cuda.current_stream())
         self.preload()
-        return input, target, ims_info, tar_ori, paths, time_ebdding, first_frame_flags
+        return input, target, ims_info, tar_ori, paths, time_ebdding
 
 
     def _input_cuda_for_image(self):
