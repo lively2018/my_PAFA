@@ -458,7 +458,7 @@ class Trainer:
         self.model.train()
         if self.rank == 0:
             logger.info('\n'+ str(summary[-1]))
-        synchronize()
+        #synchronize()
         return None
 
     def save_ckpt(self, ckpt_name, update_best_ckpt=False):
