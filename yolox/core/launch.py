@@ -77,7 +77,8 @@ def launch(
                 "As Windows platform doesn't support fork method, "
                 "do not add --cache in your training command."
             )
-            start_method = "fork"
+            #start_method = "fork"
+            start_method = "spawn"
 
         mp.start_processes(
             _distributed_worker,

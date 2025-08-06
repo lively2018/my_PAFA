@@ -2,6 +2,8 @@
 # -*- coding:utf-8 -*-
 # Copyright (c) Megvii, Inc. and its affiliates.
 
+import faulthandler, signal
+
 import argparse
 import random
 import warnings
@@ -124,6 +126,7 @@ def main(exp, args):
 
 
 if __name__ == "__main__":
+    faulthandler.register(signal.SIGUSR1)
     args = make_parser().parse_args()
     exp = get_exp(args.exp_file, args.name)
 
