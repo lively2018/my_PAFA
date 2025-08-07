@@ -97,6 +97,7 @@ def make_parser():
     )
     parser.add_argument("--tseq", default=15000, type=int, help="vid train sequences")
     parser.add_argument('--tnum', default=-1, type=int,help='vid test sequences')
+    parser.add_argument('--max_epoch', default=7, type=int,help='vid max epochs')
     parser.add_argument('--pre_nms', default=0.75, type=float,help='pre nms threshold')
     parser.add_argument('--nms', default=0.5, type=float,help='final nms threshold')
     parser.add_argument('--mode', default='random', help='frame sample mode')
@@ -139,6 +140,7 @@ if __name__ == "__main__":
     exp.tnum = args.tnum
     exp.tseq = args.tseq
     exp.mode = args.mode
+    exp.max_epoch = args.max_epoch
 
     exp.nmsthre = args.nms
     exp.pre_nms = args.pre_nms

@@ -78,7 +78,7 @@ class MambaAggregator(nn.Module):
 
     def init_memory_bank(self, x, type):
         #logger.info("init_memory_bank")
-        logger.info("x.shape: {}".format(x.shape))
+        #logger.info("x.shape: {}".format(x.shape))
         if type == 0:
             self.memory_bank_p3.init_memory(x)
         elif type == 1:
@@ -111,18 +111,18 @@ class MambaAggregator(nn.Module):
         ref_roi_n = ref_x.shape[0]
 
         x = x.half()
-        logger.info(f"roi_n: {roi_n} ref_roi_n: {ref_roi_n}")
+        #logger.info(f"roi_n: {roi_n} ref_roi_n: {ref_roi_n}")
         x_embed = self.fc_embed(x)
         # [num_attention_blocks, roi_n, C / num_attention_blocks]
         x_embed = x_embed.view(roi_n, self.num_attention_blocks,
                                -1).permute(1, 0, 2)
-        logger.info(f"x_embed shpae: {x_embed.shape}")
+        #logger.info(f"x_embed shpae: {x_embed.shape}")
         ref_x = ref_x.half()
         ref_x_embed = self.ref_fc_embed(ref_x)
         # [num_attention_blocks, C / num_attention_blocks, ref_roi_n]
         ref_x_embed = ref_x_embed.view(ref_roi_n, self.num_attention_blocks,
                                        -1).permute(1, 2, 0)
-        logger.info(f"ref_x_embed shpae: {ref_x_embed.shape}")
+        #logger.info(f"ref_x_embed shpae: {ref_x_embed.shape}")
         # [num_attention_blocks, roi_n, ref_roi_n]
         weights = torch.bmm(x_embed, ref_x_embed) / (x_embed.shape[-1]**0.5)
         weights = weights.softmax(dim=2)
