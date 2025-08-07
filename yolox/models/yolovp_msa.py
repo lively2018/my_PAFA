@@ -349,10 +349,8 @@ class YOLOXHead(nn.Module):
             reg_feat_flatten = torch.cat(
                 [x.flatten(start_dim=2) for x in before_nms_regf], dim=2
                 ).permute(0, 2, 1)
-            logger.info("before Generate reference features from 16 batch files")
             #Generate reference features from 16 batch files
             ref_feature_reg = self.select_key_feature_in_reg_feature(reg_feat_flatten, pred_idx)
-            logger.info("after Generate reference features from 16 batch files")
         del outputs, outputs_decode, origin_preds, x_shifts, y_shifts, expanded_strides, before_nms_features, before_nms_regf
         outputs = []
         outputs_decode = []
@@ -386,20 +384,26 @@ class YOLOXHead(nn.Module):
                         candidates = [j for j in range(batch_size) if j != i]
                         ref_idx = random.choice(candidates)
                         ref_feat1 = ref_feature_reg[ref_idx][k]
-                        if len(ref_feat1) == 0:
+                        ref_feat2 = ref_feature_reg[i][k]
+                        if len(ref_feat1) == 0 and len(ref_feat2) == 0:
                             agg_feat = reg_one
                         else:
+                            if len(ref_feat1) == 0:
+                                ref_feats = torch.cat((ref_feat2), dim=0)
+                            elif len(ref_feat2) == 0:
+                                ref_feats = torch.cat((ref_feat1), dim=0)
+                            else:
+                                ref_feats = torch.cat((ref_feat1 + ref_feat2), dim=0)
                             channel, height, width = reg_one.shape
-                            reg_one = reg_one.reshape(-1, channel)                            
-                            ref_feat1 = torch.cat(ref_feat1, dim=0)
-                            ref_feats = torch.cat((reg_one, ref_feat1), dim=0)
+                            reg_one = reg_one.reshape(-1, channel)
+
                             #logger.info("reset_memory_bank")
                             self.aggregator.reset_memory_bank(k)
                             #logger.info("init_memory_bank")
                             self.aggregator.init_memory_bank(ref_feats, k)                            
-                            logger.info("before aggreagtaion")
+                            #logger.info("before aggreagtaion")
                             agg_feat = reg_one + self.aggregator(reg_one, None, k)
-                            logger.info("after aggreagtaion")
+                            #logger.info("after aggreagtaion")
                             agg_feat = self.inplace_false_relu(agg_feat)                            
                             agg_feat = agg_feat.reshape(channel, height, width)                            
                     else:
@@ -522,22 +526,22 @@ class YOLOXHead(nn.Module):
         #reg_feat_flatten_file.close()
 
         if not self.training and need_aggregation:
-            half = len(pred_idx[1]) // 2
-            new_idx = [p[:half] for p in pred_idx]
+            #half = len(pred_idx[1]) // 2
+            #new_idx = [p[:half] for p in pred_idx]
             if first:
                 # reset all level memory banks
                 self.aggregator.reset_memory_bank(0)
                 self.aggregator.reset_memory_bank(1)
                 self.aggregator.reset_memory_bank(2)
                 #Generate reference features from 16 batch files
-                ref_feature_p3, ref_feature_p4, ref_feature_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, new_idx)
+                ref_feature_p3, ref_feature_p4, ref_feature_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx)
                 # Initialize all level memory banks
                 self.aggregator.init_memory_bank(ref_feature_p3, 0)
                 self.aggregator.init_memory_bank(ref_feature_p4, 1)
                 self.aggregator.init_memory_bank(ref_feature_p5, 2)
             else:
                 #Generate key features from 16 batch files
-                key_features_p3, key_features_p4, key_features_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, new_idx)
+                key_features_p3, key_features_p4, key_features_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx)
                 # Update all level memory banks
                 self.aggregator.update_memory_bank(key_features_p3, 0)
                 self.aggregator.update_memory_bank(key_features_p4, 1)
@@ -695,11 +699,10 @@ class YOLOXHead(nn.Module):
         return features_cls, features_reg, cls_scores, fg_scores, locs, all_scores
 
     def select_key_feature_in_reg_feature(self, reg_features, pred_idx):
-        key_features_list = []        
+        key_features_list = []
         
         for i in range(reg_features.shape[0]):
             reg_feature = reg_features[i]
-            logger.info("reg_feature shape: {}".format(reg_feature.shape))
             if reg_features is None:
                 raise ValueError("reg_feature is None")            
             idx_list = pred_idx[i]
