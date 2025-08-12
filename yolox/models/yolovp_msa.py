@@ -350,7 +350,7 @@ class YOLOXHead(nn.Module):
                 [x.flatten(start_dim=2) for x in before_nms_regf], dim=2
                 ).permute(0, 2, 1)
             #Generate reference features from 16 batch files
-            ref_feature_reg = self.select_key_feature_in_reg_feature(reg_feat_flatten, pred_idx)
+            ref_feature_reg = self.select_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
         del outputs, outputs_decode, origin_preds, x_shifts, y_shifts, expanded_strides, before_nms_features, before_nms_regf
         outputs = []
         outputs_decode = []
@@ -381,31 +381,28 @@ class YOLOXHead(nn.Module):
                 #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")
                 for i, reg_one in enumerate(reg_feat):
                     if self.training:
-                        candidates = [j for j in range(batch_size) if j != i]
-                        ref_idx = random.choice(candidates)
-                        ref_feat1 = ref_feature_reg[ref_idx][k]
-                        ref_feat2 = ref_feature_reg[i][k]
-                        if len(ref_feat1) == 0 and len(ref_feat2) == 0:
+                        if len(reg_one) == 0:
                             agg_feat = reg_one
                         else:
-                            if len(ref_feat1) == 0:
-                                ref_feats = torch.cat((ref_feat2), dim=0)
-                            elif len(ref_feat2) == 0:
-                                ref_feats = torch.cat((ref_feat1), dim=0)
-                            else:
+                            candidates = [j for j in range(batch_size) if j != i]
+                            ref_idx = random.choice(candidates)
+                            ref_feat1 = ref_feature_reg[ref_idx][k]
+                            ref_feat2 = ref_feature_reg[i][k]                   
+                            if len(ref_feat1) != 0 and len(ref_feat2) != 0:
                                 ref_feats = torch.cat((ref_feat1 + ref_feat2), dim=0)
-                            channel, height, width = reg_one.shape
-                            reg_one = reg_one.reshape(-1, channel)
-
-                            #logger.info("reset_memory_bank")
-                            self.aggregator.reset_memory_bank(k)
-                            #logger.info("init_memory_bank")
-                            self.aggregator.init_memory_bank(ref_feats, k)                            
-                            #logger.info("before aggreagtaion")
-                            agg_feat = reg_one + self.aggregator(reg_one, None, k)
-                            #logger.info("after aggreagtaion")
-                            agg_feat = self.inplace_false_relu(agg_feat)                            
-                            agg_feat = agg_feat.reshape(channel, height, width)                            
+                                channel, height, width = reg_one.shape
+                                reg_one = reg_one.reshape(-1, channel)
+                                #logger.info("reset_memory_bank")
+                                self.aggregator.reset_memory_bank(k)
+                                #logger.info("init_memory_bank")
+                                self.aggregator.init_memory_bank(ref_feats, k)
+                                #logger.info("before aggreagtaion")
+                                agg_feat = reg_one + self.aggregator(reg_one, None, k)
+                                #logger.info("after aggreagtaion")
+                                agg_feat = self.inplace_false_relu(agg_feat)
+                                agg_feat = agg_feat.reshape(channel, height, width)
+                            else:
+                                agg_feat = reg_one
                     else:
                         if not first:
                             #logger.info(f"reg_one.shape: {reg_one.shape}")
@@ -698,20 +695,30 @@ class YOLOXHead(nn.Module):
         all_scores = torch.cat(all_scores)
         return features_cls, features_reg, cls_scores, fg_scores, locs, all_scores
 
-    def select_key_feature_in_reg_feature(self, reg_features, pred_idx):
+    def select_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results):
         key_features_list = []
         
         for i in range(reg_features.shape[0]):
             reg_feature = reg_features[i]
             if reg_features is None:
-                raise ValueError("reg_feature is None")            
+                raise ValueError("reg_feature is None")
             idx_list = pred_idx[i]
             if idx_list is None:
                 raise ValueError("idx_list is None")
+            pred_result = pred_results[i]
+            conf_score_list = pred_result[:, 4] * pred_result[:, 5]
+            mask_idx = torch.nonzero(conf_score_list > 0.01, as_tuple=False).squeeze()
+            if mask_idx.ndim == 0:
+                mask_idx = mask_idx.unsqueeze(0)
+            #logger.info("conf_score_list masked > 0.01: {}".format(mask_idx))
+            mask_idx_list = idx_list[mask_idx]
+            #logger.info(" masked_idx_list: {}".format(mask_idx_list))
+            #logger.info(" idx_list: {}".format(idx_list))
             key_features_p3 = []
             key_features_p4 = []
             key_features_p5 = []
-            for idx in idx_list:
+            for idx in mask_idx_list:
+                
                 if idx >= 0 and idx < 6400:
                     key_features_p3.append(reg_feature[idx].unsqueeze(0))
                 elif idx >= 6400 and idx < 8000:
@@ -736,8 +743,7 @@ class YOLOXHead(nn.Module):
         key_features_p5 = []
         for i in range(reg_features.shape[0]):
             reg_feature = reg_features[i]
-            idx_list = pred_idx[i]
-
+            idx_list = pred_idx[i]         
             for idx in idx_list:
                 if idx >= 0 and idx < 6400:
                     key_features_p3.append(reg_feature[idx])
