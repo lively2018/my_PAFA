@@ -100,6 +100,7 @@ def make_parser():
     parser.add_argument('--max_epoch', default=7, type=int,help='vid max epochs')
     parser.add_argument('--pre_nms', default=0.75, type=float,help='pre nms threshold')
     parser.add_argument('--nms', default=0.5, type=float,help='final nms threshold')
+    parser.add_argument('--m_conf', default=0, type=float,help='select reference features minimum conf score')
     parser.add_argument('--mode', default='random', help='frame sample mode')
     return parser
 
@@ -141,6 +142,7 @@ if __name__ == "__main__":
     exp.tseq = args.tseq
     exp.mode = args.mode
     exp.max_epoch = args.max_epoch
+    exp.m_conf = args.m_conf
 
     exp.nmsthre = args.nms
     exp.pre_nms = args.pre_nms

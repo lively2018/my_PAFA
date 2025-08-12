@@ -52,7 +52,7 @@ class YOLOXHead(nn.Module):
             lmode=False,
             both_mode=False,
             localBlocks=1,
-            #eval=False,
+            m_conf=0,
             **kwargs
     ):
         """
@@ -219,6 +219,7 @@ class YOLOXHead(nn.Module):
         self.aggregator = MambaAggregator(in_channels=128, num_attention_blocks=1)
         #kssong
         self.inplace_false_relu = nn.ReLU(inplace=False)
+        self.m_conf = m_conf
 
 
     def initialize_biases(self, prior_prob):
@@ -531,14 +532,14 @@ class YOLOXHead(nn.Module):
                 self.aggregator.reset_memory_bank(1)
                 self.aggregator.reset_memory_bank(2)
                 #Generate reference features from 16 batch files
-                ref_feature_p3, ref_feature_p4, ref_feature_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx)
+                ref_feature_p3, ref_feature_p4, ref_feature_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
                 # Initialize all level memory banks
                 self.aggregator.init_memory_bank(ref_feature_p3, 0)
                 self.aggregator.init_memory_bank(ref_feature_p4, 1)
                 self.aggregator.init_memory_bank(ref_feature_p5, 2)
             else:
                 #Generate key features from 16 batch files
-                key_features_p3, key_features_p4, key_features_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx)
+                key_features_p3, key_features_p4, key_features_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
                 # Update all level memory banks
                 self.aggregator.update_memory_bank(key_features_p3, 0)
                 self.aggregator.update_memory_bank(key_features_p4, 1)
@@ -707,7 +708,7 @@ class YOLOXHead(nn.Module):
                 raise ValueError("idx_list is None")
             pred_result = pred_results[i]
             conf_score_list = pred_result[:, 4] * pred_result[:, 5]
-            mask_idx = torch.nonzero(conf_score_list > 0.01, as_tuple=False).squeeze()
+            mask_idx = torch.nonzero(conf_score_list > self.m_conf, as_tuple=False).squeeze()
             if mask_idx.ndim == 0:
                 mask_idx = mask_idx.unsqueeze(0)
             #logger.info("conf_score_list masked > 0.01: {}".format(mask_idx))
@@ -737,14 +738,24 @@ class YOLOXHead(nn.Module):
             key_features_list.append(key_features)
         return key_features_list
 
-    def select_level_key_feature_in_reg_feature(self, reg_features, pred_idx):
+    def select_level_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results):
         key_features_p3 = []
         key_features_p4 = []
         key_features_p5 = []
         for i in range(reg_features.shape[0]):
             reg_feature = reg_features[i]
             idx_list = pred_idx[i]         
-            for idx in idx_list:
+            pred_result = pred_results[i]
+            conf_score_list = pred_result[:, 4] * pred_result[:, 5]
+            mask_idx = torch.nonzero(conf_score_list > self.m_conf, as_tuple=False).squeeze()
+            if mask_idx.ndim == 0:
+                mask_idx = mask_idx.unsqueeze(0)
+            #logger.info("conf_score_list masked > 0.01: {}".format(mask_idx))
+            mask_idx_list = idx_list[mask_idx]
+            #logger.info(" masked_idx_list: {}".format(mask_idx_list))
+            #logger.info(" idx_list: {}".format(idx_list))
+
+            for idx in mask_idx_list:
                 if idx >= 0 and idx < 6400:
                     key_features_p3.append(reg_feature[idx])
                 elif idx >= 6400 and idx < 8000:
