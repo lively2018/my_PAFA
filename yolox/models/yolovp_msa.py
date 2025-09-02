@@ -53,6 +53,7 @@ class YOLOXHead(nn.Module):
             both_mode=False,
             localBlocks=1,
             m_conf=0,
+            topk=30,
             **kwargs
     ):
         """
@@ -63,6 +64,7 @@ class YOLOXHead(nn.Module):
         super().__init__()
 
         self.Afternum = defualt_p
+        self.topk = topk
         self.Prenum = defulat_pre
         self.simN = defualt_p
         self.nms_thresh = pre_nms
@@ -343,7 +345,7 @@ class YOLOXHead(nn.Module):
 
             pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
                                                         nms_thre=self.nms_thresh,
-                                                        topK=self.Afternum,
+                                                        topK=self.topk,
                                                         ota_idxs=ota_idxs,
                                                         )
 
@@ -416,11 +418,11 @@ class YOLOXHead(nn.Module):
                             agg_feat = agg_feat.reshape(channel, height, width)
                         else:
                             agg_feat = reg_one
-                    #logger.info(f"agg_feat.shape: {agg_feat.shape}")
+                    logger.info(f"agg_feat.shape: {agg_feat.shape}")
                     agg_feats.append(agg_feat)
-                    #logger.info(f"agg_feat.type: {agg_feat.type}")
+                    logger.info(f"agg_feat.type: {agg_feat.type}")
                 reg_feat = torch.stack(agg_feats, dim=0)
-                #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")
+                logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")
 
             # this part should be the same as the original model
             obj_output = self.obj_preds[k](reg_feat)
@@ -496,12 +498,23 @@ class YOLOXHead(nn.Module):
                 torch.cat(outputs, 1),)
         else:
             ota_idxs = None
-
-        pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
+        logger.info("Afternum: {} topk: {}".format(self.Afternum, self.topk))
+        if self.Afternum >= self.topk:            
+            pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
                                                      nms_thre=self.nms_thresh,
                                                      topK=self.Afternum,
                                                      ota_idxs=ota_idxs,
                                                      )
+        else:
+            big_pred_result, big_pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
+                                                     nms_thre=self.nms_thresh,
+                                                     topK=self.topk,
+                                                     ota_idxs=ota_idxs,
+                                                     )
+            pred_result = big_pred_result[:, :self.Afternum]
+            pred_idx = big_pred_idx[:, :self.Afternum]
+
+
         #kssong
         #pred_result_file = open('./pred_result.txt', 'a')
         #pred_result_file.write(f'{len(pred_result), pred_result[0].shape}\n')
@@ -532,14 +545,21 @@ class YOLOXHead(nn.Module):
                 self.aggregator.reset_memory_bank(1)
                 self.aggregator.reset_memory_bank(2)
                 #Generate reference features from 16 batch files
-                ref_feature_p3, ref_feature_p4, ref_feature_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+                if self.Afternum >= self.topk:
+                    ref_feature_p3, ref_feature_p4, ref_feature_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+                else:
+                    ref_feature_p3, ref_feature_p4, ref_feature_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, big_pred_idx, big_pred_result)
+
                 # Initialize all level memory banks
                 self.aggregator.init_memory_bank(ref_feature_p3, 0)
                 self.aggregator.init_memory_bank(ref_feature_p4, 1)
                 self.aggregator.init_memory_bank(ref_feature_p5, 2)
             else:
                 #Generate key features from 16 batch files
-                key_features_p3, key_features_p4, key_features_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+                if self.Afternum >= self.topk:
+                    key_features_p3, key_features_p4, key_features_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+                else:
+                    key_features_p3, key_features_p4, key_features_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, big_pred_idx, big_pred_result)
                 # Update all level memory banks
                 self.aggregator.update_memory_bank(key_features_p3, 0)
                 self.aggregator.update_memory_bank(key_features_p4, 1)
@@ -550,7 +570,7 @@ class YOLOXHead(nn.Module):
                                                                 pred_idx,
                                                                 reg_feat_flatten,
                                                                 imgs,
-                                                                                        pred_result)
+                                                                pred_result)
 
 
         #kssong

@@ -102,6 +102,7 @@ def make_parser():
     parser.add_argument('--nms', default=0.5, type=float,help='final nms threshold')
     parser.add_argument('--m_conf', default=0, type=float,help='select reference features minimum conf score')
     parser.add_argument('--mode', default='random', help='frame sample mode')
+    parser.add_argument("--topk", default=30, type=int, help="topk")
     return parser
 
 @logger.catch
@@ -143,6 +144,7 @@ if __name__ == "__main__":
     exp.mode = args.mode
     exp.max_epoch = args.max_epoch
     exp.m_conf = args.m_conf
+    exp.topk = args.topk
 
     exp.nmsthre = args.nms
     exp.pre_nms = args.pre_nms
