@@ -173,9 +173,8 @@ class Trainer:
         with torch.cuda.amp.autocast(enabled=self.amp_training):
             #kssong
             #outputs = self.model(inps, targets, lframe = self.exp.lframe,gframe = self.exp.gframe)
-            logger.info("before model")
             outputs = self.model(inps, first_frame, targets, nms_thresh=self.exp.nmsthre, lframe = self.exp.lframe,gframe = self.exp.gframe)
-            logger.info("after model")
+            
 
         loss = outputs["total_loss"]
 
