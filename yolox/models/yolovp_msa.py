@@ -1291,15 +1291,15 @@ class YOLOXHead(nn.Module):
             top_pre = torch.topk(conf_score, k=self.Prenum)
             sort_idx = top_pre.indices[:self.Prenum]
             detections_temp = detections[sort_idx, :]
-            nms_out_index = torchvision.ops.batched_nms(
-                detections_temp[:, :4],
-                detections_temp[:, 4] * detections_temp[:, 5],
-                detections_temp[:, 6],
-                nms_thre,
-            )
+            #nms_out_index = torchvision.ops.batched_nms(
+            #    detections_temp[:, :4],
+            #    detections_temp[:, 4] * detections_temp[:, 5],
+            #    detections_temp[:, 6],
+            #    nms_thre,
+            #)
 
-            topk_idx = sort_idx[nms_out_index[:self.topK]]
-            output[i] = detections[topk_idx, :]
+            topk_idx = sort_idx[:self.topK]
+            output[i] = detections_temp[:self.topK]
             output_index[i] = topk_idx
 
         return output, output_index
