@@ -134,7 +134,6 @@ def main(exp, args):
     exp.vid_val_path = args.path
     exp.m_conf = args.m_conf
     exp.pre_nms = args.pre_nms
-    exp.test_size = args.tsize
 #    dataset_val = vid.VIDDataset(file_path='./yolox/data/datasets/val_seq.npy',
 #                                 img_size=(args.tsize, args.tsize), preproc=Vid_Val_Transform(), lframe=lframe,
 #                                 gframe=gframe, val=True,mode=args.mode,dataset_pth=exp.data_dir,tnum=int(args.tnum),
