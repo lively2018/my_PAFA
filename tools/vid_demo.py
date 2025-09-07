@@ -233,6 +233,8 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
     for (output,img, file_name) in zip(outputs,ori_frames[:len(outputs)],file_names):
         if args.post:
             ratio = 1
+        if output is None:
+            continue
         result_frame = predictor.visual(output,img,ratio,cls_conf=args.conf,color_idx=12)
         bboxes = output[:, 0:4]
         cls = output[:, 6].unsqueeze(1)
