@@ -16,6 +16,9 @@ class Exp(MyExp):
         self.warmup_epochs = 1
         self.eval_interval = 1
         # COCO API has been changed
+        #kssong
+        self.multiscale_range = 0
+        self.input_size = (640, 640)  # (height, width)
 
 
 

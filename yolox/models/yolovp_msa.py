@@ -53,6 +53,7 @@ class YOLOXHead(nn.Module):
             both_mode=False,
             localBlocks=1,
             m_conf=0,
+            exp_name="yolov_s",
             **kwargs
     ):
         """
@@ -216,7 +217,16 @@ class YOLOXHead(nn.Module):
         # self.eval = eval
         #if self.eval:
         #self.aggregator = MambaAggregator(in_channels=128, num_attention_blocks=4)
-        self.aggregator = MambaAggregator(in_channels=128, num_attention_blocks=1)
+        if exp_name == 'yolov_s':
+            self.aggregator = MambaAggregator(in_channels=128, num_attention_blocks=1)
+        elif exp_name == 'yolov_l':
+            self.aggregator = MambaAggregator(in_channels=256, num_attention_blocks=1)
+        elif exp_name == 'yolov_x':            
+            self.aggregator = MambaAggregator(in_channels=320, num_attention_blocks=1)
+        else:
+            raise ValueError(f"model_name:{exp_name} is invalid")
+
+
         #kssong
         self.inplace_false_relu = nn.ReLU(inplace=False)
         self.m_conf = m_conf

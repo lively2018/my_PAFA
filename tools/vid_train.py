@@ -131,13 +131,11 @@ if __name__ == "__main__":
     faulthandler.register(signal.SIGUSR1)
     args = make_parser().parse_args()
     exp = get_exp(args.exp_file, args.name)
-
     exp.merge(args.opts)
     exp.test_size = (args.tsize, args.tsize)
     exp.vid_val_path = args.path
     if not args.experiment_name:
         args.experiment_name = exp.exp_name
-
     exp.tnum = args.tnum
     exp.tseq = args.tseq
     exp.mode = args.mode

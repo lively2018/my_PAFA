@@ -282,7 +282,7 @@ class MosaicDetection_VID(Dataset):
         return len(self._dataset)
 
     def get_mosic_idx(self,path):
-        path = os.path.join(self.dataset_pth,path)
+        path = os.path.join(self.dataset_path,path)
         path_dir = path[:path.rfind('/')+1]
         anno_path = path_dir.replace("Data","Annotations")
         frame_num = len(os.listdir(anno_path))
@@ -382,7 +382,7 @@ class MosaicDetection_VID(Dataset):
             return img, label, img_info, idx#np.array([idx])
 
     def get_mixup_idx(self,path):
-        path = os.path.join(self.dataset_pth,path)
+        path = os.path.join(self.dataset_path,path)
         path_dir = path[:path.rfind('/')+1]
         frame_num = self.file_num
         rand_idx = random.randint(0,frame_num-1)
