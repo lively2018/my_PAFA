@@ -387,7 +387,7 @@ class YOLOXHead(nn.Module):
                         else:
                             candidates = [j for j in range(batch_size) if j != i]
                             ref_idx = random.choice(candidates)
-                            if k == 0:
+                            if k == 1:
                                 ref_feat1 = ref_feature_reg[ref_idx]
                                 ref_feat2 = ref_feature_reg[i]
                                 if len(ref_feat1) != 0 and len(ref_feat2) != 0:
@@ -410,7 +410,7 @@ class YOLOXHead(nn.Module):
                     else:
                         if not first:
                             #logger.info(f"reg_one.shape: {reg_one.shape}")
-                            if k == 0:
+                            if k == 1:
                                 channel, height, width = reg_one.shape
                                 reg_one = reg_one.reshape(-1, channel)
                                 #logger.info(f"reg_one.shape: {reg_one.shape}")
@@ -722,20 +722,20 @@ class YOLOXHead(nn.Module):
             mask_idx_list = idx_list[mask_idx]
             #logger.info(" masked_idx_list: {}".format(mask_idx_list))
             #logger.info(" idx_list: {}".format(idx_list))
-            key_features_p3 = []
-            #key_features_p4 = []
+            #key_features_p3 = []
+            key_features_p4 = []
             #key_features_p5 = []
             for idx in mask_idx_list:
                 
-                if idx >= 0 and idx < 6400:
-                    key_features_p3.append(reg_feature[idx].unsqueeze(0))
-                #elif idx >= 6400 and idx < 8000:
-                #    key_features_p4.append(reg_feature[idx].unsqueeze(0))
+                #if idx >= 0 and idx < 6400:
+                #    key_features_p3.append(reg_feature[idx].unsqueeze(0))
+                if idx >= 6400 and idx < 8000:
+                    key_features_p4.append(reg_feature[idx].unsqueeze(0))
                 #else:
                 #    key_features_p5.append(reg_feature[idx].unsqueeze(0))            
  
-            if len(key_features_p3) > 0:
-                combined_feature = torch.cat(key_features_p3, dim=0)
+            if len(key_features_p4) > 0:
+                combined_feature = torch.cat(key_features_p4, dim=0)
                 key_features_list.append(combined_feature)
             else:
                 key_features_list. append([])
@@ -749,8 +749,8 @@ class YOLOXHead(nn.Module):
         return key_features_list
 
     def select_level_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results):
-        key_features_p3 = []
-        #key_features_p4 = []
+        #key_features_p3 = []
+        key_features_p4 = []
         #key_features_p5 = []
         for i in range(reg_features.shape[0]):
             reg_feature = reg_features[i]
@@ -766,17 +766,17 @@ class YOLOXHead(nn.Module):
             #logger.info(" idx_list: {}".format(idx_list))
 
             for idx in mask_idx_list:
-                if idx >= 0 and idx < 6400:
-                    key_features_p3.append(reg_feature[idx])
-                #elif idx >= 6400 and idx < 8000:
-                #    key_features_p4.append(reg_feature[idx])
+                #if idx >= 0 and idx < 6400:
+                #    key_features_p3.append(reg_feature[idx])
+                if idx >= 6400 and idx < 8000:
+                    key_features_p4.append(reg_feature[idx])
                 #else:
                 #    key_features_p5.append(reg_feature[idx])
-        key_features_p3 = torch.stack(key_features_p3, dim=0) if key_features_p3 else torch.empty(0, 128)
-        #key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128)
+        #key_features_p3 = torch.stack(key_features_p3, dim=0) if key_features_p3 else torch.empty(0, 128)
+        key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128)
         #key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128)
         #return key_features_p3, key_features_p4, key_features_p5
-        return key_features_p3
+        return key_features_p4
 
     def get_losses(
             self,
