@@ -539,17 +539,17 @@ class YOLOXHead(nn.Module):
                # self.aggregator.reset_memory_bank(2)
                 #Generate reference features from 16 batch files
                 #ref_feature_p3, ref_feature_p4, ref_feature_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
-                ref_feature_p3 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+                ref_feature_p4 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
                 # Initialize all level memory banks
-                self.aggregator.init_memory_bank(ref_feature_p3, 0)
-                #self.aggregator.init_memory_bank(ref_feature_p4, 1)
+                #self.aggregator.init_memory_bank(ref_feature_p3, 0)
+                self.aggregator.init_memory_bank(ref_feature_p4, 1)
                 #self.aggregator.init_memory_bank(ref_feature_p5, 2)
             else:
                 #Generate key features from 16 batch files
-                key_features_p3 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+                key_features_p4 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
                 # Update all level memory banks
-                self.aggregator.update_memory_bank(key_features_p3, 0)
-                #self.aggregator.update_memory_bank(key_features_p4, 1)
+                #self.aggregator.update_memory_bank(key_features_p3, 0)
+                self.aggregator.update_memory_bank(key_features_p4, 1)
                 #self.aggregator.update_memory_bank(key_features_p5, 2)
 
         (features_cls, features_reg, cls_scores,
