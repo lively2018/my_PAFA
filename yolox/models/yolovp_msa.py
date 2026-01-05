@@ -387,7 +387,7 @@ class YOLOXHead(nn.Module):
                         else:
                             candidates = [j for j in range(batch_size) if j != i]
                             ref_idx = random.choice(candidates)
-                            if k == 1:
+                            if k == 2:
                                 ref_feat1 = ref_feature_reg[ref_idx]
                                 ref_feat2 = ref_feature_reg[i]
                                 if len(ref_feat1) != 0 and len(ref_feat2) != 0:
@@ -410,7 +410,7 @@ class YOLOXHead(nn.Module):
                     else:
                         if not first:
                             #logger.info(f"reg_one.shape: {reg_one.shape}")
-                            if k == 1:
+                            if k == 2:
                                 channel, height, width = reg_one.shape
                                 reg_one = reg_one.reshape(-1, channel)
                                 #logger.info(f"reg_one.shape: {reg_one.shape}")
@@ -534,23 +534,23 @@ class YOLOXHead(nn.Module):
             #new_idx = [p[:half] for p in pred_idx]
             if first:
                 # reset all level memory banks
-                self.aggregator.reset_memory_bank(0)
-               # self.aggregator.reset_memory_bank(1)
-               # self.aggregator.reset_memory_bank(2)
+                #self.aggregator.reset_memory_bank(0)
+                #self.aggregator.reset_memory_bank(1)
+                self.aggregator.reset_memory_bank(2)
                 #Generate reference features from 16 batch files
                 #ref_feature_p3, ref_feature_p4, ref_feature_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
-                ref_feature_p4 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+                ref_feature_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
                 # Initialize all level memory banks
                 #self.aggregator.init_memory_bank(ref_feature_p3, 0)
-                self.aggregator.init_memory_bank(ref_feature_p4, 1)
-                #self.aggregator.init_memory_bank(ref_feature_p5, 2)
+                #self.aggregator.init_memory_bank(ref_feature_p4, 1)
+                self.aggregator.init_memory_bank(ref_feature_p5, 2)
             else:
                 #Generate key features from 16 batch files
-                key_features_p4 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+                key_features_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
                 # Update all level memory banks
                 #self.aggregator.update_memory_bank(key_features_p3, 0)
-                self.aggregator.update_memory_bank(key_features_p4, 1)
-                #self.aggregator.update_memory_bank(key_features_p5, 2)
+                #self.aggregator.update_memory_bank(key_features_p4, 1)
+                self.aggregator.update_memory_bank(key_features_p5, 2)
 
         (features_cls, features_reg, cls_scores,
          fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
@@ -723,19 +723,19 @@ class YOLOXHead(nn.Module):
             #logger.info(" masked_idx_list: {}".format(mask_idx_list))
             #logger.info(" idx_list: {}".format(idx_list))
             #key_features_p3 = []
-            key_features_p4 = []
-            #key_features_p5 = []
+            #key_features_p4 = []
+            key_features_p5 = []
             for idx in mask_idx_list:
                 
                 #if idx >= 0 and idx < 6400:
                 #    key_features_p3.append(reg_feature[idx].unsqueeze(0))
-                if idx >= 6400 and idx < 8000:
-                    key_features_p4.append(reg_feature[idx].unsqueeze(0))
-                #else:
-                #    key_features_p5.append(reg_feature[idx].unsqueeze(0))            
+                #if idx >= 6400 and idx < 8000:
+                #    key_features_p4.append(reg_feature[idx].unsqueeze(0))
+                if idx >= 8000:
+                    key_features_p5.append(reg_feature[idx].unsqueeze(0))            
  
-            if len(key_features_p4) > 0:
-                combined_feature = torch.cat(key_features_p4, dim=0)
+            if len(key_features_p5) > 0:
+                combined_feature = torch.cat(key_features_p5, dim=0)
                 key_features_list.append(combined_feature)
             else:
                 key_features_list. append([])
@@ -750,8 +750,8 @@ class YOLOXHead(nn.Module):
 
     def select_level_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results):
         #key_features_p3 = []
-        key_features_p4 = []
-        #key_features_p5 = []
+        #key_features_p4 = []
+        key_features_p5 = []
         for i in range(reg_features.shape[0]):
             reg_feature = reg_features[i]
             idx_list = pred_idx[i]         
@@ -768,15 +768,15 @@ class YOLOXHead(nn.Module):
             for idx in mask_idx_list:
                 #if idx >= 0 and idx < 6400:
                 #    key_features_p3.append(reg_feature[idx])
-                if idx >= 6400 and idx < 8000:
-                    key_features_p4.append(reg_feature[idx])
-                #else:
-                #    key_features_p5.append(reg_feature[idx])
+                #if idx >= 6400 and idx < 8000:
+                #    key_features_p4.append(reg_feature[idx])
+                if idx >= 8000:
+                    key_features_p5.append(reg_feature[idx])
         #key_features_p3 = torch.stack(key_features_p3, dim=0) if key_features_p3 else torch.empty(0, 128)
-        key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128)
-        #key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128)
+        #key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128)
+        key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128)
         #return key_features_p3, key_features_p4, key_features_p5
-        return key_features_p4
+        return key_features_p5
 
     def get_losses(
             self,
