@@ -65,7 +65,7 @@ class YOLOXHead(nn.Module):
         self.Afternum = defualt_p
         self.Prenum = defulat_pre
         self.simN = defualt_p
-        self.nms_thresh = pre_nms
+        self.pre_nms_thresh = pre_nms
         self.n_anchors = 1
         self.use_score = use_score
         self.num_classes = num_classes
@@ -73,7 +73,7 @@ class YOLOXHead(nn.Module):
         self.gmode = gmode
         self.lmode = lmode
         self.both_mode = both_mode
-
+        
         self.cls_convs = nn.ModuleList()
         self.reg_convs = nn.ModuleList()
         self.cls_preds = nn.ModuleList()
@@ -261,7 +261,6 @@ class YOLOXHead(nn.Module):
         expanded_strides = []
         before_nms_features = []
         before_nms_regf = []
-
         batch_size = len(imgs)
         if batch_size == 16 or batch_size == 32:
             need_aggregation = True
@@ -342,7 +341,7 @@ class YOLOXHead(nn.Module):
                 ota_idxs = None
 
             pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
-                                                        nms_thre=self.nms_thresh,
+                                                        nms_thre=self.pre_nms_thresh,
                                                         topK=self.Afternum,
                                                         ota_idxs=ota_idxs,
                                                         )
@@ -498,7 +497,7 @@ class YOLOXHead(nn.Module):
             ota_idxs = None
 
         pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
-                                                     nms_thre=self.nms_thresh,
+                                                     nms_thre=self.pre_nms_thresh,
                                                      topK=self.Afternum,
                                                      ota_idxs=ota_idxs,
                                                      )
