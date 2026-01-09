@@ -225,20 +225,20 @@ class VIDEvaluator:
             yA = max(boxA[1], boxB[1])
             xB = min(boxA[0] + boxA[2], boxB[0] + boxB[2])
             yB = min(boxA[1] + boxA[3], boxB[1] + boxB[3])
-            logger.info(f"xA: {xA} yA: {yA} xB: {xB} yB: {yB}")
+            #logger.info(f"xA: {xA} yA: {yA} xB: {xB} yB: {yB}")
             interArea = max(0, xB-xA) * max(0, yB - yA) 
             boxAArea = boxA[2] * boxA[3]
             boxBArea = boxB[2] * boxB[3]
-            logger.info(f"interArea: {interArea}, boxAArea: {boxAArea}, boxBArea: {boxBArea}")
+            #logger.info(f"interArea: {interArea}, boxAArea: {boxAArea}, boxBArea: {boxBArea}")
             iou = interArea/float(boxAArea + boxBArea - interArea + 1e-6)
-            logger.info(f"iou: {iou}")
+            #logger.info(f"iou: {iou}")
             return iou
         
         
         gt_dict = {}
         for gt in ground_truths:
             img_id = gt['image_id']
-            logger.info(f"img_id: {img_id}")
+            #logger.info(f"img_id: {img_id}")
             if img_id not in gt_dict:
                 gt_dict[img_id] = []
             gt_dict[img_id].append(gt)
@@ -253,13 +253,13 @@ class VIDEvaluator:
         high_score_pair_count = 0
         for pred in predictions:
             img_id = pred['image_id']
-            logger.info(f"img_id: {img_id}")
+            #logger.info(f"img_id: {img_id}")
             if img_id in gt_dict:                
                 for gt in gt_dict[img_id]:
-                    logger.info(f"pred['category_id']: {pred['category_id']}")
-                    logger.info(f"gt['category_id']: {gt['category_id']}")
-                    logger.info(f"pred['bbox']: {pred['bbox']}")
-                    logger.info(f"gt['bbox']: {gt['bbox']}")
+                    #logger.info(f"pred['category_id']: {pred['category_id']}")
+                    #logger.info(f"gt['category_id']: {gt['category_id']}")
+                    #logger.info(f"pred['bbox']: {pred['bbox']}")
+                    #logger.info(f"gt['bbox']: {gt['bbox']}")
 
                     all_iou = compute_iou(pred['bbox'], gt['bbox'])
                     if all_iou > 0:
