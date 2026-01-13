@@ -22,6 +22,23 @@ from yolox.models.mamba_aggregator import MambaAggregator
 #kssong
 import random
 
+
+class SimpleTimer:
+    def __init__(self):
+        self.timers = {}
+
+    def record(self, name):
+        # Ensure CUDA operations are finished before taking time
+        torch.cuda.synchronize()
+        self.timers[name] = time.perf_counter()
+
+    def report(self):
+        torch.cuda.synchronize()
+        sorted_times = sorted(self.timers.items(), key=lambda x: x[1])
+        print("\n=== Execution Profile ===")
+        for i in range(len(sorted_times) - 1):
+            elapsed = (sorted_times[i+1][1] - sorted_times[i][1]) * 1000
+            print(f"{sorted_times[i][0]} -> {sorted_times[i+1][0]}: {elapsed:.2f} ms")
 #kssong
 def gpu_mem_usage():
     """
@@ -240,6 +257,7 @@ class YOLOXHead(nn.Module):
         new_xin = xin + self.aggreator(xin, ref_xin)
         return new_xin
     # kssong
+
     def forward(self, xin, first, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32):
     #def forward(self, xin, ref_xin, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32):
         #kssong
@@ -253,6 +271,7 @@ class YOLOXHead(nn.Module):
         #        new_xin.append(ref_xin_one)
         #else:
         #    new_xin = xin
+        timer = SimpleTimer()
         outputs = []
         outputs_decode = []
         origin_preds = []
@@ -261,7 +280,7 @@ class YOLOXHead(nn.Module):
         expanded_strides = []
         before_nms_features = []
         before_nms_regf = []
-
+        timer.record("start")
         batch_size = len(imgs)
         if batch_size == 16 or batch_size == 32:
             need_aggregation = True
@@ -352,6 +371,7 @@ class YOLOXHead(nn.Module):
                 ).permute(0, 2, 1)
             #Generate reference features from 16 batch files
             ref_feature_reg = self.select_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+        
         del outputs, outputs_decode, origin_preds, x_shifts, y_shifts, expanded_strides, before_nms_features, before_nms_regf
         outputs = []
         outputs_decode = []
@@ -406,6 +426,7 @@ class YOLOXHead(nn.Module):
                                 agg_feat = reg_one
                     else:
                         if not first:
+                            timer.record("before aggregation")                            
                             #logger.info(f"reg_one.shape: {reg_one.shape}")
                             channel, height, width = reg_one.shape
                             reg_one = reg_one.reshape(-1, channel)
@@ -414,6 +435,7 @@ class YOLOXHead(nn.Module):
                             agg_feat = self.inplace_false_relu(agg_feat)
                             #logger.info(f"agg_feat.shape: {agg_feat.shape}")
                             agg_feat = agg_feat.reshape(channel, height, width)
+                            timer.record("after aggregation")                            
                         else:
                             agg_feat = reg_one
                     #logger.info(f"agg_feat.shape: {agg_feat.shape}")
@@ -527,23 +549,33 @@ class YOLOXHead(nn.Module):
             #half = len(pred_idx[1]) // 2
             #new_idx = [p[:half] for p in pred_idx]
             if first:
+                timer.record("before reset_memory bank")
                 # reset all level memory banks
                 self.aggregator.reset_memory_bank(0)
                 self.aggregator.reset_memory_bank(1)
                 self.aggregator.reset_memory_bank(2)
+                timer.record("after reset_memory bank")
                 #Generate reference features from 16 batch files
+                timer.record("before select key feature in aggregated feature")
                 ref_feature_p3, ref_feature_p4, ref_feature_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
                 # Initialize all level memory banks
+                timer.record("after select key feature in aggregated feature")
+                timer.record("before initialize_memory bank")
                 self.aggregator.init_memory_bank(ref_feature_p3, 0)
                 self.aggregator.init_memory_bank(ref_feature_p4, 1)
                 self.aggregator.init_memory_bank(ref_feature_p5, 2)
+                timer.record("after initialize_memory bank")
             else:
                 #Generate key features from 16 batch files
+                timer.record("before select key feature in aggregated feature")
                 key_features_p3, key_features_p4, key_features_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+                timer.record("after select key feature in aggregated feature")
+                timer.record("before update_memory bank")
                 # Update all level memory banks
                 self.aggregator.update_memory_bank(key_features_p3, 0)
                 self.aggregator.update_memory_bank(key_features_p4, 1)
                 self.aggregator.update_memory_bank(key_features_p5, 2)
+                timer.record("after update_memory bank")
 
         (features_cls, features_reg, cls_scores,
          fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
@@ -636,6 +668,7 @@ class YOLOXHead(nn.Module):
                                              conf_output = conf_output,
                                              nms_thre=nms_thresh,
                                              )
+            timer.report()
             return result, result_ori  # result
 
     def get_output_and_grid(self, output, k, stride, dtype):

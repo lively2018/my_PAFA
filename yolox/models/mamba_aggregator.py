@@ -34,9 +34,9 @@ class MambaAggregator(nn.Module):
         self.num_attention_blocks = num_attention_blocks
 
         # instance-level memory bank
-        self.memory_bank_p3 = MemoryBank(**memory_cfg)
-        self.memory_bank_p4 = MemoryBank(**memory_cfg)
-        self.memory_bank_p5 = MemoryBank(**memory_cfg)
+        self.memory_bank_p3 = MemoryBank(**memory_cfg,feature_dim=128)
+        self.memory_bank_p4 = MemoryBank(**memory_cfg,feature_dim=128)
+        self.memory_bank_p5 = MemoryBank(**memory_cfg,feature_dim=128)
 
 
     def forward(self, x, ref_x, type):
@@ -77,8 +77,8 @@ class MambaAggregator(nn.Module):
             self.memory_bank_p5.update(x)
 
     def init_memory_bank(self, x, type):
-        #logger.info("init_memory_bank")
-        #logger.info("x.shape: {}".format(x.shape))
+        logger.info("init_memory_bank")
+        logger.info("x.shape: {}".format(x.shape))
         if type == 0:
             self.memory_bank_p3.init_memory(x)
         elif type == 1:
