@@ -271,7 +271,7 @@ class YOLOXHead(nn.Module):
         #        new_xin.append(ref_xin_one)
         #else:
         #    new_xin = xin
-        timer = SimpleTimer()
+        #timer = SimpleTimer()
         outputs = []
         outputs_decode = []
         origin_preds = []
@@ -280,7 +280,7 @@ class YOLOXHead(nn.Module):
         expanded_strides = []
         before_nms_features = []
         before_nms_regf = []
-        timer.record("start")
+        #timer.record("start")
         batch_size = len(imgs)
         if batch_size == 16 or batch_size == 32:
             need_aggregation = True
@@ -426,7 +426,7 @@ class YOLOXHead(nn.Module):
                                 agg_feat = reg_one
                     else:
                         if not first:
-                            timer.record("before aggregation")                            
+                            #timer.record("before aggregation")                            
                             #logger.info(f"reg_one.shape: {reg_one.shape}")
                             channel, height, width = reg_one.shape
                             reg_one = reg_one.reshape(-1, channel)
@@ -435,7 +435,7 @@ class YOLOXHead(nn.Module):
                             agg_feat = self.inplace_false_relu(agg_feat)
                             #logger.info(f"agg_feat.shape: {agg_feat.shape}")
                             agg_feat = agg_feat.reshape(channel, height, width)
-                            timer.record("after aggregation")                            
+                            #timer.record("after aggregation")                            
                         else:
                             agg_feat = reg_one
                     #logger.info(f"agg_feat.shape: {agg_feat.shape}")
@@ -549,33 +549,33 @@ class YOLOXHead(nn.Module):
             #half = len(pred_idx[1]) // 2
             #new_idx = [p[:half] for p in pred_idx]
             if first:
-                timer.record("before reset_memory bank")
+                #timer.record("before reset_memory bank")
                 # reset all level memory banks
                 self.aggregator.reset_memory_bank(0)
                 self.aggregator.reset_memory_bank(1)
                 self.aggregator.reset_memory_bank(2)
-                timer.record("after reset_memory bank")
+                #timer.record("after reset_memory bank")
                 #Generate reference features from 16 batch files
-                timer.record("before select key feature in aggregated feature")
+                #timer.record("before select key feature in aggregated feature")
                 ref_feature_p3, ref_feature_p4, ref_feature_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
                 # Initialize all level memory banks
-                timer.record("after select key feature in aggregated feature")
-                timer.record("before initialize_memory bank")
+                #timer.record("after select key feature in aggregated feature")
+                #timer.record("before initialize_memory bank")
                 self.aggregator.init_memory_bank(ref_feature_p3, 0)
                 self.aggregator.init_memory_bank(ref_feature_p4, 1)
                 self.aggregator.init_memory_bank(ref_feature_p5, 2)
-                timer.record("after initialize_memory bank")
+                #timer.record("after initialize_memory bank")
             else:
                 #Generate key features from 16 batch files
-                timer.record("before select key feature in aggregated feature")
+                #timer.record("before select key feature in aggregated feature")
                 key_features_p3, key_features_p4, key_features_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
-                timer.record("after select key feature in aggregated feature")
-                timer.record("before update_memory bank")
+                #timer.record("after select key feature in aggregated feature")
+                #timer.record("before update_memory bank")
                 # Update all level memory banks
                 self.aggregator.update_memory_bank(key_features_p3, 0)
                 self.aggregator.update_memory_bank(key_features_p4, 1)
                 self.aggregator.update_memory_bank(key_features_p5, 2)
-                timer.record("after update_memory bank")
+                #timer.record("after update_memory bank")
 
         (features_cls, features_reg, cls_scores,
          fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
@@ -668,7 +668,7 @@ class YOLOXHead(nn.Module):
                                              conf_output = conf_output,
                                              nms_thre=nms_thresh,
                                              )
-            timer.report()
+            #timer.report()
             return result, result_ori  # result
 
     def get_output_and_grid(self, output, k, stride, dtype):
@@ -733,71 +733,50 @@ class YOLOXHead(nn.Module):
         key_features_list = []
         
         for i in range(reg_features.shape[0]):
-            reg_feature = reg_features[i]
-            if reg_features is None:
-                raise ValueError("reg_feature is None")
-            idx_list = pred_idx[i]
-            if idx_list is None:
-                raise ValueError("idx_list is None")
-            pred_result = pred_results[i]
-            conf_score_list = pred_result[:, 4] * pred_result[:, 5]
-            mask_idx = torch.nonzero(conf_score_list > self.m_conf, as_tuple=False).squeeze()
-            if mask_idx.ndim == 0:
-                mask_idx = mask_idx.unsqueeze(0)
-            #logger.info("conf_score_list masked > 0.01: {}".format(mask_idx))
-            mask_idx_list = idx_list[mask_idx]
-            #logger.info(" masked_idx_list: {}".format(mask_idx_list))
-            #logger.info(" idx_list: {}".format(idx_list))
-            key_features_p3 = []
-            key_features_p4 = []
-            key_features_p5 = []
-            for idx in mask_idx_list:
-                
-                if idx >= 0 and idx < 6400:
-                    key_features_p3.append(reg_feature[idx].unsqueeze(0))
-                elif idx >= 6400 and idx < 8000:
-                    key_features_p4.append(reg_feature[idx].unsqueeze(0))
-                else:
-                    key_features_p5.append(reg_feature[idx].unsqueeze(0))            
- 
-            if len(key_features_p3) == 0:
-                "key_feature_p3 is empty"
-            if len(key_features_p4) == 0:
-                "key_feature_p4 is empty"
-            if len(key_features_p5) ==0:
-                "key_feature_p5 is empty"
             
-            key_features =[key_features_p3, key_features_p4, key_features_p5]
+            reg_feature = reg_features[i]
+            idx_list = pred_idx[i]
+            pred_result = pred_results[i]
+            # 1. vectorized mask calculation 
+            conf_scores = pred_result[:, 4] * pred_result[:, 5]
+            mask = conf_scores > self.m_conf
+
+            idx = idx_list.reshape(-1)
+            selected_feats = reg_feature[idx]
+            valid_feats = selected_feats[mask]
+            valid_idxs = idx_list[mask]
+
+            mask_p3 = (valid_idxs >= 0) & (valid_idxs < 6400)
+            mask_p4 = (valid_idxs >= 6400) & (valid_idxs < 8000)
+            mask_p5 = (valid_idxs >= 8000)
+            kf_p3 = list(valid_feats[mask_p3].split(1, dim=0))
+            kf_p4 = list(valid_feats[mask_p4].split(1, dim=0))
+            kf_p5 = list(valid_feats[mask_p5].split(1, dim=0))
+            key_features = [kf_p3, kf_p4, kf_p5]
             key_features_list.append(key_features)
         return key_features_list
 
     def select_level_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results):
-        key_features_p3 = []
-        key_features_p4 = []
-        key_features_p5 = []
-        for i in range(reg_features.shape[0]):
-            reg_feature = reg_features[i]
-            idx_list = pred_idx[i]         
-            pred_result = pred_results[i]
-            conf_score_list = pred_result[:, 4] * pred_result[:, 5]
-            mask_idx = torch.nonzero(conf_score_list > self.m_conf, as_tuple=False).squeeze()
-            if mask_idx.ndim == 0:
-                mask_idx = mask_idx.unsqueeze(0)
-            #logger.info("conf_score_list masked > 0.01: {}".format(mask_idx))
-            mask_idx_list = idx_list[mask_idx]
-            #logger.info(" masked_idx_list: {}".format(mask_idx_list))
-            #logger.info(" idx_list: {}".format(idx_list))
+        # 1. Flatten the inputs to handle batches and detections simultaneously
+        # reg_features: [Batch, N, Dim] -> [Batch * N, Dim]
+        # pred_idx: [Batch, N] -> [Batch * N]
+        # pred_results: [Batch, N, 6] -> [Batch * N, 6]
+        flat_reg = reg_features.reshape(-1, reg_features.size(-1))
+        flat_idx = torch.cat(pred_idx, dim=0)
+        flat_results = torch.cat(pred_results, dim=0)
+        
+        conf_scores = flat_results[:, 4] * flat_results[:, 5]
+        mask = conf_scores > self.m_conf
+        selected_reg = flat_reg[flat_idx]
+        valid_features = selected_reg[mask]
+        valid_indices = flat_idx[mask]
 
-            for idx in mask_idx_list:
-                if idx >= 0 and idx < 6400:
-                    key_features_p3.append(reg_feature[idx])
-                elif idx >= 6400 and idx < 8000:
-                    key_features_p4.append(reg_feature[idx])
-                else:
-                    key_features_p5.append(reg_feature[idx])
-        key_features_p3 = torch.stack(key_features_p3, dim=0) if key_features_p3 else torch.empty(0, 128)
-        key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128)
-        key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128)
+        mask_p3 = (valid_indices >= 0 ) & (valid_indices < 6400)
+        mask_p4 = (valid_indices >= 6400) & (valid_indices < 8000)
+        mask_p5 = (valid_indices >= 8000)
+        key_features_p3 = valid_features[mask_p3]
+        key_features_p4 = valid_features[mask_p4]
+        key_features_p5 = valid_features[mask_p5]
         return key_features_p3, key_features_p4, key_features_p5
 
     def get_losses(

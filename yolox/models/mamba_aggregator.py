@@ -77,8 +77,8 @@ class MambaAggregator(nn.Module):
             self.memory_bank_p5.update(x)
 
     def init_memory_bank(self, x, type):
-        logger.info("init_memory_bank")
-        logger.info("x.shape: {}".format(x.shape))
+        #logger.info("init_memory_bank")
+        #logger.info("x.shape: {}".format(x.shape))
         if type == 0:
             self.memory_bank_p3.init_memory(x)
         elif type == 1:

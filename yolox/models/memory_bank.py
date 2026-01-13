@@ -45,7 +45,7 @@ class MemoryBank(nn.Module):
 
         """
         #kssong
-        print(f"Bank Dim: {self.feat.shape[1]}, Input Feat Dim: {feat.shape[1]}")
+        #print(f"Bank Dim: {self.feat.shape[1]}, Input Feat Dim: {feat.shape[1]}")
         feat = feat.to('cuda', non_blocking=True)
         num_new = feat.size(0)
         if self.feat is None:
@@ -86,8 +86,8 @@ class MemoryBank(nn.Module):
             self.current_size += num_new            
         else:
             if self.updating_policy == "random":
-                replace_ids = torch.randomperm(self.current_size, device='cuda')[:num_new]
-                self.feat[replace_ids] = new_feat
+                replace_ids = torch.randperm(self.current_size, device='cuda')[:num_new]
+                self.feat[replace_ids] = new_feat.to(self.feat.dtype)
                 self.current_size = self.max_length
             else:
                 raise NotImplementedError("not implemented")
