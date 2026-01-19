@@ -370,6 +370,7 @@ class YOLOXHead(nn.Module):
         ):
             x = self.stems[k](x)
             reg_feat = reg_conv(x)
+            org_reg_feat = reg_feat
             cls_feat = cls_conv(x)
             cls_feat2 = cls_conv2(x)
             reg_feat_list.append(reg_feat)
@@ -423,7 +424,7 @@ class YOLOXHead(nn.Module):
                 #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")
 
             # this part should be the same as the original model
-            obj_output = self.obj_preds[k](reg_feat)
+            obj_output = self.obj_preds[k](org_reg_feat)
             reg_output = self.reg_preds[k](reg_feat)
             cls_output = self.cls_preds[k](cls_feat)
 
