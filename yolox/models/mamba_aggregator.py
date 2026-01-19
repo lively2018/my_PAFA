@@ -35,7 +35,6 @@ class MambaAggregator(nn.Module):
 
         # instance-level memory bank
         self.memory_bank_p3 = MemoryBank(**memory_cfg)
-        self.memory_bank_p4 = MemoryBank(**memory_cfg)
         self.memory_bank_p5 = MemoryBank(**memory_cfg)
 
 
@@ -43,14 +42,12 @@ class MambaAggregator(nn.Module):
         #kssong
         if type == 0:
             ref_x = self.memory_bank_p3.sample()
-        elif type == 1:
-            ref_x = self.memory_bank_p4.sample()
         elif type == 2:
             ref_x = self.memory_bank_p5.sample()
         #logger.info(f"ref_x shape: {ref_x.shape} x shape: {x.shape}")
         #print(f"After sampling: {gpu_mem_usage():.0f}")
         # fort he rest frames
-        if len(ref_x) != 0:
+        if ref_x is not None:
             aggregated_x = self.forward_with_ref_x(x, ref_x)
         else:
             #logger.info(f"ref_x shape: {ref_x.shape}")
@@ -62,8 +59,6 @@ class MambaAggregator(nn.Module):
         #logger.info("reset_memory_bank")
         if type == 0:
             self.memory_bank_p3.reset()
-        elif type == 1:
-            self.memory_bank_p4.reset()
         elif type == 2:
             self.memory_bank_p5.reset()
 
@@ -71,8 +66,6 @@ class MambaAggregator(nn.Module):
         #logger.info("update_memory_bank")
         if type == 0:
             self.memory_bank_p3.update(x)
-        elif type == 1:
-            self.memory_bank_p4.update(x)
         elif type == 2:
             self.memory_bank_p5.update(x)
 
@@ -81,8 +74,6 @@ class MambaAggregator(nn.Module):
         #logger.info("x.shape: {}".format(x.shape))
         if type == 0:
             self.memory_bank_p3.init_memory(x)
-        elif type == 1:
-            self.memory_bank_p4.init_memory(x)
         elif type == 2:
             self.memory_bank_p5.init_memory(x)
 
