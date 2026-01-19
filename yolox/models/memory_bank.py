@@ -59,7 +59,6 @@ class MemoryBank(nn.Module):
         else:
             new_feat = torch.cat([self.feat, feat], dim=0).detach().clone().to('cuda')
             del self.feat
-            torch.cuda.empty_cache()
             self.feat = new_feat
         #print(f"init_memory, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}")
 
@@ -80,6 +79,9 @@ class MemoryBank(nn.Module):
             sampled_ind = torch.randperm(len(self.feat), device=self.feat.device)[:self.key_length]
             #print(f"sample, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}")
             return self.feat[sampled_ind].detach().clone().to('cuda')
+        elif self.sampling_policy == 'fifo':
+            #print("sampling policy : fifo")
+            return self.feat[-self.key_length:].detach().clone().to('cuda')
         else:
             raise NotImplementedError
 
@@ -102,7 +104,10 @@ class MemoryBank(nn.Module):
             new_num = len(new_feat)
             reserved_ind = torch.randperm(len(self.feat), device=self.feat.device)[:-new_num]
             new_feat_combined = torch.cat([self.feat[reserved_ind], new_feat], dim=0).detach().clone()
-
+        elif self.updating_policy == "fifo":
+            print("updating policy : fifo")
+            combined = torch.cat([self.feat, new_feat], dim=0)
+            new_feat_combined = combined[-self.max_legnth:].detach().clone()
 
         else:
             raise NotImplementedError("not implemented")
@@ -111,9 +116,7 @@ class MemoryBank(nn.Module):
         del self.feat
         torch.cuda.empty_cache()
         self.feat = new_feat_combined
-
-        gc.collect()
-        torch.cuda.empty_cache()
+        
         #print(f"memory bank update, memory bank size: {len(self.feat)} gpu memory usage: {gpu_mem_usage():.0f}")
 
     def __len__(self):
