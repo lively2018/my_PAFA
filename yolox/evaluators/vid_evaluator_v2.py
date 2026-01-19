@@ -152,7 +152,226 @@ class VIDEvaluator:
         self.tmp_name_refined = './refined_pred.json'
         self.gt_ori = './gt_ori.json'
         self.gt_refined = './gt_refined.json'
+    def calculate_mean_iou(self, predictions, ground_truths):
+        """
+        Calcuate the mean IoU for all matched prediction/GP pairs.
+        
+        :param self: Description
+        :param predictions: Description
+        :param ground_truths: Description
+        """
+        if not predictions or not ground_truths:
+            return 0.0
+        
+        def compute_iou(boxA, boxB):
+            xA = max(boxA[0], boxB[0])
+            yA = max(boxA[1], boxB[1])
+            xB = min(boxA[0] + boxA[2], boxB[0] + boxB[2])
+            yB = min(boxA[1] + boxA[3], boxB[1] + boxB[3])
+            #logger.info(f"xA: {xA} yA: {yA} xB: {xB} yB: {yB}")
+            interArea = max(0, xB-xA) * max(0, yB - yA) 
+            boxAArea = boxA[2] * boxA[3]
+            boxBArea = boxB[2] * boxB[3]
+            #logger.info(f"interArea: {interArea}, boxAArea: {boxAArea}, boxBArea: {boxBArea}")
+            iou = interArea/float(boxAArea + boxBArea - interArea + 1e-6)
+            #logger.info(f"iou: {iou}")
+            return iou
+        
+        
+        gt_dict = {}
+        for gt in ground_truths:
+            img_id = gt['image_id']
+            #logger.info(f"img_id: {img_id}")
+            if img_id not in gt_dict:
+                gt_dict[img_id] = []
+            gt_dict[img_id].append(gt)
+        
+        total_iou = 0.0
+        match_count = 0
+        for pred in predictions:
+            img_id = pred['image_id']
+            #logger.info(f"img_id: {img_id}")
+            if img_id in gt_dict:
+                best_iou = 0
+                #logger.info(f"best_iou: {best_iou}")
+                for gt in gt_dict[img_id]:                    
+                    if pred['category_id'] == gt['category_id']:
+                        #logger.info(f"pred['category_id']: {pred['category_id']}")
+                        #logger.info(f"gt['category_id']: {gt['category_id']}")
+                        #logger.info(f"pred['bbox']: {pred['bbox']}")
+                        #logger.info(f"gt['bbox']: {gt['bbox']}")                        
+                        iou = compute_iou(pred['bbox'], gt['bbox'])
+                        #logger.info(f"iou: {iou}, best_iou: {best_iou}")                        
+                        best_iou = max(best_iou, iou)
+                if best_iou > 0:                    
+                    total_iou += best_iou
+                    match_count += 1
+                    #logger.info(f"total_iou: {total_iou}")
+                    #logger.info(f"mathc_iou: {match_count}")
+        return total_iou / match_count if match_count > 0  else 0.0
+    def calculate_all_prediction_iou(self, predictions, ground_truths):
+        """
+        Calcuate the mean IoU for all matched prediction/GP pairs.
+        
+        :param self: Description
+        :param predictions: Description
+        :param ground_truths: Description
+        """
+        if not predictions or not ground_truths:
+            return 0.0
+        
+        def compute_iou(boxA, boxB):
+            xA = max(boxA[0], boxB[0])
+            yA = max(boxA[1], boxB[1])
+            xB = min(boxA[0] + boxA[2], boxB[0] + boxB[2])
+            yB = min(boxA[1] + boxA[3], boxB[1] + boxB[3])
+            #logger.info(f"xA: {xA} yA: {yA} xB: {xB} yB: {yB}")
+            interArea = max(0, xB-xA) * max(0, yB - yA) 
+            boxAArea = boxA[2] * boxA[3]
+            boxBArea = boxB[2] * boxB[3]
+            #logger.info(f"interArea: {interArea}, boxAArea: {boxAArea}, boxBArea: {boxBArea}")
+            iou = interArea/float(boxAArea + boxBArea - interArea + 1e-6)
+            #logger.info(f"iou: {iou}")
+            return iou
+        
+        
+        gt_dict = {}
+        for gt in ground_truths:
+            img_id = gt['image_id']
+            #logger.info(f"img_id: {img_id}")
+            if img_id not in gt_dict:
+                gt_dict[img_id] = []
+            gt_dict[img_id].append(gt)
+        
+        total_all_iou = 0.0
+        all_pair_count = 0
+        total_correct_iou = 0.0
+        correct_pair_count = 0
+        total_incorrect_iou = 0.0
+        incorrect_pair_count = 0
+        high_score_total_iou = 0.0
+        high_score_pair_count = 0
+        for pred in predictions:
+            img_id = pred['image_id']
+            #logger.info(f"img_id: {img_id}")
+            if img_id in gt_dict:                
+                for gt in gt_dict[img_id]:
+                    #logger.info(f"pred['category_id']: {pred['category_id']}")
+                    #logger.info(f"gt['category_id']: {gt['category_id']}")
+                    #logger.info(f"pred['bbox']: {pred['bbox']}")
+                    #logger.info(f"gt['bbox']: {gt['bbox']}")
 
+                    all_iou = compute_iou(pred['bbox'], gt['bbox'])
+                    if all_iou > 0:
+                        total_all_iou += all_iou
+                        all_pair_count += 1
+                        if pred.get('score',0) > 0.25:
+                            high_score_total_iou += all_iou
+                            high_score_pair_count += 1
+
+                    if pred['category_id'] == gt['category_id']:
+                        correct_iou = compute_iou(pred['bbox'], gt['bbox'])
+                        #logger.info(f"iou: {iou}, best_iou: {best_iou}")                        
+                        if correct_iou > 0:
+                            total_correct_iou += correct_iou
+                            correct_pair_count += 1
+                    else:
+                        incorrect_iou = compute_iou(pred['bbox'], gt['bbox'])
+                        if incorrect_iou > 0:
+                            total_incorrect_iou += incorrect_iou
+                            incorrect_pair_count += 1
+
+        logger.info(f"total_all_iou: {total_all_iou:.4f}")
+        logger.info(f"all_pair_count: {all_pair_count}")
+        if all_pair_count > 0:
+            avg_total_all_iou = total_all_iou/all_pair_count
+        else:
+            avg_total_all_iou = 0.0
+        logger.info(f"avg_total_all_iou: {avg_total_all_iou:.4f}")
+        logger.info(f"total_all_iou: {total_correct_iou:.4f}")
+        logger.info(f"correct_pair_count: {correct_pair_count}")
+        if correct_pair_count > 0:
+            avg_total_correct_iou = total_correct_iou/correct_pair_count
+        else:
+            avg_total_correct_iou = 0.0
+        logger.info(f"avg_total_correct_iou: {avg_total_correct_iou:.4f}")
+        logger.info(f"total_incorrect_iou: {total_incorrect_iou:.4f}")
+        logger.info(f"incorrect_pair_count: {incorrect_pair_count}")
+        if incorrect_pair_count > 0:
+            avg_total_incorrect_iou = total_incorrect_iou/incorrect_pair_count
+        else:
+            avg_total_incorrect_iou = 0.0
+        logger.info(f"avg_total_incorrect_iou: {avg_total_incorrect_iou:.4f}")
+        logger.info(f"high_score_total_iou(0.25): {high_score_total_iou:.4f}")
+        logger.info(f"high_score_pair_count(0.25): {high_score_pair_count}")
+        if high_score_pair_count > 0:
+            avg_total_high_score_iou = high_score_total_iou/high_score_pair_count
+        else:
+            avg_total_high_score_iou = 0.0
+        logger.info(f"avg_total_incorrect_iou: {avg_total_high_score_iou:.4f}")
+        return 
+
+    def calculate_high_score_iou(self, predictions, ground_truths, score_threshold=0.25):
+        """
+        Calcuate the mean IoU for all matched prediction/GP pairs.
+        
+        :param self: Description
+        :param predictions: Description
+        :param ground_truths: Description
+        """
+        if not predictions or not ground_truths:
+            return 0.0
+        
+        def compute_iou(boxA, boxB):
+            xA = max(boxA[0], boxB[0])
+            yA = max(boxA[1], boxB[1])
+            xB = min(boxA[0] + boxA[2], boxB[0] + boxB[2])
+            yB = min(boxA[1] + boxA[3], boxB[1] + boxB[3])
+            #logger.info(f"xA: {xA} yA: {yA} xB: {xB} yB: {yB}")
+            interArea = max(0, xB-xA) * max(0, yB - yA) 
+            boxAArea = boxA[2] * boxA[3]
+            boxBArea = boxB[2] * boxB[3]
+            #logger.info(f"interArea: {interArea}, boxAArea: {boxAArea}, boxBArea: {boxBArea}")
+            iou = interArea/float(boxAArea + boxBArea - interArea + 1e-6)
+            #logger.info(f"iou: {iou}")
+            return iou
+        
+        
+        gt_dict = {}
+        for gt in ground_truths:
+            img_id = gt['image_id']
+            #logger.info(f"img_id: {img_id}")
+            if img_id not in gt_dict:
+                gt_dict[img_id] = []
+            gt_dict[img_id].append(gt)
+        
+        total_iou = 0.0
+        match_count = 0
+        for pred in predictions:
+            if pred.get('score', 0) < score_threshold:
+                continue
+            img_id = pred['image_id']
+            #logger.info(f"img_id: {img_id}")
+            if img_id in gt_dict:
+                best_iou = 0
+                #logger.info(f"best_iou: {best_iou}")
+                for gt in gt_dict[img_id]:                    
+                    if pred['category_id'] == gt['category_id']:
+                        #logger.info(f"pred['category_id']: {pred['category_id']}")
+                        #logger.info(f"gt['category_id']: {gt['category_id']}")
+                        #logger.info(f"pred['bbox']: {pred['bbox']}")
+                        #logger.info(f"gt['bbox']: {gt['bbox']}")                        
+                        iou = compute_iou(pred['bbox'], gt['bbox'])
+                        #logger.info(f"iou: {iou}, best_iou: {best_iou}")                        
+                        best_iou = max(best_iou, iou)
+                if best_iou > 0:                    
+                    total_iou += best_iou
+                    match_count += 1
+                    #logger.info(f"total_iou: {total_iou}")
+                    #logger.info(f"mathc_iou: {match_count}")
+        logger.info(f"total_iou: {total_iou}")
+        logger.info(f"match_count: {match_count}")
+        return total_iou / match_count if match_count > 0  else 0.0
     def evaluate(
             self,
             model,
@@ -237,6 +456,17 @@ class VIDEvaluator:
             #logger.info("temp_labels_list: {}".format(temp_label_list))
 
         self.vid_to_coco['annotations'].extend(labels_list)
+        #mean_iou = self.calculate_mean_iou(data_list, labels_list)
+        #logger.info(f"Avearage IoU of detections: {mean_iou:.4f}")
+        self.calculate_all_prediction_iou(data_list, labels_list)
+        #logger.info(f"Avearage IoU of detections(All IoU): {all_iou:.4f}")
+        #highscore_iou = self.calculate_high_score_iou(data_list, labels_list, 0.25)
+        #logger.info(f"Avearage IoU of detections(highscore 0.25): {highscore_iou:.4f}")
+        #highscore_iou = self.calculate_high_score_iou(data_list, labels_list, 0.50)
+        #logger.info(f"Avearage IoU of detections(highscore 0.50): {highscore_iou:.4f}")
+        #highscore_iou = self.calculate_high_score_iou(data_list, labels_list, 0.70)
+        #logger.info(f"Avearage IoU of detections(highscore 0.70): {highscore_iou:.4f}")
+
         #json.dump(self.vid_to_coco, open("gt_annotations.json", 'w'))
         statistics = torch.cuda.FloatTensor([inference_time, nms_time, n_samples])
         if distributed:
