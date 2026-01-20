@@ -121,7 +121,8 @@ class MemoryBank(nn.Module):
             return 0
         return len(self.feat)
 
-
+    def len(self):
+        return self.__len__()
     # def forward(self, x, x_support=None):
     #     # inference
     #     if x_support is None:
