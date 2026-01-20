@@ -34,7 +34,6 @@ class MemoryBank(nn.Module):
         #kssong
         if self.feat is not None:
             del self.feat  # Explicitly delete the tensor
-            torch.cuda.empty_cache()  # Free GPU memory
         self.feat = None
         #print(f"reset_memory")
 
@@ -59,7 +58,6 @@ class MemoryBank(nn.Module):
         else:
             new_feat = torch.cat([self.feat, feat], dim=0).detach().clone().to('cuda')
             del self.feat
-            torch.cuda.empty_cache()
             self.feat = new_feat
         #print(f"init_memory, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}")
 
@@ -109,11 +107,8 @@ class MemoryBank(nn.Module):
 
 
         del self.feat
-        torch.cuda.empty_cache()
         self.feat = new_feat_combined
 
-        gc.collect()
-        torch.cuda.empty_cache()
         #print(f"memory bank update, memory bank size: {len(self.feat)} gpu memory usage: {gpu_mem_usage():.0f}")
 
     def __len__(self):

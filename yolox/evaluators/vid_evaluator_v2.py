@@ -241,12 +241,14 @@ class VIDEvaluator:
         
         
         gt_dict = {}
-        for gt in ground_truths:
+        gt_hit_status = {}
+        for i, gt in enumerate(ground_truths):
             img_id = gt['image_id']
             #logger.info(f"img_id: {img_id}")
             if img_id not in gt_dict:
                 gt_dict[img_id] = []
-            gt_dict[img_id].append(gt)
+            gt_dict[img_id].append((i, gt))
+            gt_hit_status[i] = False
         
         total_all_iou = 0.0
         all_pair_count = 0
@@ -256,11 +258,13 @@ class VIDEvaluator:
         incorrect_pair_count = 0
         high_score_total_iou = 0.0
         high_score_pair_count = 0
+        background_fp_count = 0
         for pred in predictions:
             img_id = pred['image_id']
+            has_any_overlap = False
             #logger.info(f"img_id: {img_id}")
             if img_id in gt_dict:                
-                for gt in gt_dict[img_id]:
+                for gt_idx, gt in gt_dict[img_id]:
                     #logger.info(f"pred['category_id']: {pred['category_id']}")
                     #logger.info(f"gt['category_id']: {gt['category_id']}")
                     #logger.info(f"pred['bbox']: {pred['bbox']}")
@@ -268,6 +272,9 @@ class VIDEvaluator:
 
                     all_iou = compute_iou(pred['bbox'], gt['bbox'])
                     if all_iou > 0:
+                        has_any_overlap = True
+                        gt_hit_status[gt_idx] = True
+                        total_all_iou += all_iou
                         total_all_iou += all_iou
                         all_pair_count += 1
                         if pred.get('score',0) > 0.25:
@@ -275,16 +282,22 @@ class VIDEvaluator:
                             high_score_pair_count += 1
 
                     if pred['category_id'] == gt['category_id']:
-                        correct_iou = compute_iou(pred['bbox'], gt['bbox'])
+                        correct_iou = all_iou
                         #logger.info(f"iou: {iou}, best_iou: {best_iou}")                        
                         if correct_iou > 0:
                             total_correct_iou += correct_iou
                             correct_pair_count += 1
                     else:
-                        incorrect_iou = compute_iou(pred['bbox'], gt['bbox'])
+                        incorrect_iou = all_iou
                         if incorrect_iou > 0:
                             total_incorrect_iou += incorrect_iou
                             incorrect_pair_count += 1
+            if not has_any_overlap:
+                background_fp_count += 1
+        false_negative_count = 0
+        for hit in gt_hit_status.values():
+            if not hit:
+                false_negative_count +=1
 
         logger.info(f"total_all_iou: {total_all_iou:.4f}")
         logger.info(f"all_pair_count: {all_pair_count}")
@@ -294,14 +307,14 @@ class VIDEvaluator:
             avg_total_all_iou = 0.0
         logger.info(f"avg_total_all_iou: {avg_total_all_iou:.4f}")
         logger.info(f"total_all_iou: {total_correct_iou:.4f}")
-        logger.info(f"correct_pair_count: {correct_pair_count}")
+        logger.info(f"correct_pair_count(The same objects, True Positive): {correct_pair_count}")
         if correct_pair_count > 0:
             avg_total_correct_iou = total_correct_iou/correct_pair_count
         else:
             avg_total_correct_iou = 0.0
         logger.info(f"avg_total_correct_iou: {avg_total_correct_iou:.4f}")
         logger.info(f"total_incorrect_iou: {total_incorrect_iou:.4f}")
-        logger.info(f"incorrect_pair_count: {incorrect_pair_count}")
+        logger.info(f"incorrect_pair_count(Other objects, False Positive): {incorrect_pair_count}")
         if incorrect_pair_count > 0:
             avg_total_incorrect_iou = total_incorrect_iou/incorrect_pair_count
         else:
@@ -314,6 +327,9 @@ class VIDEvaluator:
         else:
             avg_total_high_score_iou = 0.0
         logger.info(f"avg_total_incorrect_iou: {avg_total_high_score_iou:.4f}")
+            
+        logger.info(f"background_fp_count(Ghost Detections, False Positive): {background_fp_count}")
+        logger.info(f"false_negative_count(Missing objects, False Negative): {false_negative_count}")
         return 
 
     def calculate_high_score_iou(self, predictions, ground_truths, score_threshold=0.25):
@@ -378,78 +394,79 @@ class VIDEvaluator:
         logger.info(f"match_count: {match_count}")
         return total_iou / match_count if match_count > 0  else 0.0
 
+    def generate_detection_confusion_matrix(self, predictions, ground_truths, num_classes, class_names=vid_classes):
+        import numpy as np
+        import pandas as pd
+        import matplotlib.pyplot as plt
+        import seaborn as sns
 
-    def generate_detection_confusion_matrix(self, preds, gts, num_classes, iou_thresh=0.5, class_names=None):
-        """
-        preds: [{'image_id': 1, 'category_id': 1, 'bbox': [x,y,w,h], 'score': 0.5}, ...]
-        gts: [{'image_id': 1, 'category_id': 1, 'bbox': [x,y,w,h]}, ...]
-        num_classes: 배경을 제외한 클래스 개수
-        """
-        # 행렬 크기: (num_classes + 1) x (num_classes + 1) -> 마지막 인덱스는 'Background'
-        matrix = np.zeros((num_classes + 1, num_classes + 1))
+        if not predictions or not ground_truths:
+            return 0.0
         
-        # 1. 이미지별로 데이터 그룹화
-        from collections import defaultdict
-        img_preds = defaultdict(list)
-        img_gts = defaultdict(list)
-        for p in preds: img_preds[p['image_id']].append(p)
-        for g in gts: img_gts[g['image_id']].append(g)
-
-        # IoU 계산 함수
         def compute_iou(boxA, boxB):
             xA, yA = max(boxA[0], boxB[0]), max(boxA[1], boxB[1])
-            xB, yB = min(boxA[0]+boxA[2], boxB[0]+boxB[2]), min(boxA[1]+boxA[3], boxB[1]+boxB[3])
-            inter = max(0, xB - xA) * max(0, yB - yA)
-            union = boxA[2]*boxA[3] + boxB[2]*boxB[3] - inter
-            return inter / (union + 1e-6)
-
-        # 2. 매칭 루프
-        for img_id in img_gts.keys():
-            current_gts = img_gts[img_id]
-            current_preds = img_preds.get(img_id, [])
+            xB, yB = min(boxA[0] + boxA[2], boxB[0] + boxB[2]), min(boxA[1] + boxA[3], boxB[1] + boxB[3])
+            interArea = max(0, xB - xA) * max(0, yB - yA) 
+            iou = interArea / float(boxA[2] * boxA[3] + boxB[2] * boxB[3] - interArea + 1e-6)
+            return iou
+        
+        # 1. Setup Matrix
+        C = num_classes
+        matrix = np.zeros((C + 1, C + 1))
+        names = list(class_names) + ["Background"]
+        
+        gt_dict = {}
+        for gt in ground_truths:
+            img_id = gt['image_id']
+            if img_id not in gt_dict: gt_dict[img_id] = []
+            gt_dict[img_id].append(gt)
+        
+        # 2. Process All Pairs
+        for pred in predictions:
+            img_id = pred['image_id']
+            pred_cls = pred['category_id']
+            has_any_overlap = False
             
-            matched_preds = set()
-            for gt in current_gts:
-                best_iou = -1
-                best_pred_idx = -1
-                
-                for j, pred in enumerate(current_preds):
-                    if j in matched_preds: continue
-                    iou = compute_iou(gt['bbox'], pred['bbox'])
-                    if iou > best_iou:
-                        best_iou = iou
-                        best_pred_idx = j
-                
-                # 클래스 인덱스 (0 ~ num_classes-1 가정, 배경은 num_classes)
+            if img_id in gt_dict:                
+                for gt in gt_dict[img_id]:
+                    gt_cls = gt['category_id']
+                    iou = compute_iou(pred['bbox'], gt['bbox'])
+                    if iou > 0:
+                        has_any_overlap = True
+                        matrix[gt_cls, pred_cls] += 1
+            
+            if not has_any_overlap:
+                matrix[C, pred_cls] += 1
+
+        # False Negatives
+        for img_id, img_gts in gt_dict.items():
+            img_preds = [p for p in predictions if p['image_id'] == img_id]
+            for gt in img_gts:
                 gt_cls = gt['category_id']
-                
-                if best_iou >= iou_thresh:
-                    pred_cls = current_preds[best_pred_idx]['category_id']
-                    matrix[gt_cls, pred_cls] += 1
-                    matched_preds.add(best_pred_idx)
-                else:
-                    # False Negative: 물체가 있는데 못 찾음 (배경으로 예측됨)
-                    matrix[gt_cls, num_classes] += 1
-            
-            # False Positives: 정답이 없는데 억지로 찾아낸 박스들
-            for j, pred in enumerate(current_preds):
-                if j not in matched_preds:
-                    pred_cls = pred['category_id']
-                    matrix[num_classes, pred_cls] += 1
+                if not any(compute_iou(gt['bbox'], p['bbox']) > 0 for p in img_preds):
+                    matrix[gt_cls, C] += 1
 
-        # 시각화
-        if class_names is None:
-            class_names = [str(i) for i in range(num_classes)] + ("Background",)
-        else:
-            class_names = class_names +("Background",)
+        # 3. Save Matrix to CSV for Bar Charts
+        # Rows = Ground Truth, Columns = Predictions
+        df = pd.DataFrame(matrix, index=names, columns=names)
+        df.to_csv('all_pairs_matrix.csv')
+        logger.info("Confusion matrix data saved to all_pairs_matrix.csv")
 
-        plt.figure(figsize=(12, 10))
-        sns.heatmap(matrix, annot=True, fmt='.0f', xticklabels=class_names, yticklabels=class_names, cmap='Blues')
+        # 4. Draw Confusion Matrix (No Numbers)
+        plt.figure(figsize=(20, 16))
+        sns.heatmap(matrix, 
+                    annot=False,  # <--- This removes the numbers from the cells
+                    cmap='Blues',
+                    xticklabels=names, 
+                    yticklabels=names)
+        
         plt.xlabel('Predicted Class')
         plt.ylabel('Ground Truth Class')
-        plt.title('Object Detection Confusion Matrix')
-        plt.savefig('confusion_matrix.png')
-        logger.info("Confusion Matrix saved as confusion_matrix.png")
+        plt.title('All-Pairs Confusion Matrix (Visual Density Map)')
+        plt.savefig('confusion_matrix_no_numbers.png')
+        logger.info("Saved visual confusion matrix to confusion_matrix_no_numbers.png")
+
+        return
 
     def evaluate(
             self,
