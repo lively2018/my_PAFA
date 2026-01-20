@@ -4,11 +4,17 @@ import torch.nn as nn
 from .memory_bank import MemoryBank
 from loguru import logger
 #kssong
-def gpu_mem_usage():
-    """
-    Compute the GPU memory usage for the current device (MB).
-    """
-    return torch.cuda.max_memory_allocated() / (1024 * 1024)
+import csv
+import os
+
+def log_stats_to_csv(filename, data):
+    # data format: [frame_idx, level_name, feature_count, gpu_mem_mb]
+    file_exists = os.path.isfile(filename)
+    with open(filename, 'a', newline='') as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(['frame_idx', 'level', 'count', 'gpu_mem_mb']) # Header
+        writer.writerow(data)
 
 class MambaAggregator(nn.Module):
     """Selsa aggregator module.
@@ -37,7 +43,7 @@ class MambaAggregator(nn.Module):
         self.memory_bank_p3 = MemoryBank(**memory_cfg)
         self.memory_bank_p4 = MemoryBank(**memory_cfg)
         self.memory_bank_p5 = MemoryBank(**memory_cfg)
-
+        self.count = 0
 
     def forward(self, x, ref_x, type):
         #kssong
@@ -60,31 +66,43 @@ class MambaAggregator(nn.Module):
 
     def reset_memory_bank(self, type):
         #logger.info("reset_memory_bank")
+        self.count += 1
         if type == 0:
             self.memory_bank_p3.reset()
+            log_stats_to_csv('memory_stats.csv', [self.count, 'P3', 0,  self.memory_bank_p3.len()])
         elif type == 1:
             self.memory_bank_p4.reset()
+            log_stats_to_csv('memory_stats.csv', [self.count, 'P4', 0,  self.memory_bank_p4.len()])
         elif type == 2:
             self.memory_bank_p5.reset()
+            log_stats_to_csv('memory_stats.csv', [self.count, 'P5', 0,  self.memory_bank_p5.len()])
 
     def update_memory_bank(self, x, type):
         #logger.info("update_memory_bank")
+        self.count += 1
         if type == 0:
             self.memory_bank_p3.update(x)
+            log_stats_to_csv('memory_stats.csv', [self.count, 'P3', x.shape[0], self.memory_bank_p3.len()])
         elif type == 1:
             self.memory_bank_p4.update(x)
+            log_stats_to_csv('memory_stats.csv', [self.count, 'P4', x.shape[0], self.memory_bank_p4.len()])
         elif type == 2:
             self.memory_bank_p5.update(x)
+            log_stats_to_csv('memory_stats.csv', [self.count, 'P5', x.shape[0], self.memory_bank_p5.len()])
 
     def init_memory_bank(self, x, type):
         #logger.info("init_memory_bank")
         #logger.info("x.shape: {}".format(x.shape))
+        self.count += 1
         if type == 0:
             self.memory_bank_p3.init_memory(x)
+            log_stats_to_csv('memory_stats.csv', [self.count, 'P3', x.shape[0], self.memory_bank_p3.len()])
         elif type == 1:
             self.memory_bank_p4.init_memory(x)
+            log_stats_to_csv('memory_stats.csv', [self.count, 'P4', x.shape[0], self.memory_bank_p4.len()])
         elif type == 2:
             self.memory_bank_p5.init_memory(x)
+            log_stats_to_csv('memory_stats.csv', [self.count, 'P5', x.shape[0], self.memory_bank_p5.len()])
 
     def forward_with_ref_x(self, x, ref_x):
         """Aggregate the features `ref_x` of reference proposals.
