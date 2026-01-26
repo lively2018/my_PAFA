@@ -16,9 +16,6 @@ import torch
 import pycocotools.coco
 import os
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from sklearn.metrics import confusion_matrix
 
 from yolox.utils import (
     gather,
@@ -378,79 +375,6 @@ class VIDEvaluator:
         logger.info(f"match_count: {match_count}")
         return total_iou / match_count if match_count > 0  else 0.0
 
-
-    def generate_detection_confusion_matrix(self, preds, gts, num_classes, iou_thresh=0.5, class_names=None):
-        """
-        preds: [{'image_id': 1, 'category_id': 1, 'bbox': [x,y,w,h], 'score': 0.5}, ...]
-        gts: [{'image_id': 1, 'category_id': 1, 'bbox': [x,y,w,h]}, ...]
-        num_classes: 배경을 제외한 클래스 개수
-        """
-        # 행렬 크기: (num_classes + 1) x (num_classes + 1) -> 마지막 인덱스는 'Background'
-        matrix = np.zeros((num_classes + 1, num_classes + 1))
-        
-        # 1. 이미지별로 데이터 그룹화
-        from collections import defaultdict
-        img_preds = defaultdict(list)
-        img_gts = defaultdict(list)
-        for p in preds: img_preds[p['image_id']].append(p)
-        for g in gts: img_gts[g['image_id']].append(g)
-
-        # IoU 계산 함수
-        def compute_iou(boxA, boxB):
-            xA, yA = max(boxA[0], boxB[0]), max(boxA[1], boxB[1])
-            xB, yB = min(boxA[0]+boxA[2], boxB[0]+boxB[2]), min(boxA[1]+boxA[3], boxB[1]+boxB[3])
-            inter = max(0, xB - xA) * max(0, yB - yA)
-            union = boxA[2]*boxA[3] + boxB[2]*boxB[3] - inter
-            return inter / (union + 1e-6)
-
-        # 2. 매칭 루프
-        for img_id in img_gts.keys():
-            current_gts = img_gts[img_id]
-            current_preds = img_preds.get(img_id, [])
-            
-            matched_preds = set()
-            for gt in current_gts:
-                best_iou = -1
-                best_pred_idx = -1
-                
-                for j, pred in enumerate(current_preds):
-                    if j in matched_preds: continue
-                    iou = compute_iou(gt['bbox'], pred['bbox'])
-                    if iou > best_iou:
-                        best_iou = iou
-                        best_pred_idx = j
-                
-                # 클래스 인덱스 (0 ~ num_classes-1 가정, 배경은 num_classes)
-                gt_cls = gt['category_id']
-                
-                if best_iou >= iou_thresh:
-                    pred_cls = current_preds[best_pred_idx]['category_id']
-                    matrix[gt_cls, pred_cls] += 1
-                    matched_preds.add(best_pred_idx)
-                else:
-                    # False Negative: 물체가 있는데 못 찾음 (배경으로 예측됨)
-                    matrix[gt_cls, num_classes] += 1
-            
-            # False Positives: 정답이 없는데 억지로 찾아낸 박스들
-            for j, pred in enumerate(current_preds):
-                if j not in matched_preds:
-                    pred_cls = pred['category_id']
-                    matrix[num_classes, pred_cls] += 1
-
-        # 시각화
-        if class_names is None:
-            class_names = [str(i) for i in range(num_classes)] + ("Background",)
-        else:
-            class_names = class_names +("Background",)
-
-        plt.figure(figsize=(12, 10))
-        sns.heatmap(matrix, annot=True, fmt='.0f', xticklabels=class_names, yticklabels=class_names, cmap='Blues')
-        plt.xlabel('Predicted Class')
-        plt.ylabel('Ground Truth Class')
-        plt.title('Object Detection Confusion Matrix')
-        plt.savefig('confusion_matrix.png')
-        logger.info("Confusion Matrix saved as confusion_matrix.png")
-
     def evaluate(
             self,
             model,
@@ -537,8 +461,7 @@ class VIDEvaluator:
         self.vid_to_coco['annotations'].extend(labels_list)
         #mean_iou = self.calculate_mean_iou(data_list, labels_list)
         #logger.info(f"Avearage IoU of detections: {mean_iou:.4f}")
-        self.calculate_all_prediction_iou(data_list, labels_list)
-        self.generate_detection_confusion_matrix(data_list, labels_list, 30, class_names=vid_classes)
+        self.calculate_all_prediction_iou(data_list, labels_list) 
         #logger.info(f"Avearage IoU of detections(All IoU): {all_iou:.4f}")
         #highscore_iou = self.calculate_high_score_iou(data_list, labels_list, 0.25)
         #logger.info(f"Avearage IoU of detections(highscore 0.25): {highscore_iou:.4f}")

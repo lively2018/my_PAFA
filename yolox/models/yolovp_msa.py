@@ -371,9 +371,7 @@ class YOLOXHead(nn.Module):
             x = self.stems[k](x)
             reg_feat = reg_conv(x)
             cls_feat = cls_conv(x)
-            cls_feat2 = cls_conv2(x)            
-            logger.info(f"reg_feat[0].shape: {reg_feat[0].shape} ")
-            logger.info(f"cls_feat[0].shape: {cls_feat[0].shape} ")            
+            cls_feat2 = cls_conv2(x) 
             reg_feat_list.append(reg_feat)
             cls_feat_list.append(cls_feat)
             cls_feat2_list.append(cls_feat2)
@@ -428,10 +426,6 @@ class YOLOXHead(nn.Module):
             obj_output = self.obj_preds[k](reg_feat)
             reg_output = self.reg_preds[k](reg_feat)
             cls_output = self.cls_preds[k](cls_feat)
-            logger.info(f"obj_output[0].shape: {obj_output[0].shape} ")
-            logger.info(f"reg_output[0].shape: {reg_output[0].shape} ")
-            logger.info(f"cls_output[0].shape: {cls_output[0].shape} ")
-
             if self.training:
                 output = torch.cat([reg_output, obj_output, cls_output], 1)
                 output_decode = torch.cat(
@@ -548,8 +542,6 @@ class YOLOXHead(nn.Module):
                 self.aggregator.update_memory_bank(key_features_p3, 0)
                 self.aggregator.update_memory_bank(key_features_p4, 1)
                 self.aggregator.update_memory_bank(key_features_p5, 2)
-        logger.info(f"cls_feat_flatten.shape: {cls_feat_flatten.shape} ")
-        logger.info(f"reg_feat_flatten.shape: {reg_feat_flatten.shape} ")
         
         (features_cls, features_reg, cls_scores,
          fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
@@ -566,11 +558,7 @@ class YOLOXHead(nn.Module):
 
         features_reg = features_reg.unsqueeze(0)
         features_cls = features_cls.unsqueeze(0)  # [1,features,channels]
-
-
-        logger.info(f"features_reg.shape: {features_reg.shape} ")
-        logger.info(f"features_cls.shape: {features_cls.shape} ")
-        
+    
         if not self.training:
             cls_scores = cls_scores.to(cls_feat_flatten.dtype)
             fg_scores = fg_scores.to(cls_feat_flatten.dtype)
@@ -581,13 +569,9 @@ class YOLOXHead(nn.Module):
             if self.use_score:
                 features_cls,fg_scores = self.trans(features_cls, features_reg, cls_scores, fg_scores, sim_thresh=self.sim_thresh,
                                           ave=self.ave, use_mask=self.use_mask, **kwargs)
-                logger.info(f"features_reg.shape: {features_reg.shape} ")
-                logger.info(f"features_cls.shape: {features_cls.shape} ")
             else:
                 features_cls = self.trans(features_cls, features_reg, None, None,
                                           sim_thresh=self.sim_thresh, ave=self.ave, **kwargs)
-                logger.info(f"features_reg.shape: {features_reg.shape} ")
-                logger.info(f"features_cls.shape: {features_cls.shape} ")
         if self.lmode:
             if self.both_mode:
                 features_cls = self.g2l(features_cls).unsqueeze(0)
@@ -600,26 +584,19 @@ class YOLOXHead(nn.Module):
                                                               features_reg[:, :lframe * self.Afternum],
                                                               locs[:lframe * self.Afternum].view(-1, self.Afternum, 4),
                                                               **more_args)
-            logger.info(f"features_reg.shape: {features_reg.shape} ")
-            logger.info(f"features_cls.shape: {features_cls.shape} ")
             if self.kwargs.get('globalBlocks',0):
                 kwargs = self.kwargs
                 kwargs.update({'lframe': lframe, 'gframe': gframe, 'afternum': self.Afternum})
 
                 features_cls,fg_scores = self.GlobalAggregation(features_cls, features_reg, cls_scores, fg_scores, sim_thresh=self.sim_thresh,
                                           ave=self.ave, use_mask=self.use_mask, **kwargs)
-                logger.info(f"features_reg.shape: {features_reg.shape} ")
-                logger.info(f"features_cls.shape: {features_cls.shape} ")
             if self.both_mode:
                 outputs = [o[:lframe] for o in outputs]
                 pred_idx = pred_idx[:lframe]
                 pred_result = pred_result[:lframe]
-        logger.info(f"features_reg.shape: {features_reg.shape} ")
-        logger.info(f"features_cls.shape: {features_cls.shape} ")
 
         fc_output = self.linear_pred(features_cls)
         fc_output = torch.reshape(fc_output, [-1, self.Afternum, self.num_classes + 1])[:, :, :-1] # [b,afternum,cls]
-        logger.info(f"fc_output[0].shape: {fc_output[0].shape} ")
         if self.kwargs.get('reconf', False):
 
             conf_output = self.conf_pred(features_reg)
@@ -651,7 +628,6 @@ class YOLOXHead(nn.Module):
                                              conf_output = conf_output,
                                              nms_thre=nms_thresh,
                                              )
-            logger.info(f"result[0].shape: {result[0].shape} ")
             return result, result_ori  # result
 
     def get_output_and_grid(self, output, k, stride, dtype):
