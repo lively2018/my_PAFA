@@ -440,11 +440,11 @@ class YOLOXHead(nn.Module):
                                 channel, height, width = cls_one.shape
                                 cls_one = cls_one.reshape(-1, channel)
                                 #logger.info("reset_memory_bank")
-                                self.aggregator.reset_memory_bank(k+2)
+                                self.aggregator.reset_memory_bank(k+3)
                                 #logger.info("init_memory_bank")
-                                self.aggregator.init_memory_bank(ref_feats, k+2)
+                                self.aggregator.init_memory_bank(ref_feats, k+3)
                                 #logger.info("before aggreagtaion")
-                                cls_agg_feat = cls_one + self.aggregator(cls_one, None, k+2)
+                                cls_agg_feat = cls_one + self.aggregator(cls_one, None, k+3)
                                 #logger.info("after aggreagtaion")
                                 cls_agg_feat = self.inplace_false_relu(cls_agg_feat)
                                 cls_agg_feat = cls_agg_feat.reshape(channel, height, width)
@@ -456,7 +456,7 @@ class YOLOXHead(nn.Module):
                             channel, height, width = cls_one.shape
                             cls_one = cls_one.reshape(-1, channel)
                             #logger.info(f"reg_one.shape: {reg_one.shape}")
-                            cls_agg_feat = cls_one + self.aggregator(cls_one, None, k+2)
+                            cls_agg_feat = cls_one + self.aggregator(cls_one, None, k+3)
                             cls_agg_feat = self.inplace_false_relu(cls_agg_feat)
                             #logger.info(f"agg_feat.shape: {agg_feat.shape}")
                             cls_agg_feat = cls_agg_feat.reshape(channel, height, width)
