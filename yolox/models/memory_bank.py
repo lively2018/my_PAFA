@@ -61,7 +61,6 @@ class MemoryBank(nn.Module):
             del self.feat
             torch.cuda.empty_cache()
             self.feat = new_feat
-        #print(f"init_memory, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}")
 
     def sample(self):
         #kssong
@@ -73,12 +72,12 @@ class MemoryBank(nn.Module):
         #    return self.feat
         feat_length = len(self.feat)
         if feat_length < self.key_length:
-            #print(f"sample, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}")
+            #print(f"sample, memory bank size: {len(self.feat)}")
             return self.feat.detach().clone().to('cuda')
 
         if self.sampling_policy == 'random':
             sampled_ind = torch.randperm(len(self.feat), device=self.feat.device)[:self.key_length]
-            #print(f"sample, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}")
+            #print(f"sample, memory bank size: {len(self.feat)}")
             return self.feat[sampled_ind].detach().clone().to('cuda')
         else:
             raise NotImplementedError
