@@ -559,10 +559,6 @@ class YOLOXHead(nn.Module):
 
         features_reg = features_reg.unsqueeze(0)
         features_cls = features_cls.unsqueeze(0)  # [1,features,channels]
-
-
-        logger.info(f"features_reg.shape: {features_reg.shape} ")
-        logger.info(f"features_cls.shape: {features_cls.shape} ")
         
         if not self.training:
             cls_scores = cls_scores.to(cls_feat_flatten.dtype)
