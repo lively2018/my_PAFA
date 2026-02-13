@@ -476,6 +476,10 @@ class Exp(BaseExp):
 
     # rewrite evaluation func
     def get_evaluator(self, val_loader):
+        import json
+        with open('vid_motion_metadata.json','r') as f:
+            motion_map = json.load(f)
+            
         from yolox.evaluators.vid_evaluator_v2 import VIDEvaluator
 
         # val_loader = self.get_eval_loader(batch_size, is_distributed, testdev, legacy)
@@ -488,9 +492,9 @@ class Exp(BaseExp):
             lframe=self.lframe_val,
             gframe=self.gframe_val,
             first_only = False,
+            motion_metadata=motion_map
         )
         return evaluator
-
     def get_trainer(self, args):
         from yolox.core import Trainer
         trainer = Trainer(self, args)
