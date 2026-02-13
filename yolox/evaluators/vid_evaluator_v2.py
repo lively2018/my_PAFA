@@ -241,12 +241,14 @@ class VIDEvaluator:
         
         
         gt_dict = {}
-        for gt in ground_truths:
+        gt_hit_status = {}
+        for i, gt in enumerate(ground_truths):
             img_id = gt['image_id']
             #logger.info(f"img_id: {img_id}")
             if img_id not in gt_dict:
                 gt_dict[img_id] = []
-            gt_dict[img_id].append(gt)
+            gt_dict[img_id].append((i, gt))
+            gt_hit_status[i] = False
         
         total_all_iou = 0.0
         all_pair_count = 0
@@ -256,11 +258,13 @@ class VIDEvaluator:
         incorrect_pair_count = 0
         high_score_total_iou = 0.0
         high_score_pair_count = 0
+        background_fp_count = 0
         for pred in predictions:
             img_id = pred['image_id']
+            has_any_overlap = False
             #logger.info(f"img_id: {img_id}")
             if img_id in gt_dict:                
-                for gt in gt_dict[img_id]:
+                for gt_idx, gt in gt_dict[img_id]:
                     #logger.info(f"pred['category_id']: {pred['category_id']}")
                     #logger.info(f"gt['category_id']: {gt['category_id']}")
                     #logger.info(f"pred['bbox']: {pred['bbox']}")
@@ -268,6 +272,8 @@ class VIDEvaluator:
 
                     all_iou = compute_iou(pred['bbox'], gt['bbox'])
                     if all_iou > 0:
+                        has_any_overlap = True
+                        gt_hit_status[gt_idx] = True
                         total_all_iou += all_iou
                         all_pair_count += 1
                         if pred.get('score',0) > 0.25:
@@ -275,16 +281,22 @@ class VIDEvaluator:
                             high_score_pair_count += 1
 
                     if pred['category_id'] == gt['category_id']:
-                        correct_iou = compute_iou(pred['bbox'], gt['bbox'])
+                        correct_iou = all_iou
                         #logger.info(f"iou: {iou}, best_iou: {best_iou}")                        
                         if correct_iou > 0:
                             total_correct_iou += correct_iou
                             correct_pair_count += 1
                     else:
-                        incorrect_iou = compute_iou(pred['bbox'], gt['bbox'])
+                        incorrect_iou = all_iou
                         if incorrect_iou > 0:
                             total_incorrect_iou += incorrect_iou
                             incorrect_pair_count += 1
+            if not has_any_overlap:
+                background_fp_count += 1
+        false_negative_count = 0
+        for hit in gt_hit_status.values():
+            if not hit:
+                false_negative_count +=1
 
         logger.info(f"total_all_iou: {total_all_iou:.4f}")
         logger.info(f"all_pair_count: {all_pair_count}")
@@ -294,14 +306,14 @@ class VIDEvaluator:
             avg_total_all_iou = 0.0
         logger.info(f"avg_total_all_iou: {avg_total_all_iou:.4f}")
         logger.info(f"total_all_iou: {total_correct_iou:.4f}")
-        logger.info(f"correct_pair_count: {correct_pair_count}")
+        logger.info(f"correct_pair_count(The same objects, True Positive): {correct_pair_count}")
         if correct_pair_count > 0:
             avg_total_correct_iou = total_correct_iou/correct_pair_count
         else:
             avg_total_correct_iou = 0.0
         logger.info(f"avg_total_correct_iou: {avg_total_correct_iou:.4f}")
         logger.info(f"total_incorrect_iou: {total_incorrect_iou:.4f}")
-        logger.info(f"incorrect_pair_count: {incorrect_pair_count}")
+        logger.info(f"incorrect_pair_count(Other objects, False Positive): {incorrect_pair_count}")
         if incorrect_pair_count > 0:
             avg_total_incorrect_iou = total_incorrect_iou/incorrect_pair_count
         else:
@@ -314,6 +326,9 @@ class VIDEvaluator:
         else:
             avg_total_high_score_iou = 0.0
         logger.info(f"avg_total_incorrect_iou: {avg_total_high_score_iou:.4f}")
+            
+        logger.info(f"background_fp_count(Ghost Detections, False Positive): {background_fp_count}")
+        logger.info(f"false_negative_count(Missing objects, False Negative): {false_negative_count}")
         return 
 
     def calculate_high_score_iou(self, predictions, ground_truths, score_threshold=0.25):
