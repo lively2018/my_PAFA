@@ -11,7 +11,7 @@ import torch.nn as nn
 from yolox.data.datasets import vid
 from yolox.exp.base_exp import BaseExp
 from yolox.data.data_augment import Vid_Val_Transform
-
+import json
 
 class Exp(BaseExp):
     def __init__(self):
@@ -214,6 +214,8 @@ class Exp(BaseExp):
         # nms threshold
         self.nmsthre = 0.5
         self.m_conf = 0
+        # path to motion blur metadata json for per-group mAP evaluation
+        self.blur_metadata_path = None
     
     def get_model(self):        
         # rewrite get model func from yolox
@@ -477,7 +479,12 @@ class Exp(BaseExp):
     # rewrite evaluation func
     def get_evaluator(self, val_loader):
         from yolox.evaluators.vid_evaluator_v2 import VIDEvaluator
-
+        blur_map = {}
+        if self.blur_metadata_path and os.path.exists(self.blur_metadata_path):
+            with open(self.blur_metadata_path, 'r') as f:
+                metadata = json.load(f)
+            blur_map = {entry['file_name']: entry['degradation_group'] for entry in metadata}
+            
         # val_loader = self.get_eval_loader(batch_size, is_distributed, testdev, legacy)
         evaluator = VIDEvaluator(
             dataloader=val_loader,
@@ -488,6 +495,7 @@ class Exp(BaseExp):
             lframe=self.lframe_val,
             gframe=self.gframe_val,
             first_only = False,
+            blur_map=blur_map
         )
         return evaluator
 
