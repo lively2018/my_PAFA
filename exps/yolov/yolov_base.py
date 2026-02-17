@@ -215,9 +215,9 @@ class Exp(BaseExp):
         self.nmsthre = 0.5
         self.m_conf = 0
         # path to motion blur metadata json for per-group mAP evaluation
-        self.blur_metadata_path = None
-    
-    def get_model(self):        
+        self.blur_metadata_path = "./motion_blur_metadata.json"
+
+    def get_model(self):
         # rewrite get model func from yolox
         if self.backbone_name == 'MCSP':
             in_channels = [256, 512, 1024]
@@ -272,8 +272,8 @@ class Exp(BaseExp):
         else:
             raise NotImplementedError('backbone not support')
         from yolox.models.yolovp_msa import YOLOXHead
-        from yolox.models.myolox import YOLOX        
-        
+        from yolox.models.myolox import YOLOX
+
         def init_yolo(M):
             for m in M.modules():
                 if isinstance(m, nn.BatchNorm2d):
@@ -350,7 +350,7 @@ class Exp(BaseExp):
                                      flip_prob=self.flip_prob,
                                      hsv_prob=self.hsv_prob),
                                 lframe=self.lframe,  # batch_size,
-                                gframe=self.gframe,                               
+                                gframe=self.gframe,
                                 dataset_pth=self.data_dir,
                                 mode=self.mode,
                                 tseq=self.tseq,
@@ -395,7 +395,7 @@ class Exp(BaseExp):
             tensor[1] = size[1]
 
         if is_distributed:
-            #kssong            
+            #kssong
             dist.barrier(device_ids=[torch.cuda.current_device()])
             #dist.barrier()
             dist.broadcast(tensor, 0)
@@ -484,7 +484,7 @@ class Exp(BaseExp):
             with open(self.blur_metadata_path, 'r') as f:
                 metadata = json.load(f)
             blur_map = {entry['file_name']: entry['degradation_group'] for entry in metadata}
-            
+
         # val_loader = self.get_eval_loader(batch_size, is_distributed, testdev, legacy)
         evaluator = VIDEvaluator(
             dataloader=val_loader,
