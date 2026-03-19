@@ -86,6 +86,13 @@ class YOLOXHead(nn.Module):
         self.ave = ave
         self.use_mask = use_mask
 
+        # Saved per-level detection info for selected features.
+        # Shape: [N, 6+num_classes] — columns: [x1, y1, x2, y2, obj_score, cls_score, class_pred x num_classes].
+        # Populated during inference by select_level_key_feature_in_reg_feature().
+        self._ref_pred_info_p3 = None
+        self._ref_pred_info_p4 = None
+        self._ref_pred_info_p5 = None
+
         if gmode:
             self.trans = MSA_yolov(dim=self.width, out_dim=4 * self.width, num_heads=heads, attn_drop=drop)
 
@@ -531,14 +538,28 @@ class YOLOXHead(nn.Module):
                 self.aggregator.reset_memory_bank(1)
                 self.aggregator.reset_memory_bank(2)
                 #Generate reference features from 16 batch files
-                ref_feature_p3, ref_feature_p4, ref_feature_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+                ref_feature_p3, ref_feature_p4, ref_feature_p5, \
+                    ref_pred_info_p3, ref_pred_info_p4, ref_pred_info_p5 = \
+                    self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+                # Save bboxes/obj_score/cls_score for each level's reference features
+                # Shape: [N, 6+num_classes] — columns: [x1, y1, x2, y2, obj_score, cls_score, class_pred x num_classes]
+                self._ref_pred_info_p3 = ref_pred_info_p3
+                self._ref_pred_info_p4 = ref_pred_info_p4
+                self._ref_pred_info_p5 = ref_pred_info_p5
                 # Initialize all level memory banks
                 self.aggregator.init_memory_bank(ref_feature_p3, 0)
                 self.aggregator.init_memory_bank(ref_feature_p4, 1)
                 self.aggregator.init_memory_bank(ref_feature_p5, 2)
             else:
                 #Generate key features from 16 batch files
-                key_features_p3, key_features_p4, key_features_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+                key_features_p3, key_features_p4, key_features_p5, \
+                    key_pred_info_p3, key_pred_info_p4, key_pred_info_p5 = \
+                    self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+                # Save bboxes/obj_score/cls_score for each level's key features
+                # Shape: [N, 6+num_classes] — columns: [x1, y1, x2, y2, obj_score, cls_score, class_pred x num_classes]
+                self._ref_pred_info_p3 = key_pred_info_p3
+                self._ref_pred_info_p4 = key_pred_info_p4
+                self._ref_pred_info_p5 = key_pred_info_p5
                 # Update all level memory banks
                 self.aggregator.update_memory_bank(key_features_p3, 0)
                 self.aggregator.update_memory_bank(key_features_p4, 1)
@@ -735,9 +756,12 @@ class YOLOXHead(nn.Module):
         key_features_p3 = []
         key_features_p4 = []
         key_features_p5 = []
+        pred_info_p3 = []  # [x1, y1, x2, y2, obj_score, cls_score]
+        pred_info_p4 = []
+        pred_info_p5 = []
         for i in range(reg_features.shape[0]):
             reg_feature = reg_features[i]
-            idx_list = pred_idx[i]         
+            idx_list = pred_idx[i]
             pred_result = pred_results[i]
             conf_score_list = pred_result[:, 4] * pred_result[:, 5]
             mask_idx = torch.nonzero(conf_score_list > self.m_conf, as_tuple=False).squeeze()
@@ -748,17 +772,25 @@ class YOLOXHead(nn.Module):
             #logger.info(" masked_idx_list: {}".format(mask_idx_list))
             #logger.info(" idx_list: {}".format(idx_list))
 
-            for idx in mask_idx_list:
+            for j, idx in enumerate(mask_idx_list):
+                det = pred_result[mask_idx[j]]
+                info = torch.cat([det[[0, 1, 2, 3, 4, 5]], det[7: 7 + self.num_classes]])  # x1, y1, x2, y2, obj_score, cls_score, class_pred[num_classes]
                 if idx >= 0 and idx < 6400:
                     key_features_p3.append(reg_feature[idx])
+                    pred_info_p3.append(info)
                 elif idx >= 6400 and idx < 8000:
                     key_features_p4.append(reg_feature[idx])
+                    pred_info_p4.append(info)
                 else:
                     key_features_p5.append(reg_feature[idx])
+                    pred_info_p5.append(info)
         key_features_p3 = torch.stack(key_features_p3, dim=0) if key_features_p3 else torch.empty(0, 128)
         key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128)
         key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128)
-        return key_features_p3, key_features_p4, key_features_p5
+        pred_info_p3 = torch.stack(pred_info_p3, dim=0) if pred_info_p3 else torch.empty(0, 6 + self.num_classes)
+        pred_info_p4 = torch.stack(pred_info_p4, dim=0) if pred_info_p4 else torch.empty(0, 6 + self.num_classes)
+        pred_info_p5 = torch.stack(pred_info_p5, dim=0) if pred_info_p5 else torch.empty(0, 6 + self.num_classes)
+        return key_features_p3, key_features_p4, key_features_p5, pred_info_p3, pred_info_p4, pred_info_p5
 
     def get_losses(
             self,
