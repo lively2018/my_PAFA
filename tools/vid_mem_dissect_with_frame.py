@@ -296,7 +296,7 @@ def read_updated_feature_info_list(args,check_batch_set, check_batch_item):
                      class_label = int(np.argmax(class_pred))
                      conf_score = cls_score * obj_score
                      class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
-                     logger.info(f"    p3 -{i}th batch_set: {p3[0]}, batch_item: {p3[1]}, bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
+                     logger.info(f"    p3 -{i}th batch_set: {batch_set}, batch_item: {batch_item}, bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                                  obj_score: {obj_score:.3f}, \
                                  cls_score: {cls_score:.3f}, \
                                  conf_score: {conf_score:.3f}, \
@@ -312,7 +312,7 @@ def read_updated_feature_info_list(args,check_batch_set, check_batch_item):
                      class_label = int(np.argmax(class_pred))
                      conf_score = cls_score * obj_score
                      class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
-                     logger.info(f"    p4 -{i}th batch_set: {p4[0]}, batch_item: {p4[1]}, bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
+                     logger.info(f"    p4 -{i}th batch_set: {batch_set}, batch_item: {batch_item}, bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                                  obj_score: {obj_score:.3f}, \
                                  cls_score: {cls_score:.3f}, \
                                  conf_score: {conf_score:.3f}, \
@@ -328,7 +328,7 @@ def read_updated_feature_info_list(args,check_batch_set, check_batch_item):
                      class_label = int(np.argmax(class_pred))
                      conf_score = cls_score * obj_score
                      class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
-                     logger.info(f"    p5 -{i}th batch_set: {p5[0]}, batch_item: {p5[1]}, bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
+                     logger.info(f"    p5 -{i}th batch_set: {batch_set}, batch_item: {batch_item}, bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                                  obj_score: {obj_score:.3f}, \
                                  cls_score: {cls_score:.3f}, \
                                  conf_score: {conf_score:.3f}, \
