@@ -3,6 +3,7 @@
 # Copyright (c) Megvii, Inc. and its affiliates.
 
 import argparse
+from email import parser
 import os
 import time
 from loguru import logger
@@ -23,6 +24,7 @@ import random
 import json
 import REPP
 import numpy as np
+import pickle
 from collections import OrderedDict
 
 IMAGE_EXT = [".jpg", ".jpeg", ".webp", ".bmp", ".png",".JPEG"]
@@ -62,7 +64,7 @@ def make_parser():
     )
     parser.add_argument("--conf", default=0.05, type=float, help="test conf")
     parser.add_argument("--nms", default=0.5, type=float, help="test nms threshold")
-    parser.add_argument("--tsize", default=576, type=int, help="test img size")
+    parser.add_argument("--tsize", default=640, type=int, help="test img size")
     parser.add_argument(
         "--fp16",
         dest="fp16",
@@ -101,6 +103,7 @@ def make_parser():
     parser.add_argument("--format", default="video", type=str, help="input format files or video")
     parser.add_argument('--save_annotation', default=True)
     parser.add_argument('--save_features_info', default=True)
+    parser.add_argument('--m_conf', default=0, type=float,help='select reference features minimum conf score')
     return parser
 
 
@@ -210,6 +213,10 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
 
     ref_frame_list_file.close()
     outputs, adj_lists, fc_outputs, names = [], [], [], []
+    updated_feat_info_list = []
+    mem_feat_info_list = []
+    sampled_mem_feat_info_list = []
+    input_feat_info_list = []
     first_frame = True
     for ele_id,ele in enumerate(res):
         if ele == []: continue
@@ -231,8 +238,13 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
             if first_frame:
                 first_frame = False
         head = predictor.model.head
+        original_ref_pred_info = head._original_ref_pred_info  # Get the original reference prediction info from the head
+        logger.info(f"After inference of set {ele_id}, got original_ref_pred_info length: {len(original_ref_pred_info)}")
+        original_ref_pred_info_list = [[[t.cpu().numpy() for t in pX] for pX in batch_item] for batch_item in original_ref_pred_info]
+        input_feat_info_list.append(original_ref_pred_info_list)
         ref_pred_info = head._ref_pred_info  # Get the reference prediction info from the head
         logger.info(f"After inference of set {ele_id}, got ref_pred_info with length: {len(ref_pred_info)}")
+        updated_feat_info_list.append([[[t.cpu().numpy() for t in pX] for pX in batch_item] for batch_item in ref_pred_info])
         #for level_idx, level_info in enumerate(ref_pred_info):
         #    level_info_p3, level_info_p4, level_info_p5 = level_info
         #    logger.info(f"Level {level_idx} - len(level_info_p3): {len(level_info_p3)}, \
@@ -247,7 +259,25 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
         #    for idx, items in enumerate(level_info_p5):
         #        logger.info(f"Set {ele_id} - Level {level_idx} - p5 item {idx} th - p5 item shape: {items.shape}")
         #        logger.info(f"Set {ele_id} - Level {level_idx} - p5 item {idx} th - p5 items: {items}")
-
+        mem_feat_info = head._mem_info  # Get the memory feature info from the head
+        logger.info(f"After inference of set {ele_id}, got mem_feat_info with keys: {mem_feat_info.keys()}")
+        p3_mem_info = mem_feat_info['p3']
+        logger.info(f"Set {ele_id} - mem_feat_info - len(p3_mem_info): {len(p3_mem_info)}")
+        p4_mem_info = mem_feat_info['p4']
+        logger.info(f"Set {ele_id} - mem_feat_info - len(p4_mem_info): {len(p4_mem_info)}")
+        p5_mem_info = mem_feat_info['p5']
+        logger.info(f"Set {ele_id} - mem_feat_info - len(p5_mem_info): {len(p5_mem_info)}")
+        mem_feat_info_list.append({k: list(v) for k, v in mem_feat_info.items()})
+        sampled_mem_feat_info = head._sampled_mem_feat_info  # Get the sampled memory feature info from the head
+        logger.info(f"After inference of set {ele_id}, got sampled_mem_feat_info with keys: {sampled_mem_feat_info.keys()}")
+        if sampled_mem_feat_info:
+            p3_sampled_mem_info = sampled_mem_feat_info['p3']
+            logger.info(f"Set {ele_id} - sampled_mem_feat_info - len(p3_sampled_mem_info): {len(p3_sampled_mem_info)}")
+            p4_sampled_mem_info = sampled_mem_feat_info['p4']
+            logger.info(f"Set {ele_id} - sampled_mem_feat_info - len(p4_sampled_mem_info): {len(p4_sampled_mem_info)}")
+            p5_sampled_mem_info = sampled_mem_feat_info['p5']
+            logger.info(f"Set {ele_id} - sampled_mem_feat_info - len(p5_sampled_mem_info): {len(p5_sampled_mem_info)}")
+            sampled_mem_feat_info_list.append({k: list(v) for k, v in sampled_mem_feat_info.items()})
     if traj_linking:
         outputs = post_linking(fc_outputs, adj_lists, outputs, P, Cls, names, exp)
 
@@ -274,18 +304,31 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
         if args.save_result:
             cv2.imwrite(os.path.join(img_save_path, file_name), result_frame)
     if args.save_annotation:
-        anno_save_path = os.path.join(img_save_path, "my_model_annotation.npy")
+        anno_save_path = os.path.join(img_save_path, "my_model_result_info.pkl")
+        with open(anno_save_path, "wb") as f:
+            pickle.dump(img_anno_res, f)
         logger.info("Saving detection prediction result in {}".format(anno_save_path))
-        sorted_img_anno_res = OrderedDict(sorted(img_anno_res.items(), key=lambda x: x[0]))
-        annotation_list = []
-        for _, bboxes_scores_cls in sorted_img_anno_res.items():
-            annotation_list.append(bboxes_scores_cls)
-        np.save(anno_save_path, np.array(annotation_list, dtype=object))
     if args.save_features_info:
+        input_feat_info_save_path = os.path.join(img_save_path, "my_model_input_feat_info.pkl")
+        with open(input_feat_info_save_path, "wb") as f:
+            pickle.dump(input_feat_info_list, f)
+        logger.info("Saving detection prediction input feature info in {}".format(input_feat_info_save_path))
+        updated_feat_info_save_path = os.path.join(img_save_path, "my_model_updated_feat_info.pkl")
+        with open(updated_feat_info_save_path, "wb") as f:
+            pickle.dump(updated_feat_info_list, f)
+        logger.info("Saving detection prediction feature info in {}".format(updated_feat_info_save_path))
         ref_frame_save_path = os.path.join(img_save_path, "my_model_ref_frame_list.npy")
         np.save(ref_frame_save_path, np.array(ref_frame_name_list, dtype=object))
         logger.info("Saving detection prediction reference frame info in {}".format(ref_frame_save_path))
         #logger.info(f"ref_frame_name_list len: {len(ref_frame_name_list)}, each element: {ref_frame_name_list}")
+        mem_feat_info_save_path = os.path.join(img_save_path, "my_model_mem_feat_info.pkl")
+        with open(mem_feat_info_save_path, "wb") as f:
+            pickle.dump(mem_feat_info_list, f)
+        logger.info("Saving detection prediction memory feature info in {}".format(mem_feat_info_save_path))
+        sampled_mem_feat_info_save_path = os.path.join(img_save_path, "my_model_sampled_mem_feat_info.pkl")
+        with open(sampled_mem_feat_info_save_path, "wb") as f:
+            pickle.dump(sampled_mem_feat_info_list, f)
+        logger.info("Saving detection prediction sampled memory feature info in {}".format(sampled_mem_feat_info_save_path))
 
 def imageflow_demo(predictor, vis_folder, current_time, args,exp):
     gframe = exp.gframe_val
@@ -464,4 +507,5 @@ if __name__ == "__main__":
     exp.traj_linking = True and exp.lmode
     exp.lframe_val = int(args.lframe)
     exp.gframe_val = int(args.gframe)
+    exp.m_conf = args.m_conf
     main(exp, args)

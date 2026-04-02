@@ -43,10 +43,16 @@ class MambaAggregator(nn.Module):
         #kssong
         if type_k == 0:
             ref_x = self.memory_bank_p3.sample()
+            sampled_mem_feat_info = self.memory_bank_p3.get_sampled_features()
+            logger.info(f'type_k: {type_k}, sampled_mem_feat_info length: {len(sampled_mem_feat_info)}')
         elif type_k == 1:
             ref_x = self.memory_bank_p4.sample()
+            sampled_mem_feat_info = self.memory_bank_p4.get_sampled_features()
+            logger.info(f'type_k: {type_k}, sampled_mem_feat_info length: {len(sampled_mem_feat_info)}')
         elif type_k == 2:
             ref_x = self.memory_bank_p5.sample()
+            sampled_mem_feat_info = self.memory_bank_p5.get_sampled_features()
+            logger.info(f'type_k: {type_k}, sampled_mem_feat_info length: {len(sampled_mem_feat_info)}')
         #logger.info(f"ref_x shape: {ref_x.shape} x shape: {x.shape}")
         #print(f"After sampling: {gpu_mem_usage():.0f}")
         # fort he rest frames
@@ -55,7 +61,7 @@ class MambaAggregator(nn.Module):
         else:
             #logger.info(f"ref_x shape: {ref_x.shape}")
             aggregated_x = torch.zeros_like(x)
-        return aggregated_x
+        return aggregated_x, sampled_mem_feat_info
 
 
     def reset_memory_bank(self, type_k):
@@ -75,6 +81,28 @@ class MambaAggregator(nn.Module):
             self.memory_bank_p4.update(x)
         elif type_k == 2:
             self.memory_bank_p5.update(x)
+    def update_memory_features_info(self, feat_info, type_k, batch_set, batch_item):
+        if type_k == 0:
+            self.memory_bank_p3.update_memory_features_info(feat_info, batch_set, batch_item, type_k)
+        elif type_k == 1:
+            self.memory_bank_p4.update_memory_features_info(feat_info, batch_set, batch_item, type_k)
+        elif type_k == 2:
+            self.memory_bank_p5.update_memory_features_info(feat_info, batch_set, batch_item, type_k)
+
+    def get_memory_feature_info(self):
+        mem_info = {}
+        mem_info['p3'] = self.memory_bank_p3.feat_info
+        mem_info['p4'] = self.memory_bank_p4.feat_info
+        mem_info['p5'] = self.memory_bank_p5.feat_info
+        return mem_info
+    def init_memory_features_info(self, feat_info, type_k, batch_set, batch_item):
+        #kssong
+        if type_k == 0:
+            self.memory_bank_p3.init_memory_features_info(feat_info, batch_set, batch_item,type_k)
+        elif type_k == 1:
+            self.memory_bank_p4.init_memory_features_info(feat_info, batch_set, batch_item, type_k)
+        elif type_k == 2:
+            self.memory_bank_p5.init_memory_features_info(feat_info, batch_set, batch_item, type_k)
 
     def init_memory_bank(self, x, type_k):
         #logger.info("init_memory_bank")

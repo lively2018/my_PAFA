@@ -227,7 +227,10 @@ class YOLOXHead(nn.Module):
         self.inplace_false_relu = nn.ReLU(inplace=False)
         self.m_conf = m_conf
         self._ref_pred_info = None
-
+        self.batch_set = 0
+        self._mem_info = None
+        self._sampled_mem_feat_info = None
+        self._original_ref_pred_info = None
 
     def initialize_biases(self, prior_prob):
         for conv in self.cls_preds:
@@ -268,6 +271,7 @@ class YOLOXHead(nn.Module):
         expanded_strides = []
         before_nms_features = []
         before_nms_regf = []
+
 
         #batch_size = len(imgs)
         #if batch_size == 16 or batch_size == 32:
@@ -371,7 +375,11 @@ class YOLOXHead(nn.Module):
         reg_feat_list = []
         cls_feat_list = []
         cls_feat2_list = []
-
+        original_reg_feat_list = []
+        original_outputs_decode =[]
+        sampled_mem_feat_info_list = []
+        sampled_mem_feat_info = {}
+        original_before_nms_regf = []
         for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
                 zip(self.cls_convs, self.cls_convs2, self.reg_convs, self.strides, xin)
         ):
@@ -379,9 +387,11 @@ class YOLOXHead(nn.Module):
             reg_feat = reg_conv(x)
             cls_feat = cls_conv(x)
             cls_feat2 = cls_conv2(x)
+            original_reg_feat = reg_feat
             reg_feat_list.append(reg_feat)
             cls_feat_list.append(cls_feat)
             cls_feat2_list.append(cls_feat2)
+            original_reg_feat_list.append(original_reg_feat)
 
 
             if need_aggregation:
@@ -417,7 +427,14 @@ class YOLOXHead(nn.Module):
                             channel, height, width = reg_one.shape
                             reg_one = reg_one.reshape(-1, channel)
                             #logger.info(f"reg_one.shape: {reg_one.shape}")
-                            agg_feat = reg_one + self.aggregator(reg_one, None, k)
+                            weighted_feat, _sampled_mem_feat_info = self.aggregator(reg_one, None, k)
+                            if k == 0:
+                                sampled_mem_feat_info['p3'] = _sampled_mem_feat_info
+                            elif k == 1:
+                                sampled_mem_feat_info['p4'] = _sampled_mem_feat_info
+                            elif k == 2:
+                                sampled_mem_feat_info['p5'] = _sampled_mem_feat_info
+                            agg_feat = reg_one + weighted_feat
                             agg_feat = self.inplace_false_relu(agg_feat)
                             #logger.info(f"agg_feat.shape: {agg_feat.shape}")
                             agg_feat = agg_feat.reshape(channel, height, width)
@@ -427,13 +444,15 @@ class YOLOXHead(nn.Module):
                     agg_feats.append(agg_feat)
                     #logger.info(f"agg_feat.type: {agg_feat.type}")
                 reg_feat = torch.stack(agg_feats, dim=0)
+
                 #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")
 
             # this part should be the same as the original model
             obj_output = self.obj_preds[k](reg_feat)
             reg_output = self.reg_preds[k](reg_feat)
             cls_output = self.cls_preds[k](cls_feat)
-
+            obj_output_original = self.obj_preds[k](original_reg_feat)
+            reg_output_original = self.reg_preds[k](original_reg_feat)
             if self.training:
                 output = torch.cat([reg_output, obj_output, cls_output], 1)
                 output_decode = torch.cat(
@@ -468,15 +487,34 @@ class YOLOXHead(nn.Module):
                 output_decode = torch.cat(
                     [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
                 )
+                original_output_decode = torch.cat(
+                    [reg_output_original, obj_output_original.sigmoid(), cls_output.sigmoid()], 1
+                )
+
 
                 # which features to choose
                 before_nms_features.append(cls_feat2)
                 before_nms_regf.append(reg_feat)
+                original_before_nms_regf.append(original_reg_feat)
+
             outputs_decode.append(output_decode)
+            original_outputs_decode.append(original_output_decode)
+        self._sampled_mem_feat_info = sampled_mem_feat_info
+        sampled_mem_feat_info_list.append(sampled_mem_feat_info)
+        if sampled_mem_feat_info:
+            p3_sampled_info = sampled_mem_feat_info.get('p3', [])
+            p4_sampled_info = sampled_mem_feat_info.get('p4', [])
+            p5_sampled_info = sampled_mem_feat_info.get('p5', [])
+            logger.info(f"batch_set: {self.batch_set}, "\
+                        f"p3_sampled_info length: {len(p3_sampled_info)}, "\
+                        f"p4_sampled_info length: {len(p4_sampled_info)}, "\
+                        f"p5_sampled_info length: {len(p5_sampled_info)}")
         self.hw = [x.shape[-2:] for x in outputs_decode]
 
 
         outputs_decode = torch.cat([x.flatten(start_dim=2) for x in outputs_decode], dim=2
+                                   ).permute(0, 2, 1)
+        original_outputs_decode = torch.cat([x.flatten(start_dim=2) for x in original_outputs_decode], dim=2
                                    ).permute(0, 2, 1)
         #kssong
         #reg_output_file = open('./reg_output.txt', 'a')
@@ -492,6 +530,7 @@ class YOLOXHead(nn.Module):
         #outputs_decode_file.close()
 
         decode_res = self.decode_outputs(outputs_decode, dtype=xin[0].type())
+        original_decode_res = self.decode_outputs(original_outputs_decode, dtype=xin[0].type())
 
         if self.kwargs.get('ota_mode',False) and self.training:
             ota_idxs,reg_targets = self.get_fg_idx( imgs,
@@ -508,6 +547,11 @@ class YOLOXHead(nn.Module):
                                                      topK=self.Afternum,
                                                      ota_idxs=ota_idxs,
                                                      )
+        pred_result_original, pred_idx_original = self.postpro_woclass(original_decode_res, num_classes=self.num_classes,
+                                                                      nms_thre=self.nms_thresh,
+                                                                      topK=self.Afternum,
+                                                                      ota_idxs=ota_idxs,
+                                                                      )
         #kssong
         #pred_result_file = open('./pred_result.txt', 'a')
         #pred_result_file.write(f'{len(pred_result), pred_result[0].shape}\n')
@@ -524,6 +568,10 @@ class YOLOXHead(nn.Module):
         reg_feat_flatten = torch.cat(
             [x.flatten(start_dim=2) for x in before_nms_regf], dim=2
         ).permute(0, 2, 1)
+        original_reg_feat_flatten = torch.cat(
+            [x.flatten(start_dim=2) for x in original_before_nms_regf], dim=2
+        ).permute(0, 2, 1)
+
         #kssong
         #reg_feat_flatten_file = open('./reg_feat_flatten.txt', 'a')
         #reg_feat_flatten_file.write(f'{reg_feat_flatten.shape}\n')
@@ -532,6 +580,9 @@ class YOLOXHead(nn.Module):
         if not self.training and need_aggregation:
             #half = len(pred_idx[1]) // 2
             #new_idx = [p[:half] for p in pred_idx]
+            _, _, _, original_ref_pred_info = \
+                self.select_level_key_feature_in_reg_feature(original_reg_feat_flatten, pred_idx_original, pred_result_original)
+            self._original_ref_pred_info = original_ref_pred_info
             if first:
                 # reset all level memory banks
                 self.aggregator.reset_memory_bank(0)
@@ -543,16 +594,32 @@ class YOLOXHead(nn.Module):
                 # Save bboxes/obj_score/cls_score for each level's reference features
                 # Shape: [N, 6+num_classes] — columns: [x1, y1, x2, y2, obj_score, cls_score, class_pred x num_classes]
                 self._ref_pred_info = ref_pred_info
-                logger.info(f"len(ref_pred_info): {len(ref_pred_info)}")
+                #logger.info(f"len(ref_pred_info): {len(ref_pred_info)}")
                 #for i, level_info in enumerate(ref_pred_info):
                 #    level_info_p3, level_info_p4, level_info_p5 = level_info
                 #    logger.info(f"Level {i} - len(level_info_p3): {len(level_info_p3)}, \
                 #                len(level_info_p4): {len(level_info_p4)}, \
                 #                    len(level_info_p5): {len(level_info_p5)}")
-
+                for i, level_info in enumerate(ref_pred_info):
+                    level_info_p3, level_info_p4, level_info_p5 = level_info
+                    #logger.info(f"batch_item {i} - len(level_info_p3): {len(level_info_p3)}, \
+                    #            len(level_info_p4): {len(level_info_p4)}, \
+                    #                len(level_info_p5): {len(level_info_p5)}")
+                    batch_set = self.batch_set
+                    self.aggregator.init_memory_features_info(level_info_p3, 0, batch_set, i)
+                    self.aggregator.init_memory_features_info(level_info_p4, 1, batch_set, i)
+                    self.aggregator.init_memory_features_info(level_info_p5, 2, batch_set, i)
                 self.aggregator.init_memory_bank(ref_feature_p3, 0)
                 self.aggregator.init_memory_bank(ref_feature_p4, 1)
                 self.aggregator.init_memory_bank(ref_feature_p5, 2)
+                self.batch_set += 1
+                self._mem_info = self.aggregator.get_memory_feature_info()
+                p3_mem_info = self._mem_info['p3']
+                logger.info(f"batch {self.batch_set} memory len(p3_mem_info): {len(p3_mem_info)}, ")
+                p4_mem_info = self._mem_info['p4']
+                logger.info(f"batch {self.batch_set} memory len(p4_mem_info): {len(p4_mem_info)}, ")
+                p5_mem_info = self._mem_info['p5']
+                logger.info(f"batch {self.batch_set} memory len(p5_mem_info): {len(p5_mem_info)}, ")
             else:
                 #Generate key features from 16 batch files
                 key_features_p3, key_features_p4, key_features_p5,  key_pred_info = \
@@ -560,17 +627,35 @@ class YOLOXHead(nn.Module):
                 # Save bboxes/obj_score/cls_score for each level's key features
                 # Shape: [N, 6+num_classes] — columns: [x1, y1, x2, y2, obj_score, cls_score, class_pred x num_classes]
                 self._ref_pred_info = key_pred_info
-                logger.info(f"len(key_pred_info): {len(key_pred_info)}")
+                #logger.info(f"len(key_pred_info): {len(key_pred_info)}")
                 #for i, level_info in enumerate(key_pred_info):
                 #    level_info_p3, level_info_p4, level_info_p5 = level_info
                 #    logger.info(f"Level {i} - len(level_info_p3): {len(level_info_p3)}, \
                 #                len(level_info_p4): {len(level_info_p4)}, \
                 #                    len(level_info_p5): {len(level_info_p5)}")
                 # Update all level memory banks
+                for i, level_info in enumerate(key_pred_info):
+                    level_info_p3, level_info_p4, level_info_p5 = level_info
+                    #logger.info(f"batch_item {i} - len(level_info_p3): {len(level_info_p3)}, \
+                    #            len(level_info_p4): {len(level_info_p4)}, \
+                    #                len(level_info_p5): {len(level_info_p5)}")
+                    batch_set = self.batch_set
+                    self.aggregator.update_memory_features_info(level_info_p3, 0, batch_set, i)
+                    self.aggregator.update_memory_features_info(level_info_p4, 1, batch_set, i)
+                    self.aggregator.update_memory_features_info(level_info_p5, 2, batch_set, i)
+
                 self.aggregator.update_memory_bank(key_features_p3, 0)
                 self.aggregator.update_memory_bank(key_features_p4, 1)
                 self.aggregator.update_memory_bank(key_features_p5, 2)
 
+                self._mem_info = self.aggregator.get_memory_feature_info()
+                p3_mem_info = self._mem_info['p3']
+                logger.info(f"batch {self.batch_set} memory len(p3_mem_info): {len(p3_mem_info)}, ")
+                p4_mem_info = self._mem_info['p4']
+                logger.info(f"batch {self.batch_set} memory len(p4_mem_info): {len(p4_mem_info)}, ")
+                p5_mem_info = self._mem_info['p5']
+                logger.info(f"batch {self.batch_set} memory len(p5_mem_info): {len(p5_mem_info)}, ")
+                self.batch_set += 1
         (features_cls, features_reg, cls_scores,
          fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
                                                                 pred_idx,
@@ -827,7 +912,7 @@ class YOLOXHead(nn.Module):
             labels,
             outputs,
             origin_preds,
-            dtype,
+            dtype,bbox_preds,
             refined_cls,
             idx,
             pred_res,

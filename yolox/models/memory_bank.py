@@ -1,5 +1,7 @@
+from loguru import logger
 import torch
 import torch.nn as nn
+from yolox.data.datasets.vid_classes import VID_classes
 #kssong
 #from mmcv.runner import BaseModule
 # from ..aggregators.selsa_aggregator import SelsaAggregator
@@ -27,7 +29,10 @@ class MemoryBank(nn.Module):
         self.updating_policy = updating_policy
         #kssong
         self.feat = None
-
+        self.feat_info = []
+        self.class_num = len(VID_classes)
+        self.mem_type = None
+        self.sampled_ind = None
         # self.aggregator = SelsaAggregator(in_channels)
 
     def reset(self):
@@ -37,7 +42,26 @@ class MemoryBank(nn.Module):
             torch.cuda.empty_cache()  # Free GPU memory
         self.feat = None
         #print(f"reset_memory")
-
+    def init_memory_features_info(self, feat_info, batch_set, batch_item, type_k):
+        self.mem_type = type_k
+        #kssong
+        #logger.info(f"init_memory_features_info, mem_type: {self.mem_type}, \
+        #            batch_set: {batch_set}, batch_item: {batch_item}, len(feat_info): {len(feat_info)}")
+        non_zero_feat_info = [feat_info_item for feat_info_item in feat_info if not torch.all(feat_info_item == torch.zeros(6 + self.class_num, device=feat_info_item.device))]
+        self.feat_info.extend([[batch_set, batch_item, feat_info_item] for feat_info_item in non_zero_feat_info])
+        #logger.info(f"After filtering zero feat info, mem_type: {self.mem_type}, \
+        #            batch_set: {batch_set}, batch_item: {batch_item}, len(non_zero_feat_info): {len(non_zero_feat_info)}, \
+        #            total feat info in memory bank: {len(self.feat_info)}")
+    def update_memory_features_info(self, feat_info, batch_set, batch_item, type_k):
+        self.mem_type = type_k
+        #kssong
+        #logger.info(f"update_memory_features_info, mem_type: {self.mem_type}, \
+        #            batch_set: {batch_set}, batch_item: {batch_item}, len(feat_info): {len(feat_info)}")
+        non_zero_feat_info = [feat_info_item for feat_info_item in feat_info if not torch.all(feat_info_item == torch.zeros(6 + self.class_num, device=feat_info_item.device))]
+        self.feat_info.extend([[batch_set, batch_item, feat_info_item] for feat_info_item in non_zero_feat_info])
+        #logger.info(f"After filtering zero feat info, mem_type: {self.mem_type}, \
+        #            batch_set: {batch_set}, batch_item: {batch_item}, len(non_zero_feat_info): {len(non_zero_feat_info)}, \
+        #            total feat info in memory bank: {len(self.feat_info)}")
     def init_memory(self, feat):
         """
         init memory
@@ -62,6 +86,12 @@ class MemoryBank(nn.Module):
             torch.cuda.empty_cache()
             self.feat = new_feat
         #print(f"init_memory, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}")
+    def get_sampled_features(self):
+        if self.feat_info is None:
+            return []
+        if self.sampled_ind is None:
+            return []
+        return [self.feat_info[i] for i in self.sampled_ind.long().tolist()]
 
     def sample(self):
         #kssong
@@ -74,10 +104,12 @@ class MemoryBank(nn.Module):
         feat_length = len(self.feat)
         if feat_length < self.key_length:
             #print(f"sample, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}")
+            self.sampled_ind = torch.arange(len(self.feat), device=self.feat.device)
             return self.feat.detach().clone().to('cuda')
 
         if self.sampling_policy == 'random':
             sampled_ind = torch.randperm(len(self.feat), device=self.feat.device)[:self.key_length]
+            self.sampled_ind = sampled_ind
             #print(f"sample, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}")
             return self.feat[sampled_ind].detach().clone().to('cuda')
         else:
@@ -103,7 +135,6 @@ class MemoryBank(nn.Module):
             reserved_ind = torch.randperm(len(self.feat), device=self.feat.device)[:-new_num]
             new_feat_combined = torch.cat([self.feat[reserved_ind], new_feat], dim=0).detach().clone()
 
-
         else:
             raise NotImplementedError("not implemented")
 
@@ -120,7 +151,6 @@ class MemoryBank(nn.Module):
         if self.feat is None:
             return 0
         return len(self.feat)
-
 
     # def forward(self, x, x_support=None):
     #     # inference
