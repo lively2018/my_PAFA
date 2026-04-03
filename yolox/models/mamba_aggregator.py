@@ -43,7 +43,10 @@ class MambaAggregator(nn.Module):
         self.memory_bank_p3 = MemoryBank(**memory_cfg)
         self.memory_bank_p4 = MemoryBank(**memory_cfg)
         self.memory_bank_p5 = MemoryBank(**memory_cfg)
-        self.count = 0
+        self.frame_count = 0
+        self.video_path = None
+        self.memory_bank_info = []
+        self.video_count = 0
 
     def forward(self, x, ref_x, type):
         #kssong
@@ -64,45 +67,52 @@ class MambaAggregator(nn.Module):
         return aggregated_x
 
 
-    def reset_memory_bank(self, type):
+    def reset_memory_bank(self, type, video_path=None):
         #logger.info("reset_memory_bank")
-        self.count += 1
+        previous_memory_bank_info = self.memory_bank_info
+        if previous_memory_bank_info:
+            logger.info(f"Previous memory bank info: {previous_memory_bank_info}")
+            log_stats_to_csv(f'memory_stats.csv', previous_memory_bank_info)
+        else:
+            logger.info("No previous memory bank info to log.")
+        self.frame_count = 0
+        self.video_path = video_path
+        self.memory_bank_info = []
+        self.video_count += 1
         if type == 0:
             self.memory_bank_p3.reset()
-            log_stats_to_csv('memory_stats.csv', [self.count, 'P3', 0,  self.memory_bank_p3.len()])
         elif type == 1:
             self.memory_bank_p4.reset()
-            log_stats_to_csv('memory_stats.csv', [self.count, 'P4', 0,  self.memory_bank_p4.len()])
         elif type == 2:
             self.memory_bank_p5.reset()
-            log_stats_to_csv('memory_stats.csv', [self.count, 'P5', 0,  self.memory_bank_p5.len()])
+
 
     def update_memory_bank(self, x, type):
         #logger.info("update_memory_bank")
-        self.count += 1
+        self.frame_count += 1
         if type == 0:
             self.memory_bank_p3.update(x)
-            log_stats_to_csv('memory_stats.csv', [self.count, 'P3', x.shape[0], self.memory_bank_p3.len()])
+            self.memory_bank_info.append([self.video_path, self.frame_count, 'P3', x.shape[0], self.memory_bank_p3.len()])
         elif type == 1:
             self.memory_bank_p4.update(x)
-            log_stats_to_csv('memory_stats.csv', [self.count, 'P4', x.shape[0], self.memory_bank_p4.len()])
+            self.memory_bank_info.append([self.video_path, self.frame_count, 'P4', x.shape[0], self.memory_bank_p4.len()])
         elif type == 2:
             self.memory_bank_p5.update(x)
-            log_stats_to_csv('memory_stats.csv', [self.count, 'P5', x.shape[0], self.memory_bank_p5.len()])
+            self.memory_bank_info.append([self.video_path, self.frame_count, 'P5', x.shape[0], self.memory_bank_p5.len()])
 
     def init_memory_bank(self, x, type):
         #logger.info("init_memory_bank")
         #logger.info("x.shape: {}".format(x.shape))
-        self.count += 1
+        self.frame_count += 1
         if type == 0:
             self.memory_bank_p3.init_memory(x)
-            log_stats_to_csv('memory_stats.csv', [self.count, 'P3', x.shape[0], self.memory_bank_p3.len()])
+            self.memory_bank_info.append([self.video_path, self.frame_count, 'P3', x.shape[0], self.memory_bank_p3.len()])
         elif type == 1:
             self.memory_bank_p4.init_memory(x)
-            log_stats_to_csv('memory_stats.csv', [self.count, 'P4', x.shape[0], self.memory_bank_p4.len()])
+            self.memory_bank_info.append([self.video_path, self.frame_count, 'P4', x.shape[0], self.memory_bank_p4.len()])
         elif type == 2:
             self.memory_bank_p5.init_memory(x)
-            log_stats_to_csv('memory_stats.csv', [self.count, 'P5', x.shape[0], self.memory_bank_p5.len()])
+            self.memory_bank_info.append([self.video_path, self.frame_count, 'P5', x.shape[0], self.memory_bank_p5.len()])
 
     def forward_with_ref_x(self, x, ref_x):
         """Aggregate the features `ref_x` of reference proposals.
