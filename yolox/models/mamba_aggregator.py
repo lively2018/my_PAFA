@@ -34,9 +34,9 @@ class MambaAggregator(nn.Module):
         self.num_attention_blocks = num_attention_blocks
 
         # instance-level memory bank
-        self.memory_bank_p3 = MemoryBank(max_length=480,**memory_cfg)
-        self.memory_bank_p4 = MemoryBank(max_length=480,**memory_cfg)
-        self.memory_bank_p5 = MemoryBank(max_length=480,**memory_cfg)
+        self.memory_bank_p3 = MemoryBank(max_length=480, key_length=480, **memory_cfg)
+        self.memory_bank_p4 = MemoryBank(max_length=480, key_length=480, **memory_cfg)
+        self.memory_bank_p5 = MemoryBank(max_length=480, key_length=480, **memory_cfg)
 
 
     def forward(self, x, ref_x, type_k):
