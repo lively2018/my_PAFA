@@ -25,7 +25,7 @@ class MambaAggregator(nn.Module):
             Defaults to None.
     """
 
-    def __init__(self, in_channels, num_attention_blocks=16, memory_cfg=dict()):
+    def __init__(self, in_channels, num_attention_blocks=16, memory_length=4800, key_length=480, **memory_cfg):
         super(MambaAggregator, self).__init__()
         self.fc_embed = nn.Linear(in_channels, in_channels)
         self.ref_fc_embed = nn.Linear(in_channels, in_channels)
@@ -34,9 +34,9 @@ class MambaAggregator(nn.Module):
         self.num_attention_blocks = num_attention_blocks
 
         # instance-level memory bank
-        self.memory_bank_p3 = MemoryBank(max_length=120, key_length=120, **memory_cfg)
-        self.memory_bank_p4 = MemoryBank(max_length=120, key_length=120, **memory_cfg)
-        self.memory_bank_p5 = MemoryBank(max_length=120, key_length=120, **memory_cfg)
+        self.memory_bank_p3 = MemoryBank(max_length=memory_length, key_length=key_length, **memory_cfg)
+        self.memory_bank_p4 = MemoryBank(max_length=memory_length, key_length=key_length, **memory_cfg)
+        self.memory_bank_p5 = MemoryBank(max_length=memory_length, key_length=key_length, **memory_cfg)
 
 
     def forward(self, x, ref_x, type_k):

@@ -102,6 +102,8 @@ def make_parser():
     parser.add_argument('--nms', default=0.5, type=float,help='final nms threshold')
     parser.add_argument('--m_conf', default=0, type=float,help='select reference features minimum conf score')
     parser.add_argument('--mode', default='random', help='frame sample mode')
+    parser.add_argument('--memory_length', default=4800, type=int, help='memory length for Mamba aggregator')
+    parser.add_argument('--key_length', default=480, type=int, help='key length for Mamba aggregator')
     return parser
 
 @logger.catch
@@ -143,6 +145,8 @@ if __name__ == "__main__":
     exp.mode = args.mode
     exp.max_epoch = args.max_epoch
     exp.m_conf = args.m_conf
+    exp.memory_length = args.memory_length
+    exp.key_length = args.key_length
 
     exp.nmsthre = args.nms
     exp.pre_nms = args.pre_nms

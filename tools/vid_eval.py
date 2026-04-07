@@ -108,6 +108,9 @@ def make_parser():
     parser.add_argument('--formal', default=False, action="store_true",help='vid test sequences')
     parser.add_argument('--nms', default=0.5, type=float,help='final nms threshold')
     parser.add_argument('--m_conf', default=0, type=float,help='select reference features minimum conf score')
+    parser.add_argument('--memory_length', default=4800, type=int, help='memory length for Mamba aggregator')
+    parser.add_argument('--key_length', default=480, type=int, help='key length for Mamba aggregator')
+
     return parser
 
 
@@ -166,6 +169,8 @@ if __name__ == "__main__":
     exp.merge(args.opts)
     if not args.experiment_name:
         args.experiment_name = exp.exp_name
+    exp.memory_length = args.memory_length
+    exp.key_length = args.key_length
 
     num_gpu = get_num_devices() if args.devices is None else args.devices
     assert num_gpu <= get_num_devices()
