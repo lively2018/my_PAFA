@@ -517,8 +517,7 @@ class VIDEvaluator:
                 outputs, ori_res = model(imgs, first_frame, nms_thresh=self.nmsthre,
                                          lframe=self.lframe,
                                          gframe = self.gframe,
-                                         video_path=video_path,
-                                         path=path)
+                                         video_path=video_path)
 
                 if is_time_record:
                     infer_end = time_synchronized()
