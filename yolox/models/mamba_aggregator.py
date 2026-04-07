@@ -16,6 +16,15 @@ def log_stats_to_csv(filename, data):
             writer.writerow(['video_path', 'batch_set_count', 'level', 'count', 'mem_len']) # Header
         writer.writerow(data)
 
+def log_stats_to_file_csv(filename, data):
+    # data format: [frame_idx, level_name, feature_count, gpu_mem_mb]
+    file_exists = os.path.isfile(filename)
+    with open(filename, 'a', newline='') as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(['frame_idx', 'level', 'count', 'gpu_mem_mb']) # Header
+        writer.writerow(data)
+
 class MambaAggregator(nn.Module):
     """Selsa aggregator module.
 
@@ -47,6 +56,7 @@ class MambaAggregator(nn.Module):
         self.video_count = 0
         self.video_path = None
         self.memory_bank_info = []
+        self.count = 0
 
     def forward(self, x, ref_x, k_type):
         #kssong
@@ -72,47 +82,59 @@ class MambaAggregator(nn.Module):
         self.batchset_count = 0
         self.video_path = video_path
         self.memory_bank_info = []
+        self.count += 1
         self.video_count += 1
         if k_type == 0:
             self.memory_bank_p3.reset()
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P3', 0,  self.memory_bank_p3.len()])
         elif k_type == 1:
             self.memory_bank_p4.reset()
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P4', 0,  self.memory_bank_p4.len()])
         elif k_type == 2:
             self.memory_bank_p5.reset()
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P5', 0,  self.memory_bank_p5.len()])
 
 
     def update_memory_bank(self, x, k_type):
         #logger.info("update_memory_bank")
         self.batchset_count += 1
+        self.count += 1
         if k_type == 0:
             self.memory_bank_p3.update(x)
             #self.memory_bank_info.append([self.video_path, self.batchset_count, 'P3', x.shape[0], self.memory_bank_p3.len()])
             log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P3', x.shape[0], self.memory_bank_p3.len()])
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P3', x.shape[0], self.memory_bank_p3.len()])
         elif k_type == 1:
             self.memory_bank_p4.update(x)
             #self.memory_bank_info.append([self.video_path, self.batchset_count, 'P4', x.shape[0], self.memory_bank_p4.len()])
             log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P4', x.shape[0], self.memory_bank_p4.len()])
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P4', x.shape[0], self.memory_bank_p4.len()])
         elif k_type == 2:
             self.memory_bank_p5.update(x)
             #self.memory_bank_info.append([self.video_path, self.batchset_count, 'P5', x.shape[0], self.memory_bank_p5.len()])
             log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P5', x.shape[0], self.memory_bank_p5.len()])
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P5', x.shape[0], self.memory_bank_p5.len()])
 
     def init_memory_bank(self, x, k_type):
         #logger.info("init_memory_bank")
         #logger.info("x.shape: {}".format(x.shape))
         self.batchset_count += 1
+        self.count += 1
         if k_type == 0:
             self.memory_bank_p3.init_memory(x)
             #self.memory_bank_info.append([self.video_path, self.batchset_count, 'P3', x.shape[0], self.memory_bank_p3.len()])
             log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P3', x.shape[0], self.memory_bank_p3.len()])
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P3', x.shape[0], self.memory_bank_p3.len()])
         elif k_type == 1:
             self.memory_bank_p4.init_memory(x)
             #self.memory_bank_info.append([self.video_path, self.batchset_count, 'P4', x.shape[0], self.memory_bank_p4.len()])
             log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P4', x.shape[0], self.memory_bank_p4.len()])
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P4', x.shape[0], self.memory_bank_p4.len()])
         elif k_type == 2:
             self.memory_bank_p5.init_memory(x)
             #self.memory_bank_info.append([self.video_path, self.batchset_count, 'P5', x.shape[0], self.memory_bank_p5.len()])
             log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P5', x.shape[0], self.memory_bank_p5.len()])
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P5', x.shape[0], self.memory_bank_p5.len()])
     def forward_with_ref_x(self, x, ref_x):
         """Aggregate the features `ref_x` of reference proposals.
 
