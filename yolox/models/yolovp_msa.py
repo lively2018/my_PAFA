@@ -53,6 +53,8 @@ class YOLOXHead(nn.Module):
             both_mode=False,
             localBlocks=1,
             m_conf=0,
+            memory_length=4800,
+            key_length=480,
             **kwargs
     ):
         """
@@ -216,7 +218,11 @@ class YOLOXHead(nn.Module):
         # self.eval = eval
         #if self.eval:
         #self.aggregator = MambaAggregator(in_channels=128, num_attention_blocks=4)
-        self.aggregator = MambaAggregator(in_channels=128, num_attention_blocks=1)
+        if memory_length is not None:
+            memory_length = 4800
+        if key_length is not None:
+            key_length = 480
+        self.aggregator = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=memory_length, key_length=key_length)
         #kssong
         self.inplace_false_relu = nn.ReLU(inplace=False)
         self.m_conf = m_conf
@@ -566,8 +572,6 @@ class YOLOXHead(nn.Module):
 
         features_reg = features_reg.unsqueeze(0)
         features_cls = features_cls.unsqueeze(0)  # [1,features,channels]
-
-
 
         if not self.training:
             cls_scores = cls_scores.to(cls_feat_flatten.dtype)
