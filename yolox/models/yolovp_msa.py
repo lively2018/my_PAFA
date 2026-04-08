@@ -218,10 +218,6 @@ class YOLOXHead(nn.Module):
         # self.eval = eval
         #if self.eval:
         #self.aggregator = MambaAggregator(in_channels=128, num_attention_blocks=4)
-        if memory_length is not None:
-            memory_length = 4800
-        if key_length is not None:
-            key_length = 480
         self.aggregator = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=memory_length, key_length=key_length)
         #kssong
         self.inplace_false_relu = nn.ReLU(inplace=False)
