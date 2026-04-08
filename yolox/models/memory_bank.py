@@ -52,14 +52,13 @@ class MemoryBank(nn.Module):
         # reshape [ n*m, c]
         #reshaped_feat = feat.view(-1, self.feat_channel)
 
-        if self.feat is None:
-            #self.feat = reshaped_feat
-            self.feat = feat.detach().clone().to('cuda')
+
+        #self.feat = reshaped_feat
+        if len(feat) > self.max_length:
+            self.feat = feat[:self.max_length].detach().clone().to('cuda')
         else:
-            new_feat = torch.cat([self.feat, feat], dim=0).detach().clone().to('cuda')
-            del self.feat
-            self.feat = new_feat
-        #print(f"init_memory, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}")
+            self.feat = feat.detach().clone().to('cuda')
+        #print(f"init_memory, memory bank max size: {self.max_length}, memory_bank key size: {self.key_length}")
 
     def sample(self):
         #kssong
@@ -90,7 +89,10 @@ class MemoryBank(nn.Module):
         #print(f"Before update: {torch.cuda.memory_allocated()} / {torch.cuda.memory_reserved()}")
         new_feat = new_feat.to('cuda')
         if self.feat is None:
-            self.feat = new_feat.detach().clone()
+            if len(new_feat) > self.max_length:
+                self.feat = new_feat[:self.max_length].detach().clone()
+            else:
+                self.feat = new_feat.detach().clone()
             return
 
         if len(self.feat) < self.max_length:
@@ -98,9 +100,11 @@ class MemoryBank(nn.Module):
 
         elif self.updating_policy == "random":
             new_num = len(new_feat)
-            reserved_ind = torch.randperm(len(self.feat), device=self.feat.device)[:-new_num]
-            new_feat_combined = torch.cat([self.feat[reserved_ind], new_feat], dim=0).detach().clone()
-
+            if new_num > self.max_length:
+                reserved_ind = torch.randperm(len(self.feat), device=self.feat.device)[:-new_num]
+                new_feat_combined = torch.cat([self.feat[reserved_ind], new_feat], dim=0).detach().clone()
+            else:
+                new_feat_combined = torch.cat([self.feat, new_feat[:self.max_length]], dim=0).detach().clone()
 
         else:
             raise NotImplementedError("not implemented")
