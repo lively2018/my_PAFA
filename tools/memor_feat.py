@@ -11,15 +11,17 @@ from tools.demo import make_parser
 levels = ['P3', 'P4', 'P5']
 norm_factors = {'P3': 6400, 'P4': 1600, 'P5': 400}
 level_colors = {'P3': 'tab:blue', 'P4': 'tab:orange', 'P5': 'tab:green'}
-MEMORY_LIMIT = 120
+
 RATIO_LIMIT = 1.0
 P3_LIMIT = 6400
 P4_LIMIT = 1600
 P5_LIMIT = 400
 def make_parser():
-    parser = argparse.ArgumentParser("Memory feat video")
+    parser = argparse.ArgumentParser("Memory feat file")
     parser.add_argument("--path", type=str, default="/home/kssong/memory_size_result/memory_bank_stats_video.csv",\
                          help="path to the CSV file containing memory bank stats")
+    parser.add_argument("--mem_limit", type=int, default=120,\
+                         help="maximum memory usage limit for plotting")
     return parser
 
 def main(args):
@@ -27,7 +29,7 @@ def main(args):
     start_time = time.strftime("%Y_%m_%d_%H_%M_%S", current_time)
     log_file_path = os.path.join("./", f'log_{start_time}.txt')
     log_file = open(log_file_path, 'w')
-    print(f"Arguments: {args}")
+    mem_limit = args.mem_limit
     df = pd.read_csv(args.path)
     # 1. Feature Number Trace - Separated by Level
     fig, axes = plt.subplots(len(levels), 1, figsize=(10, 10), sharex=True)
@@ -64,8 +66,8 @@ def main(args):
     fig, axes = plt.subplots(len(levels), 1, figsize=(10, 10), sharex=True)
     for i, level in enumerate(levels):
         subset = df[df['level'] == level]
-        axes[i].plot(subset['frame_idx'], subset['gpu_mem_mb'], label=f'Level {level}', color=level_colors[level], linewidth=1.5)
-        axes[i].set_ylim(0, MEMORY_LIMIT)
+        axes[i].plot(subset['frame_idx'], subset['mem_len'], label=f'Level {level}', color=level_colors[level], linewidth=1.5)
+        axes[i].set_ylim(0, mem_limit+10)
         axes[i].set_title(f'Memory Usage Trace - Level {level}')
         axes[i].set_ylabel('Memory')
         axes[i].legend(loc='upper right')
@@ -74,7 +76,21 @@ def main(args):
     axes[-1].set_xlabel('Frame Index')
     plt.tight_layout()
     plt.savefig(f'memory_usage_grow_sep_{start_time}.png')
+    # 3. Memory Usage Trace - Separated by Level
+    fig, axes = plt.subplots(len(levels), 1, figsize=(10, 10), sharex=True)
+    for i, level in enumerate(levels):
+        subset = df[df['level'] == level]
+        percentages = (subset['mem_len'] / mem_limit) * 100
+        axes[i].plot(subset['frame_idx'], percentages, label=f'Level {level}', color=level_colors[level], linewidth=1.5)
+        axes[i].set_ylim(0, 110)
+        axes[i].set_title(f'Memory Usage Trace - Level {level}')
+        axes[i].set_ylabel('Percentage of Memory Limit (%)')
+        axes[i].legend(loc='upper right')
+        axes[i].grid(True, linestyle='--', alpha=0.6)
 
+    axes[-1].set_xlabel('Frame Index')
+    plt.tight_layout()
+    plt.savefig(f'memory_usage_percentage_{start_time}.png')
     level_info = {}
     for level in levels:
         subset = df[df['level'] == level]
@@ -114,16 +130,16 @@ def main(args):
     for level in levels:
         subset = df[df['level'] == level]
         level_mem_info[level] = {}
-        level_mem_info[level]['total_memory_feature'] = subset['gpu_mem_mb'].sum()
-        level_mem_info[level]['average_memory_feature'] = subset['gpu_mem_mb'].mean()
-        level_mem_info[level]['max_memory_feature'] = subset['gpu_mem_mb'].max()
-        level_mem_info[level]['min_memory_feature'] = subset['gpu_mem_mb'].min()
-        level_mem_info[level]['ratio_average_memory'] = subset['gpu_mem_mb'].mean() / MEMORY_LIMIT
-        level_mem_info[level]['ratio_max_memory'] = subset['gpu_mem_mb'].max() / MEMORY_LIMIT
-        level_mem_info[level]['ratio_min_memory'] = subset['gpu_mem_mb'].min() / MEMORY_LIMIT
-        level_mem_info[level]['percentage_average_memory'] = (subset['gpu_mem_mb'].mean() / MEMORY_LIMIT) * 100
-        level_mem_info[level]['percentage_max_memory'] = (subset['gpu_mem_mb'].max() / MEMORY_LIMIT) * 100
-        level_mem_info[level]['percentage_min_memory'] = (subset['gpu_mem_mb'].min() / MEMORY_LIMIT) * 100
+        level_mem_info[level]['total_memory_feature'] = subset['mem_len'].sum()
+        level_mem_info[level]['average_memory_feature'] = subset['mem_len'].mean()
+        level_mem_info[level]['max_memory_feature'] = subset['mem_len'].max()
+        level_mem_info[level]['min_memory_feature'] = subset['mem_len'].min()
+        level_mem_info[level]['ratio_average_memory'] = subset['mem_len'].mean() / mem_limit
+        level_mem_info[level]['ratio_max_memory'] = subset['mem_len'].max() / mem_limit
+        level_mem_info[level]['ratio_min_memory'] = subset['mem_len'].min() / mem_limit
+        level_mem_info[level]['percentage_average_memory'] = (subset['mem_len'].mean() / mem_limit) * 100
+        level_mem_info[level]['percentage_max_memory'] = (subset['mem_len'].max() / mem_limit) * 100
+        level_mem_info[level]['percentage_min_memory'] = (subset['mem_len'].min() / mem_limit) * 100
     for level in level_mem_info.keys():
         print(f'Level {level} - Average Memory Feature: {level_mem_info[level]["average_memory_feature"]:.2f}')
         print(f'Level {level} - Max Memory Feature: {level_mem_info[level]["max_memory_feature"]:.2f}')

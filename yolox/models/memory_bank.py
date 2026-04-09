@@ -36,6 +36,7 @@ class MemoryBank(nn.Module):
             del self.feat  # Explicitly delete the tensor
         self.feat = None
         #print(f"reset_memory")
+        return 0, 0
 
     def init_memory(self, feat):
         """
@@ -54,11 +55,14 @@ class MemoryBank(nn.Module):
 
 
         #self.feat = reshaped_feat
-        if len(feat) > self.max_length:
+        if len(feat) >= self.max_length:
             self.feat = feat[:self.max_length].detach().clone().to('cuda')
+            update_length = self.max_length
         else:
             self.feat = feat.detach().clone().to('cuda')
+            update_length = len(feat)
         #print(f"init_memory, memory bank max size: {self.max_length}, memory_bank key size: {self.key_length}")
+        return len(self.feat), update_length
 
     def sample(self):
         #kssong
@@ -69,13 +73,12 @@ class MemoryBank(nn.Module):
         #if len(self.feat) < self.key_length:
         #    return self.feat
         feat_length = len(self.feat)
-        if feat_length < self.key_length:
+        if feat_length <= self.key_length:
             #print(f"sample, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}")
             return self.feat.detach().clone().to('cuda')
 
         if self.sampling_policy == 'random':
             sampled_ind = torch.randperm(len(self.feat), device=self.feat.device)[:self.key_length]
-            print(f"error sample, memory bank size: {len(self.feat)}")
             return self.feat[sampled_ind].detach().clone().to('cuda')
         else:
             raise NotImplementedError
@@ -88,26 +91,41 @@ class MemoryBank(nn.Module):
             #return
         #print(f"Before update: {torch.cuda.memory_allocated()} / {torch.cuda.memory_reserved()}")
         new_feat = new_feat.to('cuda')
+        update_length = 0
         if self.feat is None:
-            if len(new_feat) > self.max_length:
+            if len(new_feat) >= self.max_length:
                 new_feat_combined = new_feat[:self.max_length].detach().clone()
+                update_length = self.max_length
             else:
                 new_feat_combined = new_feat.detach().clone()
+                update_length = len(new_feat)
 
         else:
-            if len(new_feat) + len(self.feat) > self.max_length:
+            if len(new_feat) + len(self.feat) >= self.max_length:
                 if self.updating_policy == "random":
-                    concated_feat = torch.cat([new_feat, self.feat], dim=0)
-                    reserved_ind = torch.randperm(len(concated_feat), device=self.feat.device)[:-len(new_feat)]
-                    new_feat_combined = concated_feat[reserved_ind].detach().clone()
+                    if len(new_feat) >= self.max_length:
+                        new_feat_combined = new_feat[:self.max_length].detach().clone()
+                        update_length = self.max_length
+                    else:
+                        slots_available = self.max_length - len(self.feat)
+                        num_replace = len(new_feat) - slots_available
+                        if num_replace <= 0:
+                            new_feat_combined = torch.cat([self.feat, new_feat], dim=0).detach().clone()
+                        else:
+                            old_ind_to_keep = torch.randperm(len(self.feat), device=self.feat.device)[num_replace:]
+                            kept_old = self.feat[old_ind_to_keep]
+                            new_feat_combined = torch.cat([kept_old, new_feat], dim=0).detach().clone()
+                        update_length = len(new_feat)
                 else:
-                    NotImplementedError
+                    NotImplementedError("Only random updating policy is implemented")
             else:
                 new_feat_combined = torch.cat([self.feat, new_feat], dim=0).detach().clone()
+                update_length = len(new_feat)
 
 
         del self.feat
         self.feat = new_feat_combined
+        return len(self.feat), update_length
 
         #print(f"memory bank update, memory bank size: {len(self.feat)} gpu memory usage: {gpu_mem_usage():.0f}")
 

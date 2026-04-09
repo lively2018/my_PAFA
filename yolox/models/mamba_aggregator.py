@@ -22,7 +22,7 @@ def log_stats_to_file_csv(filename, data):
     with open(filename, 'a', newline='') as f:
         writer = csv.writer(f)
         if not file_exists:
-            writer.writerow(['frame_idx', 'level', 'count', 'gpu_mem_mb']) # Header
+            writer.writerow(['frame_idx', 'level', 'count', 'mem_len']) # Header
         writer.writerow(data)
 
 class MambaAggregator(nn.Module):
@@ -57,6 +57,8 @@ class MambaAggregator(nn.Module):
         self.video_path = None
         self.memory_bank_info = []
         self.count = 0
+        self.max_memory_bank_length = memory_length
+        self.key_length = key_length
 
     def forward(self, x, ref_x, k_type):
         #kssong
@@ -84,57 +86,120 @@ class MambaAggregator(nn.Module):
         self.memory_bank_info = []
         self.count += 1
         self.video_count += 1
+        memory_bank_p3_length, memory_bank_p4_length, memory_bank_p5_length = 0, 0, 0
+        update_length = 0
         if k_type == 0:
-            self.memory_bank_p3.reset()
-            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P3', 0,  self.memory_bank_p3.len()])
+            memory_bank_p3_length, update_length = self.memory_bank_p3.reset()
+            if update_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank reset, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P3', update_length,  memory_bank_p3_length])
         elif k_type == 1:
-            self.memory_bank_p4.reset()
-            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P4', 0,  self.memory_bank_p4.len()])
+            memory_bank_p4_length, update_length = self.memory_bank_p4.reset()
+            if update_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank reset, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P4', update_length,  memory_bank_p4_length])
         elif k_type == 2:
-            self.memory_bank_p5.reset()
-            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P5', 0,  self.memory_bank_p5.len()])
+            memory_bank_p5_length, update_length = self.memory_bank_p5.reset()
+            if update_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank reset, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P5', update_length,  memory_bank_p5_length])
 
 
     def update_memory_bank(self, x, k_type):
         #logger.info("update_memory_bank")
         self.batchset_count += 1
         self.count += 1
+        memory_bank_p3_length, memory_bank_p4_length, memory_bank_p5_length = 0, 0, 0
+        update_length = 0
         if k_type == 0:
-            self.memory_bank_p3.update(x)
+            memory_bank_p3_length, update_length = self.memory_bank_p3.update(x)
+            if update_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p3_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but memory_bank_p3_length {memory_bank_p3_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p3_length == self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but memory_bank_p3_length {memory_bank_p3_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
+            #if update_length == 0:
+            #    logger.warning(f"Memory bank update, but update_length is {update_length} x: {x.shape[0]}, video_path: {self.video_path}, batchset_count: {self.batchset_count}, level: P3, memory_bank_p3_length: {memory_bank_p3_length}")
             #self.memory_bank_info.append([self.video_path, self.batchset_count, 'P3', x.shape[0], self.memory_bank_p3.len()])
-            log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P3', x.shape[0], self.memory_bank_p3.len()])
-            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P3', x.shape[0], self.memory_bank_p3.len()])
+            #logger.info(f"update_memory_bank, video_path: {self.video_path}, batchset_count: {self.batchset_count}, level: P3, update_length: {update_length}, memory_bank_p3_length: {memory_bank_p3_length}")
+            log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P3', update_length, memory_bank_p3_length])
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P3', update_length, memory_bank_p3_length])
         elif k_type == 1:
-            self.memory_bank_p4.update(x)
+            memory_bank_p4_length, update_length = self.memory_bank_p4.update(x)
+            if update_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p4_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but memory_bank_p4_length {memory_bank_p4_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p4_length == self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but memory_bank_p4_length {memory_bank_p4_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
+
+            #if update_length == 0:
+            #    logger.warning(f"Memory bank update, but update_length is {update_length} x: {x.shape[0]}, video_path: {self.video_path}, batchset_count: {self.batchset_count}, level: P4, memory_bank_p4_length: {memory_bank_p4_length}")
             #self.memory_bank_info.append([self.video_path, self.batchset_count, 'P4', x.shape[0], self.memory_bank_p4.len()])
-            log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P4', x.shape[0], self.memory_bank_p4.len()])
-            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P4', x.shape[0], self.memory_bank_p4.len()])
+            #logger.info(f"update_memory_bank, video_path: {self.video_path}, batchset_count: {self.batchset_count}, level: P4, update_length: {update_length}, memory_bank_p4_length: {memory_bank_p4_length}")
+            log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P4', update_length, memory_bank_p4_length])
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P4', update_length, memory_bank_p4_length])
         elif k_type == 2:
-            self.memory_bank_p5.update(x)
+            memory_bank_p5_length, update_length = self.memory_bank_p5.update(x)
+            if update_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p5_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but memory_bank_p5_length {memory_bank_p5_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p5_length == self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but memory_bank_p5_length {memory_bank_p5_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
+            #if update_length == 0:
+            #    logger.warning(f"Memory bank update, but update_length is {update_length} x: {x.shape[0]}, video_path: {self.video_path}, batchset_count: {self.batchset_count}, level: P5, memory_bank_p5_length: {memory_bank_p5_length}")
             #self.memory_bank_info.append([self.video_path, self.batchset_count, 'P5', x.shape[0], self.memory_bank_p5.len()])
-            log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P5', x.shape[0], self.memory_bank_p5.len()])
-            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P5', x.shape[0], self.memory_bank_p5.len()])
+            #logger.info(f"update_memory_bank, video_path: {self.video_path}, batchset_count: {self.batchset_count}, level: P5, update_length: {update_length}, memory_bank_p5_length: {memory_bank_p5_length}")
+            log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P5', update_length, memory_bank_p5_length])
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P5', update_length, memory_bank_p5_length])
 
     def init_memory_bank(self, x, k_type):
         #logger.info("init_memory_bank")
         #logger.info("x.shape: {}".format(x.shape))
         self.batchset_count += 1
         self.count += 1
+        memory_bank_p3_length, memory_bank_p4_length, memory_bank_p5_length = 0, 0, 0
+        update_length = 0
         if k_type == 0:
-            self.memory_bank_p3.init_memory(x)
+            memory_bank_p3_length, update_length = self.memory_bank_p3.init_memory(x)
+            if update_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank init, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p3_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank init, but memory_bank_p3_length {memory_bank_p3_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p3_length == self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but memory_bank_p3_length {memory_bank_p3_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
+
             #self.memory_bank_info.append([self.video_path, self.batchset_count, 'P3', x.shape[0], self.memory_bank_p3.len()])
-            log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P3', x.shape[0], self.memory_bank_p3.len()])
-            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P3', x.shape[0], self.memory_bank_p3.len()])
+            #logger.info(f"init_memory_bank, video_path: {self.video_path}, batchset_count: {self.batchset_count}, level: P3, update_length: {update_length}, memory_bank_p3_length: {memory_bank_p3_length}")
+            log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P3', update_length, memory_bank_p3_length])
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P3', update_length, memory_bank_p3_length])
         elif k_type == 1:
-            self.memory_bank_p4.init_memory(x)
+            memory_bank_p4_length, update_length = self.memory_bank_p4.init_memory(x)
+            if update_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank init, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p4_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank init, but memory_bank_p4_length {memory_bank_p4_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p4_length == self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but memory_bank_p4_length {memory_bank_p4_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
             #self.memory_bank_info.append([self.video_path, self.batchset_count, 'P4', x.shape[0], self.memory_bank_p4.len()])
-            log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P4', x.shape[0], self.memory_bank_p4.len()])
-            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P4', x.shape[0], self.memory_bank_p4.len()])
+            #logger.info(f"init_memory_bank, video_path: {self.video_path}, batchset_count: {self.batchset_count}, level: P4, update_length: {update_length}, memory_bank_p4_length: {memory_bank_p4_length}")
+            log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P4', update_length, memory_bank_p4_length])
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P4', update_length, memory_bank_p4_length])
         elif k_type == 2:
-            self.memory_bank_p5.init_memory(x)
+            memory_bank_p5_length, update_length = self.memory_bank_p5.init_memory(x)
+            if update_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank init, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p5_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank init, but memory_bank_p5_length {memory_bank_p5_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p5_length == self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but memory_bank_p5_length {memory_bank_p5_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
             #self.memory_bank_info.append([self.video_path, self.batchset_count, 'P5', x.shape[0], self.memory_bank_p5.len()])
-            log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P5', x.shape[0], self.memory_bank_p5.len()])
-            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P5', x.shape[0], self.memory_bank_p5.len()])
+            #logger.info(f"init_memory_bank, video_path: {self.video_path}, batchset_count: {self.batchset_count}, level: P5, update_length: {update_length}, memory_bank_p5_length: {memory_bank_p5_length}")
+            log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P5', update_length, memory_bank_p5_length])
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P5', update_length, memory_bank_p5_length])
+
     def forward_with_ref_x(self, x, ref_x):
         """Aggregate the features `ref_x` of reference proposals.
 
