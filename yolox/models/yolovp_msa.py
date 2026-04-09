@@ -12,7 +12,7 @@ import torch.nn.functional as F
 import torchvision
 from loguru import logger
 
-from yolox.models.post_process import postprocess,get_linking_mat
+from yolox.models.post_process import postprocess, get_linking_mat, batched_soft_nms
 from yolox.models.post_trans import MSA_yolov, LocalAggregation
 from yolox.utils import bboxes_iou
 from yolox.utils.box_op import box_cxcywh_to_xyxy, generalized_box_iou
@@ -1310,11 +1310,11 @@ class YOLOXHead(nn.Module):
 
             conf_mask = (detections_ori[:, 4] * detections_ori[:, 5] >= conf_thre).squeeze()
             detections_ori = detections_ori[conf_mask]
-            nms_out_index = torchvision.ops.batched_nms(
+            nms_out_index = batched_soft_nms(
                 detections_ori[:, :4],
                 detections_ori[:, 4] * detections_ori[:, 5],
                 detections_ori[:, 6],
-                nms_thre,
+                score_thresh=conf_thre,
             )
             detections_ori = detections_ori[nms_out_index]
             output_ori[i] = detections_ori
