@@ -75,7 +75,7 @@ class MemoryBank(nn.Module):
 
         if self.sampling_policy == 'random':
             sampled_ind = torch.randperm(len(self.feat), device=self.feat.device)[:self.key_length]
-            #print(f"sample, memory bank size: {len(self.feat)}, gpu memory usage: {gpu_mem_usage():.0f}")
+            print(f"error sample, memory bank size: {len(self.feat)}")
             return self.feat[sampled_ind].detach().clone().to('cuda')
         else:
             raise NotImplementedError
@@ -90,24 +90,20 @@ class MemoryBank(nn.Module):
         new_feat = new_feat.to('cuda')
         if self.feat is None:
             if len(new_feat) > self.max_length:
-                self.feat = new_feat[:self.max_length].detach().clone()
+                new_feat_combined = new_feat[:self.max_length].detach().clone()
             else:
-                self.feat = new_feat.detach().clone()
-            return
-
-        if len(self.feat) < self.max_length:
-            new_feat_combined = torch.cat([self.feat, new_feat], dim=0).detach().clone()
-
-        elif self.updating_policy == "random":
-            new_num = len(new_feat)
-            if new_num > self.max_length:
-                reserved_ind = torch.randperm(len(self.feat), device=self.feat.device)[:-new_num]
-                new_feat_combined = torch.cat([self.feat[reserved_ind], new_feat], dim=0).detach().clone()
-            else:
-                new_feat_combined = torch.cat([self.feat, new_feat[:self.max_length]], dim=0).detach().clone()
+                new_feat_combined = new_feat.detach().clone()
 
         else:
-            raise NotImplementedError("not implemented")
+            if len(new_feat) + len(self.feat) > self.max_length:
+                if self.updating_policy == "random":
+                    concated_feat = torch.cat([new_feat, self.feat], dim=0)
+                    reserved_ind = torch.randperm(len(concated_feat), device=self.feat.device)[:-len(new_feat)]
+                    new_feat_combined = concated_feat[reserved_ind].detach().clone()
+                else:
+                    NotImplementedError
+            else:
+                new_feat_combined = torch.cat([self.feat, new_feat], dim=0).detach().clone()
 
 
         del self.feat

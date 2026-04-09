@@ -6,13 +6,12 @@ import time
 
 from numpy import log
 from tools.demo import make_parser
-# Load the data
-df = pd.read_csv('/home/kssong/memory_size_result/memory_stats_min.csv')
+
 
 levels = ['P3', 'P4', 'P5']
 norm_factors = {'P3': 6400, 'P4': 1600, 'P5': 400}
 level_colors = {'P3': 'tab:blue', 'P4': 'tab:orange', 'P5': 'tab:green'}
-MEMORY_LIMIT = 4800
+MEMORY_LIMIT = 120
 RATIO_LIMIT = 1.0
 P3_LIMIT = 6400
 P4_LIMIT = 1600
@@ -28,6 +27,7 @@ def main(args):
     start_time = time.strftime("%Y_%m_%d_%H_%M_%S", current_time)
     log_file_path = os.path.join("./", f'log_{start_time}.txt')
     log_file = open(log_file_path, 'w')
+    print(f"Arguments: {args}")
     df = pd.read_csv(args.path)
     # 1. Feature Number Trace - Separated by Level
     fig, axes = plt.subplots(len(levels), 1, figsize=(10, 10), sharex=True)
@@ -146,4 +146,5 @@ def main(args):
     log_file.close()
 if __name__ == "__main__":
     args = make_parser().parse_args()
+    print(f"Arguments: {args}")
     main(args)
