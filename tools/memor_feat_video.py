@@ -14,7 +14,7 @@ from tools.demo import make_parser
 levels = ['P3', 'P4', 'P5']
 norm_factors = {'P3': 6400, 'P4': 1600, 'P5': 400}
 level_colors = {'P3': 'tab:blue', 'P4': 'tab:orange', 'P5': 'tab:green'}
-MEMORY_LIMIT = 4800
+
 RATIO_LIMIT = 1.0
 PERCENTAGE_LIMIT = 100.0
 P3_LIMIT = 6400
@@ -25,6 +25,8 @@ def make_parser():
     parser = argparse.ArgumentParser("Memory feat video")
     parser.add_argument("--path", type=str, default="/home/kssong/memory_size_result/memory_bank_stats_video.csv",\
                          help="path to the CSV file containing memory bank stats")
+    parser.add_argument("--mem_limit", type=int, default=120,\
+                         help="maximum memory usage limit for plotting")
     return parser
 
 def main(args):
@@ -33,6 +35,7 @@ def main(args):
     log_file_path = os.path.join("./", f'log_{start_time}.txt')
     log_file = open(log_file_path, 'w')
     df = pd.read_csv(args.path)
+    mem_limit = args.mem_limit
     average_video_info = {}
     #video_path', 'batch_set_count', 'level', 'count', 'mem_len'
     # 1. Feature Number Trace - Separated by Level and video
@@ -48,7 +51,7 @@ def main(args):
             average_ratio = average_count / (norm_factors[level] * 16)
             average_percentage = average_ratio * 100
             average_mem_len = subset['mem_len'].mean()
-            average_mem_ratio = average_mem_len / MEMORY_LIMIT
+            average_mem_ratio = average_mem_len / mem_limit
             average_mem_percentage = average_mem_ratio * 100
             average_video_info[video_count].update({
                 f'average_count_{level}': average_count,
@@ -66,7 +69,7 @@ def main(args):
         total_average_count_per_video = total_average_count / (total_video_count)
         total_average_mem_len_per_video = total_average_mem_len / (total_video_count)
         total_average_percentage_per_video = total_average_count_per_video / (norm_factors[level]*16) * 100
-        total_average_mem_percentage_per_video = total_average_mem_len_per_video / (MEMORY_LIMIT) * 100
+        total_average_mem_percentage_per_video = total_average_mem_len_per_video / (mem_limit) * 100
         print(f"  {level} Total Average Count: {total_average_count:.2f} Average Total Average Count: {total_average_count_per_video:.2f}")
         print(f"  {level} Total Average Memory Length: {total_average_mem_len:.2f} Average Total Average Memory Length: {total_average_mem_len_per_video:.2f}")
         print(f"  {level} Total Average Percentage: {(total_average_percentage_per_video):.3f}%")
@@ -115,7 +118,7 @@ def main(args):
         counts = [v[f'average_percentage_{level}'] for v in average_video_info.values()]
         print(f"Level {level} - Max Percentage: {max(counts):.2f}% video(s) with max percentage: {[v['video_name'] for v in average_video_info.values() if v[f'average_percentage_{level}'] == max(counts)]}")
         axes[i].plot(video_nums, counts, label=f'Level {level}', color=level_colors[level], linewidth=1.5, marker='o')
-        axes[i].set_ylim(0, PERCENTAGE_LIMIT)
+        axes[i].set_ylim(0, PERCENTAGE_LIMIT+10)
         axes[i].set_title(f'Feature Percentages Trace - Level {level}')
         axes[i].set_ylabel('Feature Percentage (%)')
         axes[i].legend(loc='upper right')
@@ -130,7 +133,7 @@ def main(args):
         video_nums = [v['video_num'] for v in average_video_info.values()]
         mem_lens = [v[f'average_mem_len_{level}'] for v in average_video_info.values()]
         axes[i].plot(video_nums, mem_lens, label=f'Level {level}', color=level_colors[level], linewidth=1.5, marker='o')
-        axes[i].set_ylim(0, MEMORY_LIMIT)
+        axes[i].set_ylim(0, mem_limit+10)
         axes[i].set_title(f'Memory Usage Trace - Level {level}')
         axes[i].set_ylabel('Memory')
         axes[i].legend(loc='upper right')
@@ -145,7 +148,7 @@ def main(args):
         video_nums = [v['video_num'] for v in average_video_info.values()]
         mem_lens = [v[f'average_mem_percentage_{level}'] for v in average_video_info.values()]
         axes[i].plot(video_nums, mem_lens, label=f'Level {level}', color=level_colors[level], linewidth=1.5, marker='o')
-        axes[i].set_ylim(0, PERCENTAGE_LIMIT)
+        axes[i].set_ylim(0, PERCENTAGE_LIMIT+10)
         axes[i].set_title(f'Memory Usage Percentage Trace - Level {level}')
         axes[i].set_ylabel('Memory Percentage (%)')
         axes[i].legend(loc='upper right')
