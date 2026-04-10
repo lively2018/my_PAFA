@@ -36,6 +36,8 @@ def main(args):
     log_file = open(log_file_path, 'w')
     df = pd.read_csv(args.path)
     mem_limit = args.mem_limit
+    print(f"Memory Limit for Plotting: {mem_limit}")
+    log_file.write(f"Memory Limit for Plotting: {mem_limit}\n")
     average_video_info = {}
     #video_path', 'batch_set_count', 'level', 'count', 'mem_len'
     # 1. Feature Number Trace - Separated by Level and video
@@ -133,10 +135,15 @@ def main(args):
         video_nums = [v['video_num'] for v in average_video_info.values()]
         mem_lens = [v[f'average_mem_len_{level}'] for v in average_video_info.values()]
         axes[i].plot(video_nums, mem_lens, label=f'Level {level}', color=level_colors[level], linewidth=1.5, marker='o')
+        axes[i].axhline(y=mem_limit, color='red', linestyle='--', linewidth=1.2)
         axes[i].set_ylim(0, mem_limit+10)
+        yticks = list(axes[i].get_yticks())
+        if mem_limit not in yticks:
+            yticks.append(mem_limit)
+        axes[i].set_yticks(sorted(yticks))
+        axes[i].set_yticklabels([f'' if t == (mem_limit+10) else str(int(t)) for t in sorted(yticks)])
         axes[i].set_title(f'Memory Usage Trace - Level {level}')
         axes[i].set_ylabel('Memory')
-        axes[i].legend(loc='upper right')
         axes[i].grid(True, linestyle='--', alpha=0.6)
         axes[i].set_xlabel('Video Number')
 
@@ -151,7 +158,6 @@ def main(args):
         axes[i].set_ylim(0, PERCENTAGE_LIMIT+10)
         axes[i].set_title(f'Memory Usage Percentage Trace - Level {level}')
         axes[i].set_ylabel('Memory Percentage (%)')
-        axes[i].legend(loc='upper right')
         axes[i].grid(True, linestyle='--', alpha=0.6)
         axes[i].set_xlabel('Video Number')
 

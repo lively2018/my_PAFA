@@ -66,11 +66,16 @@ def main(args):
     fig, axes = plt.subplots(len(levels), 1, figsize=(10, 10), sharex=True)
     for i, level in enumerate(levels):
         subset = df[df['level'] == level]
-        axes[i].plot(subset['frame_idx'], subset['mem_len'], label=f'Level {level}', color=level_colors[level], linewidth=1.5)
+        axes[i].plot(subset['frame_idx'], subset['count'], label=f'Level {level}', color=level_colors[level], linewidth=1.5)
+        axes[i].axhline(y=mem_limit, color='red', linestyle='--', linewidth=1.2, label=f'mem_limit ({mem_limit})')
         axes[i].set_ylim(0, mem_limit+10)
+        yticks = list(axes[i].get_yticks())
+        if mem_limit not in yticks:
+            yticks.append(mem_limit)
+        axes[i].set_yticks(sorted(yticks))
+        axes[i].set_yticklabels([f'' if t == (mem_limit+10) else str(int(t)) for t in sorted(yticks)])
         axes[i].set_title(f'Memory Usage Trace - Level {level}')
         axes[i].set_ylabel('Memory')
-        axes[i].legend(loc='upper right')
         axes[i].grid(True, linestyle='--', alpha=0.6)
 
     axes[-1].set_xlabel('Frame Index')
@@ -80,12 +85,11 @@ def main(args):
     fig, axes = plt.subplots(len(levels), 1, figsize=(10, 10), sharex=True)
     for i, level in enumerate(levels):
         subset = df[df['level'] == level]
-        percentages = (subset['mem_len'] / mem_limit) * 100
+        percentages = (subset['count'] / mem_limit) * 100
         axes[i].plot(subset['frame_idx'], percentages, label=f'Level {level}', color=level_colors[level], linewidth=1.5)
         axes[i].set_ylim(0, 110)
         axes[i].set_title(f'Memory Usage Trace - Level {level}')
         axes[i].set_ylabel('Percentage of Memory Limit (%)')
-        axes[i].legend(loc='upper right')
         axes[i].grid(True, linestyle='--', alpha=0.6)
 
     axes[-1].set_xlabel('Frame Index')
