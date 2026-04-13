@@ -1,11 +1,66 @@
 import copy
 import csv
 import torch
-import torchvision
 import random
 import time
 from yolox.utils import bboxes_iou
 import os
+
+def _diou_nms(boxes, scores, iou_threshold):
+    """Single-class DIoU-NMS in PyTorch. Returns kept indices (LongTensor)."""
+    if boxes.numel() == 0:
+        return torch.empty(0, dtype=torch.long, device=boxes.device)
+
+    x1, y1, x2, y2 = boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
+    areas = (x2 - x1) * (y2 - y1)
+    cx    = (x1 + x2) / 2
+    cy    = (y1 + y2) / 2
+
+    order = scores.argsort(descending=True)
+    keep  = []
+
+    while order.numel() > 0:
+        i = order[0].item()
+        keep.append(i)
+        if order.numel() == 1:
+            break
+        rest = order[1:]
+
+        # IoU
+        ix1   = torch.maximum(x1[i], x1[rest])
+        iy1   = torch.maximum(y1[i], y1[rest])
+        ix2   = torch.minimum(x2[i], x2[rest])
+        iy2   = torch.minimum(y2[i], y2[rest])
+        inter = (ix2 - ix1).clamp(min=0) * (iy2 - iy1).clamp(min=0)
+        iou   = inter / (areas[i] + areas[rest] - inter + 1e-7)
+
+        # Center distance squared
+        d2 = (cx[i] - cx[rest]) ** 2 + (cy[i] - cy[rest]) ** 2
+
+        # Enclosing-box diagonal squared
+        enc_x1 = torch.minimum(x1[i], x1[rest])
+        enc_y1 = torch.minimum(y1[i], y1[rest])
+        enc_x2 = torch.maximum(x2[i], x2[rest])
+        enc_y2 = torch.maximum(y2[i], y2[rest])
+        c2     = (enc_x2 - enc_x1) ** 2 + (enc_y2 - enc_y1) ** 2 + 1e-7
+
+        diou  = iou - d2 / c2
+        order = rest[diou <= iou_threshold]
+
+    return torch.tensor(keep, dtype=torch.long, device=boxes.device)
+
+
+def batched_diou_nms(boxes, scores, idxs, iou_threshold):
+    """DIoU-NMS with per-class batching. Drop-in replacement for
+    torchvision.ops.batched_nms(boxes, scores, idxs, iou_threshold)."""
+    if boxes.numel() == 0:
+        return torch.empty(0, dtype=torch.long, device=boxes.device)
+    # Offset each class so boxes from different classes never interact
+    max_coord = boxes.max()
+    offsets   = idxs.to(boxes.dtype) * (max_coord + 1)
+    boxes_off = boxes + offsets[:, None]
+    return _diou_nms(boxes_off, scores, iou_threshold)
+
 
 def log_output_to_csv(filename, data):
     # data format: [frame_idx, level_name, feature_count, gpu_mem_mb]
@@ -64,11 +119,11 @@ def postprocess(prediction, num_classes, fc_outputs,
             continue
         if len(detections_high.shape)==3:
             detections_high = detections_high[0]
-        for idx in range(len(detections_high)):
-            print("image {}: idx: {} detection: {}, conf_score: {}, class_conf: {}, class_pred: {}".format( i,idx, detections_high[idx, :4], detections_high[idx, 4], detections_high[idx, 5], detections_high[idx, 6]
-            ))
-            log_output_to_csv('output_before_nms.csv', [i, idx, detections_high[idx, :4], detections_high[idx, 4],detections_high[idx, 5], detections_high[idx, 6]])
-        nms_out_index = torchvision.ops.batched_nms(
+        #for idx in range(len(detections_high)):
+        #    print("image {}: idx: {} detection: {}, conf_score: {}, class_conf: {}, class_pred: {}".format( i,idx, detections_high[idx, :4], detections_high[idx, 4], detections_high[idx, 5], detections_high[idx, 6]
+        #    ))
+        #    log_output_to_csv('output_before_nms.csv', [i, idx, detections_high[idx, :4], detections_high[idx, 4],detections_high[idx, 5], detections_high[idx, 6]])
+        nms_out_index = batched_diou_nms(
             detections_high[:, :4],
             detections_high[:, 4] * detections_high[:, 5],
             detections_high[:, 6],
@@ -78,19 +133,19 @@ def postprocess(prediction, num_classes, fc_outputs,
         detections_high = detections_high[nms_out_index]
         output[i] = detections_high
         #print("image {}: detections after NMS: {}".format(i, len(detections_high)))
-        for idx in range(len(detections_high)):
-            print("image {}: idx: {} detection: {}, conf_score: {}, class_conf: {}, class_pred: {}".format( i,idx, detections_high[idx, :4], detections_high[idx, 4], detections_high[idx, 5], detections_high[idx, 6]
-            ))
-            log_output_to_csv('output_after_nms.csv', [i, idx, detections_high[idx, :4], detections_high[idx, 4],detections_high[idx, 5], detections_high[idx, 6]])
-        if i == 15:
-            exit(0)
+        #for idx in range(len(detections_high)):
+        #    print("image {}: idx: {} detection: {}, conf_score: {}, class_conf: {}, class_pred: {}".format( i,idx, detections_high[idx, :4], detections_high[idx, 4], detections_high[idx, 5], detections_high[idx, 6]
+        #    ))
+        #    log_output_to_csv('output_after_nms.csv', [i, idx, detections_high[idx, :4], detections_high[idx, 4],detections_high[idx, 5], detections_high[idx, 6]])
+        #if i == 15:
+        #    exit(0)
         detections_ori = detections_ori[:, :7]
         conf_mask = detections_ori[:, 4] * detections_ori[:, 5] >= conf_thre
 
         #conf_mask = (detections_ori[:, 4] * detections_ori[:, 5] >= conf_thre).squeeze()
         detections_ori = detections_ori[conf_mask]
 
-        nms_out_index = torchvision.ops.batched_nms(
+        nms_out_index = batched_diou_nms(
             detections_ori[:, :4],
             detections_ori[:, 4] * detections_ori[:, 5],
             detections_ori[:, 6],
@@ -139,7 +194,7 @@ def postprocess_pure(prediction, num_classes, fc_outputs, conf_thre=0.001, nms_t
             continue
         if len(detections_high.shape)==3:
             detections_high = detections_high[0]
-        nms_out_index = torchvision.ops.batched_nms(
+        nms_out_index = batched_diou_nms(
             detections_high[:, :4],
             detections_high[:, 4] * detections_high[:, 5],
             detections_high[:, 6],
@@ -400,7 +455,7 @@ def postprocess_widx(prediction, num_classes=30, conf_thre=0.01, nms_thre=0.5):
         if not detections.size(0):
             continue
 
-        nms_out_index = torchvision.ops.batched_nms(
+        nms_out_index = batched_diou_nms(
             detections[:, :4],
             detections[:, 4] * detections[:, 5],
             detections[:, 6],
@@ -444,7 +499,7 @@ def find_idx(prediction, num_classes=30, conf_thre=0.001, nms_thre=0.5):
         if not detections.size(0):
             continue
 
-        nms_out_index = torchvision.ops.batched_nms(
+        nms_out_index = batched_diou_nms(
             detections[:, :4],
             detections[:, 4] * detections[:, 5],
             detections[:, 6],
@@ -518,7 +573,7 @@ def postpro_woclass(prediction, num_classes, nms_thre=0.75, topK=30, ota_idxs=No
         top_pre = torch.topk(conf_score, k=750)
         sort_idx = top_pre.indices[:750]
         detections_temp = detections[sort_idx, :]
-        nms_out_index = torchvision.ops.batched_nms(
+        nms_out_index = batched_diou_nms(
             detections_temp[:, :4],
             detections_temp[:, 4] * detections_temp[:, 5],
             detections_temp[:, 6],
