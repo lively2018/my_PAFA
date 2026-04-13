@@ -36,7 +36,7 @@ def log_stats_to_csv(filename, data):
     with open(filename, 'a', newline='') as f:
         writer = csv.writer(f)
         if not file_exists:
-            writer.writerow(['video_path', 'batch_set_count', 'level', 'count', 'mem_len']) # Header
+            writer.writerow(['image id', 'feature idx', 'bboxes', 'obj_score', 'class_conf', 'class_pred']) # Header
         writer.writerow(data)
 class YOLOXHead(nn.Module):
     def __init__(
@@ -1304,7 +1304,12 @@ class YOLOXHead(nn.Module):
             output[i] = detections[topk_idx, :]
             output_index[i] = topk_idx
             logger.info("image {}: detections after NMS: {}".format(i, detections[topk_idx, :]))
-            log_stats_to_csv('detection_after_nms.csv', [i, output[i][:, :4], output[i][:, 5], output[i][:, 6]])
+            for idx in topk_idx:
+
+                logger.info("image {}: idx: {} detection: {}, conf_score: {}, class_conf: {}, class_pred: {}".format( i,\
+                     idx, detections[idx, :4], detections[idx, 4], detections[idx, 5], detections[idx, 6]
+                ))
+                log_stats_to_csv('detection_after_nms.csv', [i, idx, detections[idx, :4], detections[idx, 4],detections[idx, 5], detections[idx, 6]])
             if i == 15:
                 exit(0)
 
