@@ -120,11 +120,11 @@ def postprocess(prediction, num_classes, fc_outputs,
             continue
         if len(detections_high.shape)==3:
             detections_high = detections_high[0]
-        nms_out_index = batched_soft_nms(
+        nms_out_index = torchvision.ops.batched_nms(
             detections_high[:, :4],
             detections_high[:, 4] * detections_high[:, 5],
             detections_high[:, 6],
-            score_thresh=conf_thre,
+            nms_thre,
         )
 
         detections_high = detections_high[nms_out_index]
