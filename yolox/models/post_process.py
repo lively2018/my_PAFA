@@ -4,77 +4,6 @@ import torchvision
 import random
 import time
 from yolox.utils import bboxes_iou
-
-
-def batched_soft_nms(boxes, scores, labels, iou_thresh=0.5, score_thresh=0.001, sigma=0.5):
-    """
-    Class-aware Soft-NMS with Gaussian score decay.
-    Instead of hard-removing overlapping boxes, decays their scores by:
-        score *= exp(-IoU^2 / sigma)
-    then filters boxes below score_thresh.
-
-    Args:
-        boxes:        [N, 4] float, x1y1x2y2
-        scores:       [N]    float, combined confidence score
-        labels:       [N]    int,   class index
-        iou_thresh:   unused (kept for API compatibility with batched_nms)
-        score_thresh: minimum score to keep after decay
-        sigma:        Gaussian decay bandwidth (smaller = more aggressive)
-    Returns:
-        keep: 1-D LongTensor of surviving indices, sorted by descending score
-    """
-    keep = []
-    scores = scores.clone()
-    unique_labels = labels.unique()
-
-    for cls in unique_labels:
-        cls_mask = labels == cls
-        cls_idx = cls_mask.nonzero(as_tuple=False).squeeze(1)
-        cls_boxes = boxes[cls_idx]
-        cls_scores = scores[cls_idx]
-
-        order = cls_scores.argsort(descending=True)
-        cls_boxes = cls_boxes[order]
-        cls_scores = cls_scores[order]
-        orig_idx = cls_idx[order]
-
-        while cls_scores.numel() > 0:
-            # pick highest-score box
-            keep.append(orig_idx[0])
-            if cls_scores.numel() == 1:
-                break
-            top_box = cls_boxes[0].unsqueeze(0)       # [1,4]
-            rest_boxes = cls_boxes[1:]                 # [M,4]
-
-            # compute IoU between top box and remaining boxes
-            inter_x1 = torch.max(top_box[:, 0], rest_boxes[:, 0])
-            inter_y1 = torch.max(top_box[:, 1], rest_boxes[:, 1])
-            inter_x2 = torch.min(top_box[:, 2], rest_boxes[:, 2])
-            inter_y2 = torch.min(top_box[:, 3], rest_boxes[:, 3])
-            inter_w = (inter_x2 - inter_x1).clamp(min=0)
-            inter_h = (inter_y2 - inter_y1).clamp(min=0)
-            intersection = inter_w * inter_h
-            area_top = (top_box[:, 2] - top_box[:, 0]) * (top_box[:, 3] - top_box[:, 1])
-            area_rest = (rest_boxes[:, 2] - rest_boxes[:, 0]) * (rest_boxes[:, 3] - rest_boxes[:, 1])
-            union = area_top + area_rest - intersection
-            iou = intersection / union.clamp(min=1e-6)
-
-            # Gaussian decay
-            decay = torch.exp(-(iou ** 2) / sigma)
-            cls_scores[1:] *= decay
-
-            # filter below threshold
-            mask = cls_scores[1:] >= score_thresh
-            cls_boxes = cls_boxes[1:][mask]
-            cls_scores = cls_scores[1:][mask]
-            orig_idx = orig_idx[1:][mask]
-
-    if len(keep) == 0:
-        return torch.zeros(0, dtype=torch.long, device=boxes.device)
-    keep = torch.stack(keep)
-    # sort by descending score
-    keep = keep[scores[keep].argsort(descending=True)]
-    return keep
 def postprocess(prediction, num_classes, fc_outputs,
                 conf_output, conf_thre=0.001, nms_thre=0.5,
                 cls_sig=True,return_idx=False):
@@ -135,11 +64,11 @@ def postprocess(prediction, num_classes, fc_outputs,
         #conf_mask = (detections_ori[:, 4] * detections_ori[:, 5] >= conf_thre).squeeze()
         detections_ori = detections_ori[conf_mask]
 
-        nms_out_index = batched_soft_nms(
+        nms_out_index = torchvision.ops.batched_nms(
             detections_ori[:, :4],
             detections_ori[:, 4] * detections_ori[:, 5],
             detections_ori[:, 6],
-            score_thresh=conf_thre,
+            nms_thre,
         )
 
         detections_ori = detections_ori[nms_out_index]
