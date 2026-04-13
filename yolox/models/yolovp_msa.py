@@ -21,7 +21,8 @@ from .network_blocks import BaseConv, DWConv
 from yolox.models.mamba_aggregator import MambaAggregator
 #kssong
 import random
-
+import csv
+import os
 #kssong
 def gpu_mem_usage():
     """
@@ -29,6 +30,14 @@ def gpu_mem_usage():
     """
     return torch.cuda.max_memory_allocated() / (1024 * 1024)
 
+def log_stats_to_csv(filename, data):
+    # data format: [frame_idx, level_name, feature_count, gpu_mem_mb]
+    file_exists = os.path.isfile(filename)
+    with open(filename, 'a', newline='') as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(['video_path', 'batch_set_count', 'level', 'count', 'mem_len']) # Header
+        writer.writerow(data)
 class YOLOXHead(nn.Module):
     def __init__(
             self,
@@ -1295,7 +1304,9 @@ class YOLOXHead(nn.Module):
             output[i] = detections[topk_idx, :]
             output_index[i] = topk_idx
             logger.info("image {}: detections after NMS: {}".format(i, detections[topk_idx, :]))
-
+            log_stats_to_csv('detection_after_nms.csv', [i, output[i][:, :4], output[i][:, 5], output[i][:, 6]])
+            if i == 15:
+                exit(0)
 
         return output, output_index
 
