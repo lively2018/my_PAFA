@@ -1,15 +1,30 @@
 import copy
+import csv
 import torch
 import torchvision
 import random
 import time
 from yolox.utils import bboxes_iou
+import os
+
+def log_output_to_csv(filename, data):
+    # data format: [frame_idx, level_name, feature_count, gpu_mem_mb]
+    file_exists = os.path.isfile(filename)
+    with open(filename, 'a', newline='') as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(['image id', 'feature idx', 'bboxes', 'obj_score', 'class_conf', 'class_pred']) # Header
+        writer.writerow(data)
 def postprocess(prediction, num_classes, fc_outputs,
                 conf_output, conf_thre=0.001, nms_thre=0.5,
                 cls_sig=True,return_idx=False):
     output = [None for _ in range(len(prediction))]
     output_ori = [None for _ in range(len(prediction))]
     prediction_ori = copy.deepcopy(prediction)
+    # print(f"postprocess: prediction length: {len(prediction)}, fc_outputs length: {len(fc_outputs)}")
+    for i in range(len(prediction)):
+        # print(f"postprocess: prediction[{i}] shape: {prediction[i].shape}, fc_outputs[{i}] shape: {fc_outputs[i].shape}")
+        pass
     cls_pred, cls_conf = [],[]
     for _ in range(len(prediction)):
         tmp_cls,tmp_pred = torch.max(fc_outputs[_], -1, keepdim=False) #
@@ -18,7 +33,7 @@ def postprocess(prediction, num_classes, fc_outputs,
     # cls_conf, cls_pred = torch.max(fc_outputs, -1, keepdim=False) #
     nms_out_idxs = []
     for i, detections in enumerate(prediction):
-
+        #print("image {}: detections : {}".format(i, len(detections)))
         if detections==None or not detections.size(0):
             continue
         if conf_output is not None:
@@ -40,15 +55,19 @@ def postprocess(prediction, num_classes, fc_outputs,
         new_detetions[:,5] = scores.squeeze()
         detections_high = new_detetions  # new_detetions
         detections_ori = prediction_ori[i]
-        #print(len(detections_high.shape))
+        #print(f'new_detetions.shape: {new_detetions.shape}, len(detections_ori): {len(detections_ori)}')
 
         conf_mask = (detections_high[:, 4] * detections_high[:, 5] >= conf_thre).squeeze()
         detections_high = detections_high[conf_mask]
-
+        #print("image {}: detections before NMS: {}".format(i, len(detections_high)))
         if not detections_high.shape[0]:
             continue
         if len(detections_high.shape)==3:
             detections_high = detections_high[0]
+        for idx in range(len(detections_high)):
+            print("image {}: idx: {} detection: {}, conf_score: {}, class_conf: {}, class_pred: {}".format( i,idx, detections_high[idx, :4], detections_high[idx, 4], detections_high[idx, 5], detections_high[idx, 6]
+            ))
+            log_output_to_csv('output_before_nms.csv', [i, idx, detections_high[idx, :4], detections_high[idx, 4],detections_high[idx, 5], detections_high[idx, 6]])
         nms_out_index = torchvision.ops.batched_nms(
             detections_high[:, :4],
             detections_high[:, 4] * detections_high[:, 5],
@@ -58,6 +77,13 @@ def postprocess(prediction, num_classes, fc_outputs,
 
         detections_high = detections_high[nms_out_index]
         output[i] = detections_high
+        #print("image {}: detections after NMS: {}".format(i, len(detections_high)))
+        for idx in range(len(detections_high)):
+            print("image {}: idx: {} detection: {}, conf_score: {}, class_conf: {}, class_pred: {}".format( i,idx, detections_high[idx, :4], detections_high[idx, 4], detections_high[idx, 5], detections_high[idx, 6]
+            ))
+            log_output_to_csv('output_after_nms.csv', [i, idx, detections_high[idx, :4], detections_high[idx, 4],detections_high[idx, 5], detections_high[idx, 6]])
+        if i == 15:
+            exit(0)
         detections_ori = detections_ori[:, :7]
         conf_mask = detections_ori[:, 4] * detections_ori[:, 5] >= conf_thre
 

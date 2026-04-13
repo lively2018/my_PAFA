@@ -12,7 +12,7 @@ import torch.nn.functional as F
 import torchvision
 from loguru import logger
 
-from yolox.models.post_process import postprocess, get_linking_mat, batched_soft_nms
+from yolox.models.post_process import postprocess
 from yolox.models.post_trans import MSA_yolov, LocalAggregation
 from yolox.utils import bboxes_iou
 from yolox.utils.box_op import box_cxcywh_to_xyxy, generalized_box_iou
@@ -1303,15 +1303,15 @@ class YOLOXHead(nn.Module):
             topk_idx = sort_idx[nms_out_index[:self.topK]]
             output[i] = detections[topk_idx, :]
             output_index[i] = topk_idx
-            logger.info("image {}: detections after NMS: {}".format(i, detections[topk_idx, :]))
-            for idx in topk_idx:
+            #logger.info("image {}: detections after NMS: {}".format(i, detections[topk_idx, :]))
+            #for idx in topk_idx:
 
-                logger.info("image {}: idx: {} detection: {}, conf_score: {}, class_conf: {}, class_pred: {}".format( i,\
-                     idx, detections[idx, :4], detections[idx, 4], detections[idx, 5], detections[idx, 6]
-                ))
-                log_stats_to_csv('detection_after_nms.csv', [i, idx, detections[idx, :4], detections[idx, 4],detections[idx, 5], detections[idx, 6]])
-            if i == 15:
-                exit(0)
+            #    logger.info("image {}: idx: {} detection: {}, conf_score: {}, class_conf: {}, class_pred: {}".format( i,\
+            #         idx, detections[idx, :4], detections[idx, 4], detections[idx, 5], detections[idx, 6]
+            #    ))
+            #    log_stats_to_csv('detection_aftervariable_nms.csv', [i, idx, detections[idx, :4], detections[idx, 4],detections[idx, 5], detections[idx, 6]])
+            #if i == 15:
+            #    exit(0)
 
         return output, output_index
 
@@ -1328,11 +1328,11 @@ class YOLOXHead(nn.Module):
 
             conf_mask = (detections_ori[:, 4] * detections_ori[:, 5] >= conf_thre).squeeze()
             detections_ori = detections_ori[conf_mask]
-            nms_out_index = batched_soft_nms(
+            nms_out_index = torchvision.ops.batched_nms(
                 detections_ori[:, :4],
                 detections_ori[:, 4] * detections_ori[:, 5],
                 detections_ori[:, 6],
-                score_thresh=conf_thre,
+                nms_thre,
             )
             detections_ori = detections_ori[nms_out_index]
             output_ori[i] = detections_ori
