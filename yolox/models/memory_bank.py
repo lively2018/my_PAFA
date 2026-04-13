@@ -47,7 +47,7 @@ class MemoryBank(nn.Module):
         #kssong
         #logger.info(f"init_memory_features_info, mem_type: {self.mem_type}, \
         #            batch_set: {batch_set}, batch_item: {batch_item}, len(feat_info): {len(feat_info)}")
-        non_zero_feat_info = [feat_info_item for feat_info_item in feat_info if not torch.all(feat_info_item == torch.zeros(6 + self.class_num, device=feat_info_item.device))]
+        non_zero_feat_info = [feat_info_item for feat_info_item in feat_info if not torch.all(feat_info_item == torch.zeros(7 + self.class_num, device=feat_info_item.device))]
         self.feat_info.extend([[batch_set, batch_item, feat_info_item] for feat_info_item in non_zero_feat_info])
         #logger.info(f"After filtering zero feat info, mem_type: {self.mem_type}, \
         #            batch_set: {batch_set}, batch_item: {batch_item}, len(non_zero_feat_info): {len(non_zero_feat_info)}, \
@@ -57,7 +57,7 @@ class MemoryBank(nn.Module):
         #kssong
         #logger.info(f"update_memory_features_info, mem_type: {self.mem_type}, \
         #            batch_set: {batch_set}, batch_item: {batch_item}, len(feat_info): {len(feat_info)}")
-        non_zero_feat_info = [feat_info_item for feat_info_item in feat_info if not torch.all(feat_info_item == torch.zeros(6 + self.class_num, device=feat_info_item.device))]
+        non_zero_feat_info = [feat_info_item for feat_info_item in feat_info if not torch.all(feat_info_item == torch.zeros(7 + self.class_num, device=feat_info_item.device))]
         self.feat_info.extend([[batch_set, batch_item, feat_info_item] for feat_info_item in non_zero_feat_info])
         #logger.info(f"After filtering zero feat info, mem_type: {self.mem_type}, \
         #            batch_set: {batch_set}, batch_item: {batch_item}, len(non_zero_feat_info): {len(non_zero_feat_info)}, \

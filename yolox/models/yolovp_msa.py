@@ -12,7 +12,7 @@ import torch.nn.functional as F
 import torchvision
 from loguru import logger
 
-from yolox.models.post_process import postprocess,get_linking_mat
+from yolox.models.post_process import postprocess, get_linking_mat
 from yolox.models.post_trans import MSA_yolov, LocalAggregation
 from yolox.utils import bboxes_iou
 from yolox.utils.box_op import box_cxcywh_to_xyxy, generalized_box_iou
@@ -787,12 +787,33 @@ class YOLOXHead(nn.Module):
         fg_scores = []
         locs = []
         for i, feature in enumerate(features):
-            features_cls.append(feature[idxs[i][:self.simN]])
-            features_reg.append(reg_features[i, idxs[i][:self.simN]])
-            cls_scores.append(predictions[i][:self.simN, 5])
-            fg_scores.append(predictions[i][:self.simN, 4])
-            locs.append(predictions[i][:self.simN, :4])
-            all_scores.append(predictions[i][:self.simN, -self.num_classes:])
+            sel = idxs[i][:self.simN]
+            n = len(sel)
+
+            fc = feature[sel]
+            fr = reg_features[i, sel]
+            cs = predictions[i][:n, 5]
+            fg = predictions[i][:n, 4]
+            lc = predictions[i][:n, :4]
+            as_ = predictions[i][:n, -self.num_classes:]
+
+            # Pad to simN so the downstream reshape [-1, Afternum, ...] stays valid
+            # when iou_min suppresses boxes below topK.
+            if n < self.simN:
+                pad = self.simN - n
+                fc  = torch.cat([fc,  fc[-1:].expand(pad, -1)], dim=0)
+                fr  = torch.cat([fr,  fr[-1:].expand(pad, -1)], dim=0)
+                cs  = torch.cat([cs,  cs[-1:].expand(pad)], dim=0)
+                fg  = torch.cat([fg,  fg[-1:].expand(pad)], dim=0)
+                lc  = torch.cat([lc,  lc[-1:].expand(pad, -1)], dim=0)
+                as_ = torch.cat([as_, as_[-1:].expand(pad, -1)], dim=0)
+
+            features_cls.append(fc)
+            features_reg.append(fr)
+            cls_scores.append(cs)
+            fg_scores.append(fg)
+            locs.append(lc)
+            all_scores.append(as_)
         features_cls = torch.cat(features_cls)
         features_reg = torch.cat(features_reg)
         cls_scores = torch.cat(cls_scores)
@@ -868,7 +889,7 @@ class YOLOXHead(nn.Module):
             p5_items = []
             for j, idx in enumerate(mask_idx_list):
                 det = pred_result[mask_idx[j]]
-                info = torch.cat([det[[0, 1, 2, 3, 4, 5]], det[7: 7 + self.num_classes]])  # x1, y1, x2, y2, obj_score, cls_score, class_pred[num_classes]
+                info = torch.cat([det[[0, 1, 2, 3, 4, 5]], det[7: 7 + self.num_classes], idx.unsqueeze(0)])  # x1, y1, x2, y2, obj_score, cls_score, class_pred[num_classes], idx
                 if idx >= 0 and idx < 6400:
                     key_features_p3.append(reg_feature[idx])
                     p3_items.append(info)
@@ -879,11 +900,11 @@ class YOLOXHead(nn.Module):
                     key_features_p5.append(reg_feature[idx])
                     p5_items.append(info)
             if len(p3_items) == 0:
-                p3_items.append(torch.zeros(6 + self.num_classes))
+                p3_items.append(torch.zeros(7 + self.num_classes))
             if len(p4_items) == 0:
-                p4_items.append(torch.zeros(6 + self.num_classes))
+                p4_items.append(torch.zeros(7 + self.num_classes))
             if len(p5_items) == 0:
-                p5_items.append(torch.zeros(6 + self.num_classes))
+                p5_items.append(torch.zeros(7 + self.num_classes))
             pred_info.append([p3_items, p4_items, p5_items])
             #logger.info(f"Batch {i} - len(p3_items): {len(p3_items)},\
             #             len(p4_items): {len(p4_items)}, \
@@ -1361,6 +1382,8 @@ class YOLOXHead(nn.Module):
         ]
         return num_fg, gt_matched_classes, pred_ious_this_matching, matched_gt_inds
 
+
+
     def process_prediction(self, image_pred, num_classes, nms_thre):
         if not image_pred.size(0):
             return None, None
@@ -1435,8 +1458,23 @@ class YOLOXHead(nn.Module):
             )
 
             topk_idx = sort_idx[nms_out_index[:self.topK]]
-            output[i] = detections[topk_idx, :]
-            output_index[i] = topk_idx
+            #output[i] = detections[topk_idx, :]
+            detections_high = detections[topk_idx, :]
+            nms_out_iou_min = self.iou_min(detections_high[:, :4],
+                                           detections_high[:, 4] * detections_high[:, 5],
+                                           detections_high[:, 6],
+                                           nms_thre)
+            kept_dets = detections_high[nms_out_iou_min, :]
+            kept_idx  = topk_idx[nms_out_iou_min]
+            # Pad to topK so pred_result and fc_output stay aligned
+            n = len(nms_out_iou_min)
+            if n < self.topK:
+                pad = self.topK - n
+                kept_dets = torch.cat([kept_dets, kept_dets[-1:].expand(pad, -1)], dim=0)
+                kept_idx  = torch.cat([kept_idx,  kept_idx[-1:].expand(pad)],       dim=0)
+            output[i] = kept_dets
+            output_index[i] = kept_idx
+            #output_index[i] = topk_idx
 
         return output, output_index
 

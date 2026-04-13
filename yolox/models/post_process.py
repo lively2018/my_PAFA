@@ -3,14 +3,78 @@ import torch
 import torchvision
 import random
 import time
-from yolox.utils import bboxes_iou
+from yolox.utils import bboxes_iou, logger
+
+
+# Insert before line 1364 (before process_prediction)
+
+
+def iomin_suppression(boxes, scores, classes, iomin_thre=0.65):
+    """
+    Suppress nested/contained boxes using Intersection-over-Minimum area.
+    Boxes are processed in descending score order.
+    A candidate is suppressed if IoMin with any already-kept box >= iomin_thre
+    AND they share the same class.
+
+    Args:
+        boxes   : Tensor[N, 4]  in xyxy format
+        scores  : Tensor[N]
+        classes : Tensor[N]
+        iomin_thre : float
+
+    Returns:
+        keep : Tensor[K]  indices of surviving boxes (into the original N)
+    """
+    if boxes.numel() == 0:
+        return torch.empty(0, dtype=torch.long, device=boxes.device)
+
+    # Sort by descending score
+    order = torch.argsort(scores, descending=True)
+    keep = []
+
+    while order.numel() > 0:
+        i = order[0].item()
+        keep.append(i)
+        if order.numel() == 1:
+            break
+
+        rest = order[1:]
+
+        # Compute intersection
+        ix1 = torch.max(boxes[i, 0], boxes[rest, 0])
+        iy1 = torch.max(boxes[i, 1], boxes[rest, 1])
+        ix2 = torch.min(boxes[i, 2], boxes[rest, 2])
+        iy2 = torch.min(boxes[i, 3], boxes[rest, 3])
+        inter = (ix2 - ix1).clamp(min=0) * (iy2 - iy1).clamp(min=0)
+
+        # Area of each box
+        area_i    = (boxes[i,  2] - boxes[i,  0]) * (boxes[i,  3] - boxes[i,  1])
+        area_rest = (boxes[rest, 2] - boxes[rest, 0]) * (boxes[rest, 3] - boxes[rest, 1])
+
+        # IoMin = intersection / min(area_i, area_rest)
+        min_area = torch.min(area_i.expand_as(area_rest), area_rest)
+        iomin = inter / (min_area + 1e-7)
+
+        # Same-class mask
+        same_class = (classes[rest] == classes[i])
+
+        # Suppress if IoMin >= threshold AND same class
+        suppress = (iomin >= iomin_thre) & same_class
+        order = rest[~suppress]
+
+    return torch.tensor(keep, dtype=torch.long, device=boxes.device)
+
+
 def postprocess(prediction, num_classes, fc_outputs,
                 conf_output, conf_thre=0.001, nms_thre=0.5,
-                cls_sig=True,return_idx=False):
+                cls_sig=True,return_idx=False, pred_idx=None):
     output = [None for _ in range(len(prediction))]
     output_ori = [None for _ in range(len(prediction))]
     prediction_ori = copy.deepcopy(prediction)
     cls_pred, cls_conf = [],[]
+    if pred_idx is not None:
+        print(f"postprocess, prediction length: {len(prediction)}, fc_outputs length: {len(fc_outputs)}, pred_idx length:  {len(pred_idx)}, \
+          pred_idx one length: {len(pred_idx[0])}")
     for _ in range(len(prediction)):
         tmp_cls,tmp_pred = torch.max(fc_outputs[_], -1, keepdim=False) #
         cls_pred.append(tmp_pred)
@@ -49,7 +113,7 @@ def postprocess(prediction, num_classes, fc_outputs,
             continue
         if len(detections_high.shape)==3:
             detections_high = detections_high[0]
-        nms_out_index = torchvision.ops.batched_nms(
+        nms_out_index = iomin_suppression(
             detections_high[:, :4],
             detections_high[:, 4] * detections_high[:, 5],
             detections_high[:, 6],
@@ -64,7 +128,7 @@ def postprocess(prediction, num_classes, fc_outputs,
         #conf_mask = (detections_ori[:, 4] * detections_ori[:, 5] >= conf_thre).squeeze()
         detections_ori = detections_ori[conf_mask]
 
-        nms_out_index = torchvision.ops.batched_nms(
+        nms_out_index = iomin_suppression(
             detections_ori[:, :4],
             detections_ori[:, 4] * detections_ori[:, 5],
             detections_ori[:, 6],
