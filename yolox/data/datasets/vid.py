@@ -739,7 +739,7 @@ def collate_fn(batch):
 
 
 def get_vid_loader(batch_size,data_num_workers,dataset):
-    sampler = VIDBatchSampler(TrainSampler(dataset), batch_size, drop_last=False)
+    sampler = VIDBatchSampler_Test(TestSampler(dataset), batch_size, drop_last=False)
     dataloader_kwargs = {
         "num_workers": data_num_workers,
         "pin_memory": True,
@@ -836,7 +836,7 @@ class DataPrefetcher:
         ims_info = self.next_ims_info
         tar_ori = self.next_tar_ori
         paths = self.next_paths
-        time_ebdding = self.time_ebdding        
+        time_ebdding = self.time_ebdding
         if input is not None:
             self.record_stream(input)
         if target is not None:

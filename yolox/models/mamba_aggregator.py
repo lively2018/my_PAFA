@@ -34,11 +34,6 @@ class MambaAggregator(nn.Module):
         self.memory_bank_p3 = MemoryBank(max_length=memory_length, key_length=key_length, **memory_cfg)
         self.memory_bank_p4 = MemoryBank(max_length=memory_length, key_length=key_length, **memory_cfg)
         self.memory_bank_p5 = MemoryBank(max_length=memory_length, key_length=key_length, **memory_cfg)
-        self.batchset_count = 0
-        self.video_count = 0
-        self.video_path = None
-        self.memory_bank_info = []
-        self.count = 0
         self.max_memory_bank_length = memory_length
         self.key_length = key_length
 
@@ -61,32 +56,25 @@ class MambaAggregator(nn.Module):
         return aggregated_x
 
 
-    def reset_memory_bank(self, k_type, video_path=None):
+    def reset_memory_bank(self, k_type):
         #logger.info("reset_memory_bank")
-        self.batchset_count = 0
-        self.video_path = video_path
-        self.memory_bank_info = []
-        self.count += 1
-        self.video_count += 1
-        memory_bank_p3_length, memory_bank_p4_length, memory_bank_p5_length = 0, 0, 0
         update_length = 0
         if k_type == 0:
-            memory_bank_p3_length, update_length = self.memory_bank_p3.reset()
+            _, update_length = self.memory_bank_p3.reset()
             if update_length > self.max_memory_bank_length:
                 logger.warning(f"Memory bank reset, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
         elif k_type == 1:
-            memory_bank_p4_length, update_length = self.memory_bank_p4.reset()
+            _, update_length = self.memory_bank_p4.reset()
             if update_length > self.max_memory_bank_length:
                 logger.warning(f"Memory bank reset, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
         elif k_type == 2:
-            memory_bank_p5_length, update_length = self.memory_bank_p5.reset()
+            _, update_length = self.memory_bank_p5.reset()
             if update_length > self.max_memory_bank_length:
                 logger.warning(f"Memory bank reset, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
 
     def update_memory_bank(self, x, k_type):
         #logger.info("update_memory_bank")
-        self.batchset_count += 1
-        self.count += 1
+
         memory_bank_p3_length, memory_bank_p4_length, memory_bank_p5_length = 0, 0, 0
         update_length = 0
         if k_type == 0:
@@ -115,8 +103,6 @@ class MambaAggregator(nn.Module):
                 logger.warning(f"Memory bank update, but memory_bank_p5_length {memory_bank_p5_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
 
     def init_memory_bank(self, x, k_type):
-        self.batchset_count += 1
-        self.count += 1
         memory_bank_p3_length, memory_bank_p4_length, memory_bank_p5_length = 0, 0, 0
         update_length = 0
         if k_type == 0:
