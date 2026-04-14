@@ -75,12 +75,23 @@ def postprocess(prediction, num_classes, fc_outputs,
     if pred_idx is not None:
         print(f"postprocess, prediction length: {len(prediction)}, fc_outputs length: {len(fc_outputs)}, pred_idx length:  {len(pred_idx)}, \
           pred_idx one length: {len(pred_idx[0])}")
+    bboxes_pred_id_info_list = []
+    for i in range(len(prediction)):
+        feat_idx = pred_idx[i]
+        detections = prediction[i]
+        bboxes_pred_id_info_item = {}
+        for det, idx in zip(detections, feat_idx):
+            bboxes_pred_id_info_item['bboxes'] = det[:4]
+            bboxes_pred_id_info_item['feat_id'] = idx
+        bboxes_pred_id_info_list.append(bboxes_pred_id_info_item)
+
     for _ in range(len(prediction)):
         tmp_cls,tmp_pred = torch.max(fc_outputs[_], -1, keepdim=False) #
         cls_pred.append(tmp_pred)
         cls_conf.append(tmp_cls)
     # cls_conf, cls_pred = torch.max(fc_outputs, -1, keepdim=False) #
     nms_out_idxs = []
+    feat_idx = [None for _ in range(len(prediction))]
     for i, detections in enumerate(prediction):
 
         if detections==None or not detections.size(0):
