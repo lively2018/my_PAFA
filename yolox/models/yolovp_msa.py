@@ -218,15 +218,14 @@ class YOLOXHead(nn.Module):
         # self.eval = eval
         #if self.eval:
         #self.aggregator = MambaAggregator(in_channels=128, num_attention_blocks=4)
-        if memory_length is not None:
-            memory_length = 4800
-        if key_length is not None:
-            key_length = 480
-        self.aggregator = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=memory_length, key_length=key_length)
+        self.memory_length = memory_length
+        self.key_length = key_length
+        self.aggregator = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=self.memory_length, key_length=self.key_length)
         #kssong
         self.inplace_false_relu = nn.ReLU(inplace=False)
         self.m_conf = m_conf
-
+        self.memory_bank_info = {}
+        self.batchset_count = 0
 
     def initialize_biases(self, prior_prob):
         for conv in self.cls_preds:
@@ -246,7 +245,7 @@ class YOLOXHead(nn.Module):
         new_xin = xin + self.aggreator(xin, ref_xin)
         return new_xin
     # kssong
-    def forward(self, xin, first, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32):
+    def forward(self, xin, first, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32, video_path=None):
     #def forward(self, xin, ref_xin, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32):
         #kssong
         #if len(ref_xin) > 0:
@@ -269,7 +268,7 @@ class YOLOXHead(nn.Module):
         before_nms_regf = []
 
         batch_size = len(imgs)
-        if batch_size == 16 or batch_size == 32:
+        if batch_size >= 16:
             need_aggregation = True
         else:
             need_aggregation = False
@@ -433,6 +432,7 @@ class YOLOXHead(nn.Module):
             reg_output = self.reg_preds[k](reg_feat)
             cls_output = self.cls_preds[k](cls_feat)
 
+
             if self.training:
                 output = torch.cat([reg_output, obj_output, cls_output], 1)
                 output_decode = torch.cat(
@@ -533,22 +533,27 @@ class YOLOXHead(nn.Module):
             #new_idx = [p[:half] for p in pred_idx]
             if first:
                 # reset all level memory banks
-                self.aggregator.reset_memory_bank(0)
-                self.aggregator.reset_memory_bank(1)
-                self.aggregator.reset_memory_bank(2)
+                self.batchset_count = 0
+                self.aggregator.reset_memory_bank(0, video_path=video_path)
+                self.aggregator.reset_memory_bank(1, video_path=video_path)
+                self.aggregator.reset_memory_bank(2, video_path=video_path)
                 #Generate reference features from 16 batch files
                 ref_feature_p3, ref_feature_p4, ref_feature_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
                 # Initialize all level memory banks
+                self.batchset_count += 1
                 self.aggregator.init_memory_bank(ref_feature_p3, 0)
                 self.aggregator.init_memory_bank(ref_feature_p4, 1)
                 self.aggregator.init_memory_bank(ref_feature_p5, 2)
+                #logger.info(f"Initialized memory bank with ref features from current batch set frames {video_path}, batchset count: {self.batchset_count}  ")
             else:
                 #Generate key features from 16 batch files
                 key_features_p3, key_features_p4, key_features_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
                 # Update all level memory banks
+                self.batchset_count += 1
                 self.aggregator.update_memory_bank(key_features_p3, 0)
                 self.aggregator.update_memory_bank(key_features_p4, 1)
                 self.aggregator.update_memory_bank(key_features_p5, 2)
+                #logger.info(f"Updated memory bank with key features from current batch set frames {video_path}, batchset count: {self.batchset_count}  ")
 
         (features_cls, features_reg, cls_scores,
          fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
@@ -576,9 +581,11 @@ class YOLOXHead(nn.Module):
             if self.use_score:
                 features_cls,fg_scores = self.trans(features_cls, features_reg, cls_scores, fg_scores, sim_thresh=self.sim_thresh,
                                           ave=self.ave, use_mask=self.use_mask, **kwargs)
+
             else:
                 features_cls = self.trans(features_cls, features_reg, None, None,
                                           sim_thresh=self.sim_thresh, ave=self.ave, **kwargs)
+
         if self.lmode:
             if self.both_mode:
                 features_cls = self.g2l(features_cls).unsqueeze(0)
@@ -591,19 +598,21 @@ class YOLOXHead(nn.Module):
                                                               features_reg[:, :lframe * self.Afternum],
                                                               locs[:lframe * self.Afternum].view(-1, self.Afternum, 4),
                                                               **more_args)
+
             if self.kwargs.get('globalBlocks',0):
                 kwargs = self.kwargs
                 kwargs.update({'lframe': lframe, 'gframe': gframe, 'afternum': self.Afternum})
 
                 features_cls,fg_scores = self.GlobalAggregation(features_cls, features_reg, cls_scores, fg_scores, sim_thresh=self.sim_thresh,
                                           ave=self.ave, use_mask=self.use_mask, **kwargs)
+
             if self.both_mode:
                 outputs = [o[:lframe] for o in outputs]
                 pred_idx = pred_idx[:lframe]
                 pred_result = pred_result[:lframe]
-
         fc_output = self.linear_pred(features_cls)
         fc_output = torch.reshape(fc_output, [-1, self.Afternum, self.num_classes + 1])[:, :, :-1] # [b,afternum,cls]
+
         if self.kwargs.get('reconf', False):
 
             conf_output = self.conf_pred(features_reg)
@@ -717,6 +726,7 @@ class YOLOXHead(nn.Module):
             key_features_p3 = []
             key_features_p4 = []
             key_features_p5 = []
+
             for idx in mask_idx_list:
 
                 if idx >= 0 and idx < 6400:
@@ -732,7 +742,6 @@ class YOLOXHead(nn.Module):
                 "key_feature_p4 is empty"
             if len(key_features_p5) ==0:
                 "key_feature_p5 is empty"
-
             key_features =[key_features_p3, key_features_p4, key_features_p5]
             key_features_list.append(key_features)
         return key_features_list
@@ -741,6 +750,10 @@ class YOLOXHead(nn.Module):
         key_features_p3 = []
         key_features_p4 = []
         key_features_p5 = []
+        key_features_p3_file_name = []
+        key_features_p4_file_name = []
+        key_features_p5_file_name = []
+
         for i in range(reg_features.shape[0]):
             reg_feature = reg_features[i]
             idx_list = pred_idx[i]
@@ -757,10 +770,13 @@ class YOLOXHead(nn.Module):
             for idx in mask_idx_list:
                 if idx >= 0 and idx < 6400:
                     key_features_p3.append(reg_feature[idx])
+
                 elif idx >= 6400 and idx < 8000:
                     key_features_p4.append(reg_feature[idx])
+
                 else:
                     key_features_p5.append(reg_feature[idx])
+
         key_features_p3 = torch.stack(key_features_p3, dim=0) if key_features_p3 else torch.empty(0, 128)
         key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128)
         key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128)

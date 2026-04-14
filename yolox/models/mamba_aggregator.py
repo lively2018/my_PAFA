@@ -4,11 +4,8 @@ import torch.nn as nn
 from .memory_bank import MemoryBank
 from loguru import logger
 #kssong
-def gpu_mem_usage():
-    """
-    Compute the GPU memory usage for the current device (MB).
-    """
-    return torch.cuda.max_memory_allocated() / (1024 * 1024)
+import csv
+import os
 
 class MambaAggregator(nn.Module):
     """Selsa aggregator module.
@@ -37,15 +34,21 @@ class MambaAggregator(nn.Module):
         self.memory_bank_p3 = MemoryBank(max_length=memory_length, key_length=key_length, **memory_cfg)
         self.memory_bank_p4 = MemoryBank(max_length=memory_length, key_length=key_length, **memory_cfg)
         self.memory_bank_p5 = MemoryBank(max_length=memory_length, key_length=key_length, **memory_cfg)
+        self.batchset_count = 0
+        self.video_count = 0
+        self.video_path = None
+        self.memory_bank_info = []
+        self.count = 0
+        self.max_memory_bank_length = memory_length
+        self.key_length = key_length
 
-
-    def forward(self, x, ref_x, type_k):
+    def forward(self, x, ref_x, k_type):
         #kssong
-        if type_k == 0:
+        if k_type == 0:
             ref_x = self.memory_bank_p3.sample()
-        elif type_k == 1:
+        elif k_type == 1:
             ref_x = self.memory_bank_p4.sample()
-        elif type_k == 2:
+        elif k_type == 2:
             ref_x = self.memory_bank_p5.sample()
         #logger.info(f"ref_x shape: {ref_x.shape} x shape: {x.shape}")
         #print(f"After sampling: {gpu_mem_usage():.0f}")
@@ -58,33 +61,88 @@ class MambaAggregator(nn.Module):
         return aggregated_x
 
 
-    def reset_memory_bank(self, type_k):
+    def reset_memory_bank(self, k_type, video_path=None):
         #logger.info("reset_memory_bank")
-        if type_k == 0:
-            self.memory_bank_p3.reset()
-        elif type_k == 1:
-            self.memory_bank_p4.reset()
-        elif type_k == 2:
-            self.memory_bank_p5.reset()
+        self.batchset_count = 0
+        self.video_path = video_path
+        self.memory_bank_info = []
+        self.count += 1
+        self.video_count += 1
+        memory_bank_p3_length, memory_bank_p4_length, memory_bank_p5_length = 0, 0, 0
+        update_length = 0
+        if k_type == 0:
+            memory_bank_p3_length, update_length = self.memory_bank_p3.reset()
+            if update_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank reset, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+        elif k_type == 1:
+            memory_bank_p4_length, update_length = self.memory_bank_p4.reset()
+            if update_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank reset, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+        elif k_type == 2:
+            memory_bank_p5_length, update_length = self.memory_bank_p5.reset()
+            if update_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank reset, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
 
-    def update_memory_bank(self, x, type_k):
+    def update_memory_bank(self, x, k_type):
         #logger.info("update_memory_bank")
-        if type_k == 0:
-            self.memory_bank_p3.update(x)
-        elif type_k == 1:
-            self.memory_bank_p4.update(x)
-        elif type_k == 2:
-            self.memory_bank_p5.update(x)
+        self.batchset_count += 1
+        self.count += 1
+        memory_bank_p3_length, memory_bank_p4_length, memory_bank_p5_length = 0, 0, 0
+        update_length = 0
+        if k_type == 0:
+            memory_bank_p3_length, update_length = self.memory_bank_p3.update(x)
+            if update_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p3_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but memory_bank_p3_length {memory_bank_p3_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p3_length == self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but memory_bank_p3_length {memory_bank_p3_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
+        elif k_type == 1:
+            memory_bank_p4_length, update_length = self.memory_bank_p4.update(x)
+            if update_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p4_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but memory_bank_p4_length {memory_bank_p4_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p4_length == self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but memory_bank_p4_length {memory_bank_p4_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
+        elif k_type == 2:
+            memory_bank_p5_length, update_length = self.memory_bank_p5.update(x)
+            if update_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p5_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but memory_bank_p5_length {memory_bank_p5_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p5_length == self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but memory_bank_p5_length {memory_bank_p5_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
 
-    def init_memory_bank(self, x, type_k):
-        #logger.info("init_memory_bank")
-        #logger.info("x.shape: {}".format(x.shape))
-        if type_k == 0:
-            self.memory_bank_p3.init_memory(x)
-        elif type_k == 1:
-            self.memory_bank_p4.init_memory(x)
-        elif type_k == 2:
-            self.memory_bank_p5.init_memory(x)
+    def init_memory_bank(self, x, k_type):
+        self.batchset_count += 1
+        self.count += 1
+        memory_bank_p3_length, memory_bank_p4_length, memory_bank_p5_length = 0, 0, 0
+        update_length = 0
+        if k_type == 0:
+            memory_bank_p3_length, update_length = self.memory_bank_p3.init_memory(x)
+            if update_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank init, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p3_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank init, but memory_bank_p3_length {memory_bank_p3_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p3_length == self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but memory_bank_p3_length {memory_bank_p3_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
+        elif k_type == 1:
+            memory_bank_p4_length, update_length = self.memory_bank_p4.init_memory(x)
+            if update_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank init, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p4_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank init, but memory_bank_p4_length {memory_bank_p4_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p4_length == self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but memory_bank_p4_length {memory_bank_p4_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
+        elif k_type == 2:
+            memory_bank_p5_length, update_length = self.memory_bank_p5.init_memory(x)
+            if update_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank init, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p5_length > self.max_memory_bank_length:
+                logger.warning(f"Memory bank init, but memory_bank_p5_length {memory_bank_p5_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if memory_bank_p5_length == self.max_memory_bank_length:
+                logger.warning(f"Memory bank update, but memory_bank_p5_length {memory_bank_p5_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
 
     def forward_with_ref_x(self, x, ref_x):
         """Aggregate the features `ref_x` of reference proposals.
