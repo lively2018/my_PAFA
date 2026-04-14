@@ -2,6 +2,8 @@
 # -*- encoding: utf-8 -*-
 # Copyright (c) Megvii Inc. All rights reserved.
 
+import math
+
 import torch
 import torch.nn as nn
 
@@ -44,6 +46,29 @@ class IOUloss(nn.Module):
             area_c = torch.prod(c_br - c_tl, 1)
             giou = iou - (area_c - area_u) / area_c.clamp(1e-16)
             loss = 1 - giou.clamp(min=-1.0, max=1.0)
+        elif self.loss_type == "ciou":
+            c_tl = torch.min(
+                (pred[:, :2] - pred[:, 2:] / 2), (target[:, :2] - target[:, 2:] / 2)
+            )
+            c_br = torch.max(
+                (pred[:, :2] + pred[:, 2:] / 2), (target[:, :2] + target[:, 2:] / 2)
+            )
+            # Diagonal length squared of the smallest enclosing box
+            c_diag_sq = torch.sum((c_br - c_tl) ** 2, dim=1).clamp(1e-16)
+            # Center distance squared
+            pred_center = pred[:, :2]
+            target_center = target[:, :2]
+            rho_sq = torch.sum((pred_center - target_center) ** 2, dim=1)
+            # Aspect ratio consistency term
+            w_p, h_p = pred[:, 2], pred[:, 3]
+            w_g, h_g = target[:, 2], target[:, 3]
+            v = (4 / (math.pi ** 2)) * torch.pow(
+                torch.atan(w_g / h_g.clamp(1e-16)) - torch.atan(w_p / h_p.clamp(1e-16)), 2
+            )
+            with torch.no_grad():
+                alpha = v / (1 - iou + v).clamp(1e-16)
+            ciou = iou - rho_sq / c_diag_sq - alpha * v
+            loss = 1 - ciou.clamp(min=-1.0, max=1.0)
 
         if self.reduction == "mean":
             loss = loss.mean()
