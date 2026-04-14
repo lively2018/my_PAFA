@@ -722,14 +722,8 @@ class YOLOXHead(nn.Module):
             key_features_p3 = []
             key_features_p4 = []
             key_features_p5 = []
-<<<<<<< HEAD
-
-            for idx in mask_idx_list:
-
-=======
             for j, idx in enumerate(idx_list):
                 conf = conf_score_list[j].item()
->>>>>>> 1e780db (add m_conf option for P3, P4, and P5)
                 if idx >= 0 and idx < 6400:
                     if conf > self.m_conf_p3:
                         key_features_p3.append(reg_feature[idx].unsqueeze(0))
@@ -766,16 +760,6 @@ class YOLOXHead(nn.Module):
             for j, idx in enumerate(idx_list):
                 conf = conf_score_list[j].item()
                 if idx >= 0 and idx < 6400:
-<<<<<<< HEAD
-                    key_features_p3.append(reg_feature[idx])
-
-                elif idx >= 6400 and idx < 8000:
-                    key_features_p4.append(reg_feature[idx])
-
-                else:
-                    key_features_p5.append(reg_feature[idx])
-
-=======
                     if conf > self.m_conf_p3:
                         key_features_p3.append(reg_feature[idx])
                 elif idx >= 6400 and idx < 8000:
@@ -784,7 +768,6 @@ class YOLOXHead(nn.Module):
                 else:
                     if conf > self.m_conf_p5:
                         key_features_p5.append(reg_feature[idx])
->>>>>>> 1e780db (add m_conf option for P3, P4, and P5)
         key_features_p3 = torch.stack(key_features_p3, dim=0) if key_features_p3 else torch.empty(0, 128)
         key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128)
         key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128)
