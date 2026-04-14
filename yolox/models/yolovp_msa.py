@@ -52,7 +52,7 @@ class YOLOXHead(nn.Module):
             lmode=False,
             both_mode=False,
             localBlocks=1,
-            m_conf=0,
+            m_conf=None,
             memory_length=4800,
             key_length=480,
             **kwargs
@@ -223,9 +223,12 @@ class YOLOXHead(nn.Module):
         self.aggregator = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=self.memory_length, key_length=self.key_length)
         #kssong
         self.inplace_false_relu = nn.ReLU(inplace=False)
-        self.m_conf = m_conf
-        self.memory_bank_info = {}
-        self.batchset_count = 0
+        if m_conf is None:
+            m_conf = [0, 0, 0]
+        elif not hasattr(m_conf, '__len__'):
+            m_conf = [m_conf, m_conf, m_conf]
+        self.m_conf_p3, self.m_conf_p4, self.m_conf_p5 = m_conf[0], m_conf[1], m_conf[2]
+
 
     def initialize_biases(self, prior_prob):
         for conv in self.cls_preds:
@@ -716,25 +719,26 @@ class YOLOXHead(nn.Module):
                 raise ValueError("idx_list is None")
             pred_result = pred_results[i]
             conf_score_list = pred_result[:, 4] * pred_result[:, 5]
-            mask_idx = torch.nonzero(conf_score_list > self.m_conf, as_tuple=False).squeeze()
-            if mask_idx.ndim == 0:
-                mask_idx = mask_idx.unsqueeze(0)
-            #logger.info("conf_score_list masked > 0.01: {}".format(mask_idx))
-            mask_idx_list = idx_list[mask_idx]
-            #logger.info(" masked_idx_list: {}".format(mask_idx_list))
-            #logger.info(" idx_list: {}".format(idx_list))
             key_features_p3 = []
             key_features_p4 = []
             key_features_p5 = []
+<<<<<<< HEAD
 
             for idx in mask_idx_list:
 
+=======
+            for j, idx in enumerate(idx_list):
+                conf = conf_score_list[j].item()
+>>>>>>> 1e780db (add m_conf option for P3, P4, and P5)
                 if idx >= 0 and idx < 6400:
-                    key_features_p3.append(reg_feature[idx].unsqueeze(0))
+                    if conf > self.m_conf_p3:
+                        key_features_p3.append(reg_feature[idx].unsqueeze(0))
                 elif idx >= 6400 and idx < 8000:
-                    key_features_p4.append(reg_feature[idx].unsqueeze(0))
+                    if conf > self.m_conf_p4:
+                        key_features_p4.append(reg_feature[idx].unsqueeze(0))
                 else:
-                    key_features_p5.append(reg_feature[idx].unsqueeze(0))
+                    if conf > self.m_conf_p5:
+                        key_features_p5.append(reg_feature[idx].unsqueeze(0))
 
             if len(key_features_p3) == 0:
                 "key_feature_p3 is empty"
@@ -759,16 +763,10 @@ class YOLOXHead(nn.Module):
             idx_list = pred_idx[i]
             pred_result = pred_results[i]
             conf_score_list = pred_result[:, 4] * pred_result[:, 5]
-            mask_idx = torch.nonzero(conf_score_list > self.m_conf, as_tuple=False).squeeze()
-            if mask_idx.ndim == 0:
-                mask_idx = mask_idx.unsqueeze(0)
-            #logger.info("conf_score_list masked > 0.01: {}".format(mask_idx))
-            mask_idx_list = idx_list[mask_idx]
-            #logger.info(" masked_idx_list: {}".format(mask_idx_list))
-            #logger.info(" idx_list: {}".format(idx_list))
-
-            for idx in mask_idx_list:
+            for j, idx in enumerate(idx_list):
+                conf = conf_score_list[j].item()
                 if idx >= 0 and idx < 6400:
+<<<<<<< HEAD
                     key_features_p3.append(reg_feature[idx])
 
                 elif idx >= 6400 and idx < 8000:
@@ -777,6 +775,16 @@ class YOLOXHead(nn.Module):
                 else:
                     key_features_p5.append(reg_feature[idx])
 
+=======
+                    if conf > self.m_conf_p3:
+                        key_features_p3.append(reg_feature[idx])
+                elif idx >= 6400 and idx < 8000:
+                    if conf > self.m_conf_p4:
+                        key_features_p4.append(reg_feature[idx])
+                else:
+                    if conf > self.m_conf_p5:
+                        key_features_p5.append(reg_feature[idx])
+>>>>>>> 1e780db (add m_conf option for P3, P4, and P5)
         key_features_p3 = torch.stack(key_features_p3, dim=0) if key_features_p3 else torch.empty(0, 128)
         key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128)
         key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128)
