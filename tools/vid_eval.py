@@ -107,7 +107,8 @@ def make_parser():
     parser.add_argument('--tnum', default=-1, help='vid test sequences')
     parser.add_argument('--formal', default=False, action="store_true",help='vid test sequences')
     parser.add_argument('--nms', default=0.5, type=float,help='final nms threshold')
-    parser.add_argument('--m_conf', default=0, type=float,help='select reference features minimum conf score')
+    parser.add_argument('--m_conf', default=[0, 0, 0], type=float, nargs=3, metavar=('P3', 'P4', 'P5'),
+                        help='per-level minimum conf score for selecting reference features (P3 P4 P5)')
     parser.add_argument('--memory_length', default=4800, type=int, help='memory length for Mamba aggregator')
     parser.add_argument('--key_length', default=480, type=int, help='key length for Mamba aggregator')
 
