@@ -1,20 +1,66 @@
 import copy
 import csv
 import torch
-import torchvision
 import random
 import time
 from yolox.utils import bboxes_iou
 import os
 
-def log_output_to_csv(filename, data):
-    # data format: [frame_idx, level_name, feature_count, gpu_mem_mb]
-    file_exists = os.path.isfile(filename)
-    with open(filename, 'a', newline='') as f:
-        writer = csv.writer(f)
-        if not file_exists:
-            writer.writerow(['image id', 'feature idx', 'bboxes', 'obj_score', 'class_conf', 'class_pred']) # Header
-        writer.writerow(data)
+def _soft_nms(boxes, scores, sigma=0.5, score_threshold=0.001, method='gaussian'):
+    """Single-class Soft-NMS in PyTorch (GPU compatible).
+    method='gaussian': score *= exp(-iou^2 / sigma)
+    method='linear':   score *= (1 - iou) if iou > sigma
+    Returns kept indices (score >= score_threshold after decay)."""
+    if boxes.numel() == 0:
+        return torch.empty(0, dtype=torch.long, device=boxes.device)
+
+    x1, y1, x2, y2 = boxes[:, 0], boxes[:, 1], boxes[:, 2], boxes[:, 3]
+    areas  = (x2 - x1) * (y2 - y1)
+    scores = scores.clone()
+    N      = boxes.shape[0]
+    keep   = []
+
+    for _ in range(N):
+        # Pick highest scoring remaining box
+        max_idx = scores.argmax().item()
+        if scores[max_idx].item() < score_threshold:
+            break
+        keep.append(max_idx)
+
+        # Compute IoU of max_idx vs all others
+        ix1   = torch.maximum(x1[max_idx], x1)
+        iy1   = torch.maximum(y1[max_idx], y1)
+        ix2   = torch.minimum(x2[max_idx], x2)
+        iy2   = torch.minimum(y2[max_idx], y2)
+        inter = (ix2 - ix1).clamp(0) * (iy2 - iy1).clamp(0)
+        iou   = inter / (areas[max_idx] + areas - inter + 1e-7)
+
+        # Decay scores
+        if method == 'gaussian':
+            scores = scores * torch.exp(-(iou ** 2) / sigma)
+        else:  # linear
+            scores = scores * torch.where(iou > sigma,
+                                          1.0 - iou,
+                                          torch.ones_like(iou))
+        # Suppress the selected box so it won't be picked again
+        scores[max_idx] = 0.0
+
+    return torch.tensor(keep, dtype=torch.long, device=boxes.device)
+
+
+def batched_soft_nms(boxes, scores, idxs, sigma=0.5, score_threshold=0.001, method='gaussian'):
+    """Soft-NMS with per-class batching. Drop-in replacement for
+    torchvision.ops.batched_nms(boxes, scores, idxs, iou_threshold).
+    Uses score decay instead of hard suppression."""
+    if boxes.numel() == 0:
+        return torch.empty(0, dtype=torch.long, device=boxes.device)
+    # Offset boxes by class so different classes never interact
+    max_coord = boxes.max()
+    offsets   = idxs.to(boxes.dtype) * (max_coord + 1)
+    boxes_off = boxes + offsets[:, None]
+    return _soft_nms(boxes_off, scores, sigma=sigma,
+                     score_threshold=score_threshold, method=method)
+
 def postprocess(prediction, num_classes, fc_outputs,
                 conf_output, conf_thre=0.001, nms_thre=0.5,
                 cls_sig=True,return_idx=False):
@@ -64,33 +110,22 @@ def postprocess(prediction, num_classes, fc_outputs,
             continue
         if len(detections_high.shape)==3:
             detections_high = detections_high[0]
-        for idx in range(len(detections_high)):
-            print("image {}: idx: {} detection: {}, conf_score: {}, class_conf: {}, class_pred: {}".format( i,idx, detections_high[idx, :4], detections_high[idx, 4], detections_high[idx, 5], detections_high[idx, 6]
-            ))
-            log_output_to_csv('output_before_nms.csv', [i, idx, detections_high[idx, :4], detections_high[idx, 4],detections_high[idx, 5], detections_high[idx, 6]])
-        nms_out_index = torchvision.ops.batched_nms(
+        nms_out_index = batched_soft_nms(
             detections_high[:, :4],
             detections_high[:, 4] * detections_high[:, 5],
             detections_high[:, 6],
-            nms_thre,
+            sigma=0.3
         )
 
         detections_high = detections_high[nms_out_index]
         output[i] = detections_high
-        #print("image {}: detections after NMS: {}".format(i, len(detections_high)))
-        for idx in range(len(detections_high)):
-            print("image {}: idx: {} detection: {}, conf_score: {}, class_conf: {}, class_pred: {}".format( i,idx, detections_high[idx, :4], detections_high[idx, 4], detections_high[idx, 5], detections_high[idx, 6]
-            ))
-            log_output_to_csv('output_after_nms.csv', [i, idx, detections_high[idx, :4], detections_high[idx, 4],detections_high[idx, 5], detections_high[idx, 6]])
-        if i == 15:
-            exit(0)
         detections_ori = detections_ori[:, :7]
         conf_mask = detections_ori[:, 4] * detections_ori[:, 5] >= conf_thre
 
         #conf_mask = (detections_ori[:, 4] * detections_ori[:, 5] >= conf_thre).squeeze()
         detections_ori = detections_ori[conf_mask]
 
-        nms_out_index = torchvision.ops.batched_nms(
+        nms_out_index = batched_soft_nms(
             detections_ori[:, :4],
             detections_ori[:, 4] * detections_ori[:, 5],
             detections_ori[:, 6],
@@ -139,7 +174,7 @@ def postprocess_pure(prediction, num_classes, fc_outputs, conf_thre=0.001, nms_t
             continue
         if len(detections_high.shape)==3:
             detections_high = detections_high[0]
-        nms_out_index = torchvision.ops.batched_nms(
+        nms_out_index = batched_soft_nms(
             detections_high[:, :4],
             detections_high[:, 4] * detections_high[:, 5],
             detections_high[:, 6],
@@ -400,7 +435,7 @@ def postprocess_widx(prediction, num_classes=30, conf_thre=0.01, nms_thre=0.5):
         if not detections.size(0):
             continue
 
-        nms_out_index = torchvision.ops.batched_nms(
+        nms_out_index = batched_soft_nms(
             detections[:, :4],
             detections[:, 4] * detections[:, 5],
             detections[:, 6],
@@ -444,7 +479,7 @@ def find_idx(prediction, num_classes=30, conf_thre=0.001, nms_thre=0.5):
         if not detections.size(0):
             continue
 
-        nms_out_index = torchvision.ops.batched_nms(
+        nms_out_index = batched_soft_nms(
             detections[:, :4],
             detections[:, 4] * detections[:, 5],
             detections[:, 6],
@@ -518,7 +553,7 @@ def postpro_woclass(prediction, num_classes, nms_thre=0.75, topK=30, ota_idxs=No
         top_pre = torch.topk(conf_score, k=750)
         sort_idx = top_pre.indices[:750]
         detections_temp = detections[sort_idx, :]
-        nms_out_index = torchvision.ops.batched_nms(
+        nms_out_index = batched_soft_nms(
             detections_temp[:, :4],
             detections_temp[:, 4] * detections_temp[:, 5],
             detections_temp[:, 6],
