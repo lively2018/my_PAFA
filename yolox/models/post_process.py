@@ -4,6 +4,191 @@ import torchvision
 import random
 import time
 from yolox.utils import bboxes_iou
+
+
+def _iou_matrix(b1, b2):
+    """Pairwise IoU between b1 (M,4) and b2 (N,4). Returns (M,N)."""
+    ix1 = torch.max(b1[:, None, 0], b2[None, :, 0])
+    iy1 = torch.max(b1[:, None, 1], b2[None, :, 1])
+    ix2 = torch.min(b1[:, None, 2], b2[None, :, 2])
+    iy2 = torch.min(b1[:, None, 3], b2[None, :, 3])
+    inter = (ix2 - ix1).clamp(0) * (iy2 - iy1).clamp(0)
+    a1 = (b1[:, 2] - b1[:, 0]) * (b1[:, 3] - b1[:, 1])
+    a2 = (b2[:, 2] - b2[:, 0]) * (b2[:, 3] - b2[:, 1])
+    union = a1[:, None] + a2[None, :] - inter
+    return inter / (union + 1e-7)
+
+
+def seq_nms(frame_detections, link_iou=0.5, suppress_iou=0.3, score_threshold=0.001):
+    """Seq-NMS across video frames.
+
+    Args:
+        frame_detections: list of T tensors [N_t, >=7] or None.
+                          Columns: x1,y1,x2,y2, obj_conf, cls_conf, cls_pred
+        link_iou:         min IoU to link boxes across adjacent frames
+        suppress_iou:     IoU to suppress non-path boxes at path frames
+        score_threshold:  stop when best path score <= this
+
+    Returns:
+        List of T tensors — path boxes have boosted cls_conf,
+        non-path overlapping boxes removed.
+    """
+    T = len(frame_detections)
+    dets       = [d.clone() if d is not None and d.shape[0] > 0 else None
+                  for d in frame_detections]
+    # active:     can still be selected as part of a future path
+    # suppressed: will be removed from output (non-path boxes that overlap a path box)
+    active     = [torch.ones(d.shape[0], dtype=torch.bool, device=d.device)
+                  if d is not None else None for d in dets]
+    suppressed = [torch.zeros(d.shape[0], dtype=torch.bool, device=d.device)
+                  if d is not None else None for d in dets]
+
+    # Collect all class IDs present across all frames
+    all_cls = set()
+    for d in dets:
+        if d is not None:
+            all_cls.update(d[:, 6].long().unique().cpu().tolist())
+
+    for cls in all_cls:
+        # Build per-frame index/box/score structs for this class
+        cls_info = []
+        for t in range(T):
+            if dets[t] is None:
+                cls_info.append(None)
+                continue
+            mask = dets[t][:, 6].long() == int(cls)
+            idx  = torch.where(mask)[0]
+            if idx.numel() == 0:
+                cls_info.append(None)
+            else:
+                cls_info.append({
+                    'idx'   : idx,
+                    'boxes' : dets[t][idx, :4],
+                    'scores': dets[t][idx, 4] * dets[t][idx, 5],
+                })
+
+        while True:
+            # ── Forward DP ────────────────────────────────────────────
+            dp   = [None] * T   # best accumulated score ending at each box
+            prev = [None] * T   # predecessor box index within prev cls frame
+
+            for t in range(T):
+                if cls_info[t] is None:
+                    continue
+                n        = cls_info[t]['idx'].numel()
+                act      = active[t][cls_info[t]['idx']]
+                s        = cls_info[t]['scores'].clone()
+                s[~act]  = -float('inf')
+                dp_t     = s.clone()   # single-box path baseline
+                prev_t   = torch.full((n,), -1, dtype=torch.long, device=s.device)
+
+                # Nearest earlier frame with boxes for this class
+                tp = t - 1
+                while tp >= 0 and cls_info[tp] is None:
+                    tp -= 1
+
+                if tp >= 0 and dp[tp] is not None:
+                    act_p        = active[tp][cls_info[tp]['idx']]
+                    dp_p         = dp[tp].clone()
+                    dp_p[~act_p] = -float('inf')
+                    iou_mat      = _iou_matrix(cls_info[tp]['boxes'],
+                                               cls_info[t]['boxes'])  # (M, N)
+                    linked       = iou_mat >= link_iou
+
+                    for j in range(n):
+                        if not act[j]:
+                            continue
+                        cand              = dp_p + s[j]
+                        cand[~linked[:, j]] = -float('inf')
+                        best_val          = cand.max()
+                        if best_val.item() > dp_t[j].item():
+                            dp_t[j]   = best_val
+                            prev_t[j] = cand.argmax()
+
+                dp[t]   = dp_t
+                prev[t] = prev_t
+
+            # ── Find best path end-point ───────────────────────────────
+            best_score, best_t, best_i = score_threshold, -1, -1
+            for t in range(T):
+                if dp[t] is None:
+                    continue
+                act = active[t][cls_info[t]['idx']]
+                v   = dp[t].clone()
+                v[~act] = -float('inf')
+                val, idx = v.max(dim=0)
+                if val.item() > best_score:
+                    best_score, best_t, best_i = val.item(), t, idx.item()
+
+            if best_t == -1:
+                break
+
+            # ── Backtrack ─────────────────────────────────────────────
+            path = []
+            t, i = best_t, best_i
+            while True:
+                path.append((t, i))
+                if prev[t] is None or prev[t][i].item() == -1:
+                    break
+                i_new = prev[t][i].item()
+                t    -= 1
+                while t >= 0 and cls_info[t] is None:
+                    t -= 1
+                if t < 0:
+                    break
+                i = i_new
+            path.reverse()
+
+            # ── Boost scores along path ────────────────────────────────
+            path_max = max(cls_info[t]['scores'][i].item() for t, i in path)
+            path_rows = set()
+            for t, i in path:
+                row = cls_info[t]['idx'][i].item()
+                obj = dets[t][row, 4].item()
+                if obj > 1e-6:
+                    dets[t][row, 5] = min(path_max / obj, 1.0)
+                active[t][row] = False    # consumed: not selectable again
+                path_rows.add((t, row))
+
+            # ── Suppress overlapping non-path boxes at each path frame ─
+            for t, pi in path:
+                path_box = cls_info[t]['boxes'][pi].unsqueeze(0)
+                iou_vec  = _iou_matrix(path_box, cls_info[t]['boxes']).squeeze(0)
+                for j in (iou_vec >= suppress_iou).nonzero(as_tuple=False).view(-1):
+                    row = cls_info[t]['idx'][j].item()
+                    active[t][row] = False
+                    if (t, row) not in path_rows:   # don't suppress path boxes
+                        suppressed[t][row] = True
+
+    # ── Keep detections that were not suppressed ──────────────────────
+    out = []
+    for t in range(T):
+        if dets[t] is None or suppressed[t] is None:
+            out.append(None)
+        else:
+            kept = dets[t][~suppressed[t]]
+            out.append(kept if kept.shape[0] > 0 else None)
+    return out
+
+
+def postprocess_seqnms(prediction, num_classes, fc_outputs, conf_output,
+                        conf_thre=0.001, nms_thre=0.5, cls_sig=True,
+                        link_iou=0.5, suppress_iou=0.3):
+    """Per-frame postprocess (with DIoU-NMS) followed by Seq-NMS across frames.
+
+    Returns:
+        output     : list of T tensors after Seq-NMS
+        output_ori : list of T tensors from original-head path (no Seq-NMS)
+    """
+    output, output_ori = postprocess(
+        prediction, num_classes, fc_outputs, conf_output,
+        conf_thre=conf_thre, nms_thre=nms_thre, cls_sig=cls_sig,
+    )
+    output = seq_nms(output, link_iou=link_iou, suppress_iou=suppress_iou,
+                     score_threshold=conf_thre)
+    return output, output_ori
+
+
 def postprocess(prediction, num_classes, fc_outputs,
                 conf_output, conf_thre=0.001, nms_thre=0.5,
                 cls_sig=True,return_idx=False):
