@@ -7,6 +7,24 @@ from loguru import logger
 import csv
 import os
 
+def log_stats_to_csv(filename, data):
+    # data format: [frame_idx, level_name, feature_count, gpu_mem_mb]
+    file_exists = os.path.isfile(filename)
+    with open(filename, 'a', newline='') as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(['video_path', 'batch_set_count', 'level', 'count', 'mem_len']) # Header
+        writer.writerow(data)
+
+def log_stats_to_file_csv(filename, data):
+    # data format: [frame_idx, level_name, feature_count, gpu_mem_mb]
+    file_exists = os.path.isfile(filename)
+    with open(filename, 'a', newline='') as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(['frame_idx', 'level', 'count', 'mem_len']) # Header
+        writer.writerow(data)
+
 class MambaAggregator(nn.Module):
     """Selsa aggregator module.
 
@@ -61,7 +79,7 @@ class MambaAggregator(nn.Module):
         return aggregated_x
 
 
-    def reset_memory_bank(self, k_type, video_path=None):
+    def reset_memory_bank(self, k_type, video_path=None, record=False):
         #logger.info("reset_memory_bank")
         self.batchset_count = 0
         self.video_path = video_path
@@ -74,16 +92,23 @@ class MambaAggregator(nn.Module):
             memory_bank_p3_length, update_length = self.memory_bank_p3.reset()
             if update_length > self.max_memory_bank_length:
                 logger.warning(f"Memory bank reset, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if record:
+                log_stats_to_file_csv('memory_stats.csv', [self.count, 'P3', update_length,  memory_bank_p3_length])
         elif k_type == 1:
             memory_bank_p4_length, update_length = self.memory_bank_p4.reset()
             if update_length > self.max_memory_bank_length:
                 logger.warning(f"Memory bank reset, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if record:
+                log_stats_to_file_csv('memory_stats.csv', [self.count, 'P4', update_length,  memory_bank_p4_length])
         elif k_type == 2:
             memory_bank_p5_length, update_length = self.memory_bank_p5.reset()
             if update_length > self.max_memory_bank_length:
                 logger.warning(f"Memory bank reset, but update_length {update_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
+            if record:
+                log_stats_to_file_csv('memory_stats.csv', [self.count, 'P5', update_length,  memory_bank_p5_length])
 
-    def update_memory_bank(self, x, k_type):
+
+    def update_memory_bank(self, x, k_type, record=False):
         #logger.info("update_memory_bank")
         self.batchset_count += 1
         self.count += 1
@@ -97,6 +122,13 @@ class MambaAggregator(nn.Module):
                 logger.warning(f"Memory bank update, but memory_bank_p3_length {memory_bank_p3_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
             if memory_bank_p3_length == self.max_memory_bank_length:
                 logger.warning(f"Memory bank update, but memory_bank_p3_length {memory_bank_p3_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
+            #if update_length == 0:
+            #    logger.warning(f"Memory bank update, but update_length is {update_length} x: {x.shape[0]}, video_path: {self.video_path}, batchset_count: {self.batchset_count}, level: P3, memory_bank_p3_length: {memory_bank_p3_length}")
+            #self.memory_bank_info.append([self.video_path, self.batchset_count, 'P3', x.shape[0], self.memory_bank_p3.len()])
+            #logger.info(f"update_memory_bank, video_path: {self.video_path}, batchset_count: {self.batchset_count}, level: P3, update_length: {update_length}, memory_bank_p3_length: {memory_bank_p3_length}")
+            if record:
+                log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P3', update_length, memory_bank_p3_length])
+                log_stats_to_file_csv('memory_stats.csv', [self.count, 'P3', update_length, memory_bank_p3_length])
         elif k_type == 1:
             memory_bank_p4_length, update_length = self.memory_bank_p4.update(x)
             if update_length > self.max_memory_bank_length:
@@ -105,6 +137,14 @@ class MambaAggregator(nn.Module):
                 logger.warning(f"Memory bank update, but memory_bank_p4_length {memory_bank_p4_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
             if memory_bank_p4_length == self.max_memory_bank_length:
                 logger.warning(f"Memory bank update, but memory_bank_p4_length {memory_bank_p4_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
+
+            #if update_length == 0:
+            #    logger.warning(f"Memory bank update, but update_length is {update_length} x: {x.shape[0]}, video_path: {self.video_path}, batchset_count: {self.batchset_count}, level: P4, memory_bank_p4_length: {memory_bank_p4_length}")
+            #self.memory_bank_info.append([self.video_path, self.batchset_count, 'P4', x.shape[0], self.memory_bank_p4.len()])
+            #logger.info(f"update_memory_bank, video_path: {self.video_path}, batchset_count: {self.batchset_count}, level: P4, update_length: {update_length}, memory_bank_p4_length: {memory_bank_p4_length}")
+            if record:
+                log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P4', update_length, memory_bank_p4_length])
+                log_stats_to_file_csv('memory_stats.csv', [self.count, 'P4', update_length, memory_bank_p4_length])
         elif k_type == 2:
             memory_bank_p5_length, update_length = self.memory_bank_p5.update(x)
             if update_length > self.max_memory_bank_length:
@@ -113,8 +153,16 @@ class MambaAggregator(nn.Module):
                 logger.warning(f"Memory bank update, but memory_bank_p5_length {memory_bank_p5_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
             if memory_bank_p5_length == self.max_memory_bank_length:
                 logger.warning(f"Memory bank update, but memory_bank_p5_length {memory_bank_p5_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
+            #if update_length == 0:
+            #    logger.warning(f"Memory bank update, but update_length is {update_length} x: {x.shape[0]}, video_path: {self.video_path}, batchset_count: {self.batchset_count}, level: P5, memory_bank_p5_length: {memory_bank_p5_length}")
+            #self.memory_bank_info.append([self.video_path, self.batchset_count, 'P5', x.shape[0], self.memory_bank_p5.len()])
+            #logger.info(f"update_memory_bank, video_path: {self.video_path}, batchset_count: {self.batchset_count}, level: P5, update_length: {update_length}, memory_bank_p5_length: {memory_bank_p5_length}")
+            log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P5', update_length, memory_bank_p5_length])
+            log_stats_to_file_csv('memory_stats.csv', [self.count, 'P5', update_length, memory_bank_p5_length])
 
-    def init_memory_bank(self, x, k_type):
+    def init_memory_bank(self, x, k_type, record=False):
+        #logger.info("init_memory_bank")
+        #logger.info("x.shape: {}".format(x.shape))
         self.batchset_count += 1
         self.count += 1
         memory_bank_p3_length, memory_bank_p4_length, memory_bank_p5_length = 0, 0, 0
@@ -127,6 +175,12 @@ class MambaAggregator(nn.Module):
                 logger.warning(f"Memory bank init, but memory_bank_p3_length {memory_bank_p3_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
             if memory_bank_p3_length == self.max_memory_bank_length:
                 logger.warning(f"Memory bank update, but memory_bank_p3_length {memory_bank_p3_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
+
+            #self.memory_bank_info.append([self.video_path, self.batchset_count, 'P3', x.shape[0], self.memory_bank_p3.len()])
+            #logger.info(f"init_memory_bank, video_path: {self.video_path}, batchset_count: {self.batchset_count}, level: P3, update_length: {update_length}, memory_bank_p3_length: {memory_bank_p3_length}")
+            if record:
+                log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P3', update_length, memory_bank_p3_length])
+                log_stats_to_file_csv('memory_stats.csv', [self.count, 'P3', update_length, memory_bank_p3_length])
         elif k_type == 1:
             memory_bank_p4_length, update_length = self.memory_bank_p4.init_memory(x)
             if update_length > self.max_memory_bank_length:
@@ -135,6 +189,11 @@ class MambaAggregator(nn.Module):
                 logger.warning(f"Memory bank init, but memory_bank_p4_length {memory_bank_p4_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
             if memory_bank_p4_length == self.max_memory_bank_length:
                 logger.warning(f"Memory bank update, but memory_bank_p4_length {memory_bank_p4_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
+            #self.memory_bank_info.append([self.video_path, self.batchset_count, 'P4', x.shape[0], self.memory_bank_p4.len()])
+            #logger.info(f"init_memory_bank, video_path: {self.video_path}, batchset_count: {self.batchset_count}, level: P4, update_length: {update_length}, memory_bank_p4_length: {memory_bank_p4_length}")
+            if record:
+                log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P4', update_length, memory_bank_p4_length])
+                log_stats_to_file_csv('memory_stats.csv', [self.count, 'P4', update_length, memory_bank_p4_length])
         elif k_type == 2:
             memory_bank_p5_length, update_length = self.memory_bank_p5.init_memory(x)
             if update_length > self.max_memory_bank_length:
@@ -143,6 +202,11 @@ class MambaAggregator(nn.Module):
                 logger.warning(f"Memory bank init, but memory_bank_p5_length {memory_bank_p5_length} exceeds max_memory_bank_length {self.max_memory_bank_length}")
             if memory_bank_p5_length == self.max_memory_bank_length:
                 logger.warning(f"Memory bank update, but memory_bank_p5_length {memory_bank_p5_length} reaches max_memory_bank_length {self.max_memory_bank_length}")
+            #self.memory_bank_info.append([self.video_path, self.batchset_count, 'P5', x.shape[0], self.memory_bank_p5.len()])
+            #logger.info(f"init_memory_bank, video_path: {self.video_path}, batchset_count: {self.batchset_count}, level: P5, update_length: {update_length}, memory_bank_p5_length: {memory_bank_p5_length}")
+            if record:
+                log_stats_to_csv(f'memory_bank_stats_video.csv', [self.video_path, self.batchset_count, 'P5', update_length, memory_bank_p5_length])
+                log_stats_to_file_csv('memory_stats.csv', [self.count, 'P5', update_length, memory_bank_p5_length])
 
     def forward_with_ref_x(self, x, ref_x):
         """Aggregate the features `ref_x` of reference proposals.
