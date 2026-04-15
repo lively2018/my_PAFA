@@ -66,10 +66,13 @@ class VIDRefDataset(torchDataset):
         self.val = val
         self.formal = formal
         self.local_stride = local_stride
-        #kssong
-        #self.res = self.photo_to_sequence(self.file_path,lframe,gframe)
+        self.lframe = lframe
+        self.gframe = gframe
         self.res = self.photo_to_sequence(self.file_path,lframe,gframe)
         self.dataset_pth = dataset_pth
+
+    def reset_sequences(self):
+        self.res = self.photo_to_sequence(self.file_path, self.lframe, self.gframe)
 
     def __len__(self):
         return len(self.res)

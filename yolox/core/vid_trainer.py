@@ -152,12 +152,12 @@ class Trainer:
 
         iter_start_time = time.time()
 
-        #kssong        
+        #kssong
         #inps, targets,_ = self.prefetcher.next()
         inps, targets, _, _, paths, _ = self.prefetcher.next()
         inps = inps.to(self.data_type)
         targets = targets.to(self.data_type)
-        targets.requires_grad = False        
+        targets.requires_grad = False
         inps, targets = self.exp.preprocess(inps, targets, self.input_size,)
         video_path = os.path.basename(os.path.dirname(paths[0]))
         prev_video_path = self.prev_video_path
@@ -284,6 +284,7 @@ class Trainer:
         #     )
         #     logger.info('Refreshing dataloader')
         self.prev_video_path = "None"
+        self.train_loader.dataset.reset_sequences()
         if self.epoch + 1 >= self.max_epoch - self.exp.no_aug_epochs or self.no_aug:
             logger.info("--->No mosaic aug now!")
             self.train_loader.dataset.enable_mosaic = False
@@ -351,14 +352,14 @@ class Trainer:
                 )
                 + (", size: {:d}, {}".format(self.input_size[0], eta_str))
             )
-            self.meter.clear_meters()            
+            self.meter.clear_meters()
 
         # random resizing
-        if (self.progress_in_iter + 1) % 10 == 0:            
+        if (self.progress_in_iter + 1) % 10 == 0:
             self.input_size = self.exp.random_resize(
                 None, self.epoch, self.rank, self.is_distributed
             )
-        if self.iter % 2000 ==0:            
+        if self.iter % 2000 ==0:
             self.save_ckpt(ckpt_name='latest')
 
     @property
