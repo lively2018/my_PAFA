@@ -3,7 +3,8 @@ import torch
 import torchvision
 import random
 import time
-from yolox.utils import bboxes_iou, logger
+from yolox.utils import bboxes_iou
+from loguru import logger
 
 
 # Insert before line 1364 (before process_prediction)
@@ -29,6 +30,7 @@ def postprocess(prediction, num_classes, fc_outputs,
                 'bboxes': det[:4],
                 'feat_id': idx
             })
+            logger.info(f'i {i} bboxes: {det[:4]} feat_id: {idx}')
         bboxes_pred_id_info_list.append(bboxes_pred_id_info_per_frame)
 
     for _ in range(len(prediction)):
@@ -79,14 +81,28 @@ def postprocess(prediction, num_classes, fc_outputs,
 
         detections_high = detections_high[nms_out_index]
         output[i] = detections_high
-        detection_high_info = []
+        detection_info_list = []
         for detection_item in detections_high:
-            detection_info_item = {}
             bboxes = detection_item[:4]
-            obj_score = detection_item[4]
-            cls_score = detection_item[5]
-
-
+            matched = next(
+                (item for item in bboxes_pred_id_info_list[i]
+                 if torch.all(item['bboxes'] == bboxes)),
+                None
+            )
+            feat_id = matched['feat_id'] if matched is not None else None
+            detection_info_list.append(
+                {
+                'bboxes': detection_item[:4],
+                'obj_score': detection_item[4],
+                'cls_score': detection_item[5],
+                'label' : detection_item[6],
+                'feat_id': feat_id
+                }
+            )
+            logger.info(f'i {i} bboxes: {detection_item[:4]} obj_score: {detection_item[4]}\
+                        cls_score: {detection_item[5]} label: {detection_item[6]}\
+                            feat_id: {feat_id}')
+        output_info[i] = detection_info_list
         detections_ori = detections_ori[:, :7]
         conf_mask = detections_ori[:, 4] * detections_ori[:, 5] >= conf_thre
 
