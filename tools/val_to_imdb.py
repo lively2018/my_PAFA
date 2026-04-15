@@ -141,13 +141,17 @@ class Predictor(object):
             img = img.type(self.tensor_type)
             img = img.cuda()
 
+        for img_file in img_path:
+            logger.info(f'img_file:{img_file}')
+
         with torch.no_grad():
             t0 = time.time()
             if not self.traj_linking:
-                outputs,outputs_ori = self.model(img,first_frame, lframe=lframe,gframe=gframe)
+
+                outputs,outputs_ori = self.model(img,first_frame, lframe=lframe,gframe=gframe,img_path=img_path )
                 if len(outputs) <= 4: outputs = outputs_ori
             else:
-                pred_result, adj_list, fc_output = self.model(img, first_frame, lframe=lframe,gframe=gframe)
+                pred_result, adj_list, fc_output = self.model(img, first_frame, lframe=lframe,gframe=gframe, img_path=img_path)
                 outputs = [pred_result, adj_list, fc_output]
         return outputs
 

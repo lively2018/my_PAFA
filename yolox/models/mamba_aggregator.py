@@ -44,15 +44,15 @@ class MambaAggregator(nn.Module):
         if type_k == 0:
             ref_x = self.memory_bank_p3.sample()
             sampled_mem_feat_info = self.memory_bank_p3.get_sampled_features()
-            logger.info(f'type_k: {type_k}, sampled_mem_feat_info length: {len(sampled_mem_feat_info)}')
+            #logger.info(f'type_k: {type_k}, sampled_mem_feat_info length: {len(sampled_mem_feat_info)}')
         elif type_k == 1:
             ref_x = self.memory_bank_p4.sample()
             sampled_mem_feat_info = self.memory_bank_p4.get_sampled_features()
-            logger.info(f'type_k: {type_k}, sampled_mem_feat_info length: {len(sampled_mem_feat_info)}')
+            #logger.info(f'type_k: {type_k}, sampled_mem_feat_info length: {len(sampled_mem_feat_info)}')
         elif type_k == 2:
             ref_x = self.memory_bank_p5.sample()
             sampled_mem_feat_info = self.memory_bank_p5.get_sampled_features()
-            logger.info(f'type_k: {type_k}, sampled_mem_feat_info length: {len(sampled_mem_feat_info)}')
+            #logger.info(f'type_k: {type_k}, sampled_mem_feat_info length: {len(sampled_mem_feat_info)}')
         #logger.info(f"ref_x shape: {ref_x.shape} x shape: {x.shape}")
         #print(f"After sampling: {gpu_mem_usage():.0f}")
         # fort he rest frames

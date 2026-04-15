@@ -250,7 +250,7 @@ class YOLOXHead(nn.Module):
         new_xin = xin + self.aggreator(xin, ref_xin)
         return new_xin
     # kssong
-    def forward(self, xin, first, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32):
+    def forward(self, xin, first, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32, img_path=None):
     #def forward(self, xin, ref_xin, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32):
         #kssong
         #if len(ref_xin) > 0:
@@ -507,6 +507,7 @@ class YOLOXHead(nn.Module):
                         f"p3_sampled_info length: {len(p3_sampled_info)}, "\
                         f"p4_sampled_info length: {len(p4_sampled_info)}, "\
                         f"p5_sampled_info length: {len(p5_sampled_info)}")
+
         self.hw = [x.shape[-2:] for x in outputs_decode]
 
 
@@ -593,16 +594,16 @@ class YOLOXHead(nn.Module):
                 # Shape: [N, 6+num_classes] — columns: [x1, y1, x2, y2, obj_score, cls_score, class_pred x num_classes]
                 self._ref_pred_info = ref_pred_info
                 #logger.info(f"len(ref_pred_info): {len(ref_pred_info)}")
-                #for i, level_info in enumerate(ref_pred_info):
-                #    level_info_p3, level_info_p4, level_info_p5 = level_info
+                for i, level_info in enumerate(ref_pred_info):
+                    level_info_p3, level_info_p4, level_info_p5 = level_info
                 #    logger.info(f"Level {i} - len(level_info_p3): {len(level_info_p3)}, \
                 #                len(level_info_p4): {len(level_info_p4)}, \
                 #                    len(level_info_p5): {len(level_info_p5)}")
-                for i, level_info in enumerate(ref_pred_info):
-                    level_info_p3, level_info_p4, level_info_p5 = level_info
-                    #logger.info(f"batch_item {i} - len(level_info_p3): {len(level_info_p3)}, \
-                    #            len(level_info_p4): {len(level_info_p4)}, \
-                    #                len(level_info_p5): {len(level_info_p5)}")
+                #for i, level_info in enumerate(ref_pred_info):
+                #    level_info_p3, level_info_p4, level_info_p5 = level_info
+                #    logger.info(f"batch_item {i} - len(level_info_p3): {len(level_info_p3)}, \
+                #                len(level_info_p4): {len(level_info_p4)}, \
+                #                    len(level_info_p5): {len(level_info_p5)}")
                     batch_set = self.batch_set
                     self.aggregator.init_memory_features_info(level_info_p3, 0, batch_set, i)
                     self.aggregator.init_memory_features_info(level_info_p4, 1, batch_set, i)
@@ -738,6 +739,7 @@ class YOLOXHead(nn.Module):
                                              fc_output,
                                              conf_output = conf_output,
                                              nms_thre=nms_thresh,
+                                             pred_idx=pred_idx, batch_set=self.batch_set
                                              )
             return result, result_ori  # result
 
@@ -909,13 +911,13 @@ class YOLOXHead(nn.Module):
             #                len(p5_items): {len(p5_items)}")
             #for idx, items in enumerate(p3_items):
             #    logger.info(f"Batch {i} - p3 item {idx} th - p3 item shape: {items.shape}")
-            #    logger.info(f"Batch {i} - p3 item {idx} th - p3 items: {items}")
+            #    logger.info(f"Batch {i} - p3 item {idx} th - p3 items: {int(items[36])}")
             #for idx, items in enumerate(p4_items):
             #    logger.info(f"Batch {i} - p4 item {idx} th - p4 item shape: {items.shape}")
-            #    logger.info(f"Batch {i} - p4 item {idx} th - p4 items: {items}")
+            #    logger.info(f"Batch {i} - p4 item {idx} th - p4 items: {int(items[36])}")
             #for idx, items in enumerate(p5_items):
             #    logger.info(f"Batch {i} - p5 item {idx} th - p5 item shape: {items.shape}")
-            #    logger.info(f"Batch {i} - p5 item {idx} th - p5 items: {items}")
+            #    logger.info(f"Batch {i} - p5 item {idx} th - p5 items: {int(items[36])}")
         key_features_p3 = torch.stack(key_features_p3, dim=0) if key_features_p3 else torch.empty(0, 128)
         key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128)
         key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128)

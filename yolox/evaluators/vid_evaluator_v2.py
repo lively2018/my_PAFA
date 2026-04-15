@@ -512,18 +512,12 @@ class VIDEvaluator:
 #                progress_bar(self.dataloader)
 #        ):
         prev_video_path = "None"
+
         for cur_iter, (imgs, _, info_imgs, label, path, time_embedding) in enumerate(
                 progress_bar(self.dataloader)
         ):
-            logger.info("path len: {}".format(len(path)))
-            video_path = os.path.basename(os.path.dirname(path[0]))
-            file_name_list = []
-            for path_item in path:
-                logger.info(f"path item : {path_item}")
-                file_name = os.path.splittext(os.path.basename(path_item))
-                logger.info(f"file name: {file_name}")
-                file_name_list.append(file_name)
 
+            video_path = os.path.basename(os.path.dirname(path[0]))
             if prev_video_path == video_path:
                 first_frame = False
             else:

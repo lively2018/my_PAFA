@@ -11,27 +11,28 @@ from loguru import logger
 
 def postprocess(prediction, num_classes, fc_outputs,
                 conf_output, conf_thre=0.001, nms_thre=0.5,
-                cls_sig=True,return_idx=False, pred_idx=None):
+                cls_sig=True,return_idx=False, pred_idx=None, batch_set=None):
     output = [None for _ in range(len(prediction))]
     output_ori = [None for _ in range(len(prediction))]
     output_info = [None for _ in range(len(prediction))]
     prediction_ori = copy.deepcopy(prediction)
     cls_pred, cls_conf = [],[]
     if pred_idx is not None:
-        print(f"postprocess, prediction length: {len(prediction)}, fc_outputs length: {len(fc_outputs)}, pred_idx length:  {len(pred_idx)}, \
+        logger.info(f"prediction length: {len(prediction)}, fc_outputs length: {len(fc_outputs)}, pred_idx length:  {len(pred_idx)}, \
           pred_idx one length: {len(pred_idx[0])}")
     bboxes_pred_id_info_list = []
-    for i in range(len(prediction)):
-        feat_idx = pred_idx[i]
-        detections = prediction[i]
-        bboxes_pred_id_info_per_frame = []
-        for det, idx in zip(detections, feat_idx):
-            bboxes_pred_id_info_per_frame.append({
-                'bboxes': det[:4],
-                'feat_id': idx
-            })
-            logger.info(f'i {i} bboxes: {det[:4]} feat_id: {idx}')
-        bboxes_pred_id_info_list.append(bboxes_pred_id_info_per_frame)
+    if pred_idx is not None:
+        for i in range(len(prediction)):
+            feat_idx = pred_idx[i]
+            detections = prediction[i]
+            bboxes_pred_id_info_per_frame = []
+            for det, idx in zip(detections, feat_idx):
+                bboxes_pred_id_info_per_frame.append({
+                    'bboxes': det[:4],
+                    'feat_id': idx
+                })
+                #logger.info(f'i {i} bboxes: {det[:4]} feat_id: {idx}')
+            bboxes_pred_id_info_list.append(bboxes_pred_id_info_per_frame)
 
     for _ in range(len(prediction)):
         tmp_cls,tmp_pred = torch.max(fc_outputs[_], -1, keepdim=False) #
@@ -92,6 +93,8 @@ def postprocess(prediction, num_classes, fc_outputs,
             feat_id = matched['feat_id'] if matched is not None else None
             detection_info_list.append(
                 {
+                'batch_set': batch_set,
+                'batch_item': i,
                 'bboxes': detection_item[:4],
                 'obj_score': detection_item[4],
                 'cls_score': detection_item[5],
@@ -99,9 +102,9 @@ def postprocess(prediction, num_classes, fc_outputs,
                 'feat_id': feat_id
                 }
             )
-            logger.info(f'i {i} bboxes: {detection_item[:4]} obj_score: {detection_item[4]}\
-                        cls_score: {detection_item[5]} label: {detection_item[6]}\
-                            feat_id: {feat_id}')
+            #logger.info(f'i {i} bboxes: {detection_item[:4]} obj_score: {detection_item[4]}\
+            #            cls_score: {detection_item[5]} label: {detection_item[6]}\
+            #                feat_id: {feat_id}')
         output_info[i] = detection_info_list
         detections_ori = detections_ori[:, :7]
         conf_mask = detections_ori[:, 4] * detections_ori[:, 5] >= conf_thre

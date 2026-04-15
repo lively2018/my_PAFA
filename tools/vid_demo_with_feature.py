@@ -26,6 +26,17 @@ import REPP
 import numpy as np
 import pickle
 from collections import OrderedDict
+from xml.dom import minidom
+
+# synset → class index mapping (matches yolox/data/datasets/vid.py)
+_VID_SYNSET_LIST = [
+    'n02691156','n02419796','n02131653','n02834778','n01503061','n02924116',
+    'n02958343','n02402425','n02084071','n02121808','n02503517','n02118333',
+    'n02510455','n02342885','n02374451','n02129165','n01674464','n02484322',
+    'n03790512','n02324045','n02509815','n02411705','n01726692','n02355227',
+    'n02129604','n04468005','n01662784','n04530566','n02062744','n02391049',
+]
+_VID_SYNSET_TO_IDX = {s: i for i, s in enumerate(_VID_SYNSET_LIST)}
 
 IMAGE_EXT = [".jpg", ".jpeg", ".webp", ".bmp", ".png",".JPEG"]
 
@@ -105,6 +116,7 @@ def make_parser():
     parser.add_argument('--save_features_info', default=True)
     parser.add_argument('--m_conf', default=0, type=float,help='select reference features minimum conf score')
     parser.add_argument('--reproduced_list', default="None", type=str, help="input image list")
+    parser.add_argument('--save_result_with_gt', default=False)
     return parser
 
 
@@ -162,6 +174,7 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
             raise ValueError(f"{args.path} is invalid!")
         reproduced_step = False
     else:
+        logger.info(f'reproduced_list: {args.reproduced_list}')
         with open(args.reproduced_list, 'r') as reproduced_list_file:
             files = [line.strip() for line in reproduced_list_file.readlines() if line.strip()]
 
@@ -176,11 +189,11 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
     if reproduced_step == False:
         rep_file = open('./reproduced_list.txt', 'w')
 
-    if gframe != 0:
+    if gframe != 0 and reproduced_step == False:
         random.seed(41)
         random.shuffle(files)
     for file in files:
-        logger.info(f"read file {file}")
+        #logger.info(f"read file {file}")
         if reproduced_step == False:
             rep_file.write(file+'\n')
         frame = cv2.imread(file)
@@ -193,8 +206,9 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
 
     res = []
     frame_len = len(frames)
-    index_list = list(range(frame_len))
-    ref_frame_index_list = []
+    img_path_list = []
+
+
     if gframe != 0:
         #random.seed(41)
         #random.shuffle(index_list)
@@ -203,7 +217,9 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
         split_num = int(frame_len / (gframe))
         for i in range(split_num):
             res.append(frames[i * gframe:(i + 1) * gframe])
-        res.append(frames[(i + 1) * gframe:])
+            img_path_list.append(files[i*gframe:(i+1)*gframe])
+        res.append(frames[split_num * gframe:])
+        img_path_list.append(files[split_num * gframe:])
 
     else:
         split_num = int(frame_len / (lframe))
@@ -222,7 +238,6 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
     for file in files:
         ref_frame_list_file.write(file+'\n')
     ref_frame_list_file.close()
-    exit(0)
     outputs, adj_lists, fc_outputs, names = [], [], [], []
     updated_feat_info_list = []
     mem_feat_info_list = []
@@ -234,7 +249,7 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
         frame_num = len(ele)
         ele = torch.stack(ele)
         if traj_linking:
-            pred_result, adj_list, fc_output = predictor.inference(ele, first_frame, lframe=frame_num, gframe=0)
+            pred_result, adj_list, fc_output = predictor.inference(ele, first_frame, lframe=frame_num, gframe=0,  img_path=img_path_list[ele_id])
             if first_frame:
                 first_frame = False
             if len(outputs) != 0:  # skip the connection frame
@@ -245,7 +260,7 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
             fc_outputs.append(fc_output)
         else:
             logger.info(f"ele_id: {ele_id}, ele.shape: {ele.shape}")
-            outputs.extend(predictor.inference(ele, first_frame, lframe=lframe,gframe=gframe))
+            outputs.extend(predictor.inference(ele, first_frame, lframe=lframe,gframe=gframe, img_path=img_path_list[ele_id]))
             if first_frame:
                 first_frame = False
         head = predictor.model.head
@@ -289,10 +304,12 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
             p5_sampled_mem_info = sampled_mem_feat_info['p5']
             logger.info(f"Set {ele_id} - sampled_mem_feat_info - len(p5_sampled_mem_info): {len(p5_sampled_mem_info)}")
             sampled_mem_feat_info_list.append({k: list(v) for k, v in sampled_mem_feat_info.items()})
+        if ele_id == 1:
+            break
     if traj_linking:
         outputs = post_linking(fc_outputs, adj_lists, outputs, P, Cls, names, exp)
 
-    outputs = [j for _,j in sorted(zip(index_list,outputs))]
+  #  outputs = [j for _,j in sorted(zip(index_list,outputs))]
     ratio = min(predictor.test_size[0] / height, predictor.test_size[1] / width)
     if args.post:
         logger.info("Post processing...")
@@ -302,7 +319,7 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
 
     logger.info("Saving detection image result in {}".format(img_save_path))
     img_anno_res = {}
-    for (output,img, file_name) in zip(outputs,ori_frames[:len(outputs)],file_names):
+    for (output,img, file_path) in zip(outputs,ori_frames[:len(outputs)],files):
         if args.post:
             ratio = 1
         result_frame = predictor.visual(output,img,ratio,cls_conf=args.conf,color_idx=12)
@@ -311,9 +328,31 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
         scores = (output[:, 4] * output[:, 5]).unsqueeze(1)
         bboxes_cls = torch.cat([bboxes, scores, cls], dim=1)
         bboxes_cls_cpu = bboxes_cls.cpu().numpy()
+        file_name = os.path.basename(file_path)
         img_anno_res[file_name] = bboxes_cls_cpu
         if args.save_result:
             cv2.imwrite(os.path.join(img_save_path, file_name), result_frame)
+        if args.save_result_with_gt:
+            file_name_with_gt = 'gt_result_' + file_name
+            xml_path = file_path.replace("Data", "Annotations").replace(".JPEG", ".xml").replace(".jpeg", ".xml").replace(".jpg", ".xml")
+            result_with_gt_frame = result_frame.copy()
+            if os.path.exists(xml_path):
+                xml_doc = minidom.parse(xml_path)
+                root = xml_doc.documentElement
+                for obj in root.getElementsByTagName("object"):
+                    synset = obj.getElementsByTagName("name")[0].firstChild.data
+                    xmin = int(obj.getElementsByTagName("xmin")[0].firstChild.data)
+                    ymin = int(obj.getElementsByTagName("ymin")[0].firstChild.data)
+                    xmax = int(obj.getElementsByTagName("xmax")[0].firstChild.data)
+                    ymax = int(obj.getElementsByTagName("ymax")[0].firstChild.data)
+                    cls_idx = _VID_SYNSET_TO_IDX.get(synset, -1)
+                    label = VID_classes[cls_idx] if cls_idx >= 0 else synset
+                    cv2.rectangle(result_with_gt_frame, (xmin, ymin), (xmax, ymax), (0, 0, 255), 2)
+                    cv2.putText(result_with_gt_frame, 'GT:' + label, (xmin, max(ymin - 4, 10)),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+            else:
+                logger.warning("GT xml not found: {}".format(xml_path))
+            cv2.imwrite(os.path.join(img_save_path, file_name_with_gt), result_with_gt_frame)
     if args.save_annotation:
         anno_save_path = os.path.join(img_save_path, "my_model_result_info.pkl")
         with open(anno_save_path, "wb") as f:
@@ -329,9 +368,8 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
             pickle.dump(updated_feat_info_list, f)
         logger.info("Saving detection prediction feature info in {}".format(updated_feat_info_save_path))
         ref_frame_save_path = os.path.join(img_save_path, "my_model_ref_frame_list.npy")
-        np.save(ref_frame_save_path, np.array(ref_frame_name_list, dtype=object))
+        np.save(ref_frame_save_path, np.array(files, dtype=object))
         logger.info("Saving detection prediction reference frame info in {}".format(ref_frame_save_path))
-        #logger.info(f"ref_frame_name_list len: {len(ref_frame_name_list)}, each element: {ref_frame_name_list}")
         mem_feat_info_save_path = os.path.join(img_save_path, "my_model_mem_feat_info.pkl")
         with open(mem_feat_info_save_path, "wb") as f:
             pickle.dump(mem_feat_info_list, f)
@@ -407,7 +445,7 @@ def imageflow_demo(predictor, vis_folder, current_time, args,exp):
         ele = torch.stack(ele)
         t0 = time.time()
         if traj_linking:
-            pred_result, adj_list, fc_output = predictor.inference(ele, first_frame, lframe=frame_num, gframe=0)
+            pred_result, adj_list, fc_output = predictor.inference(ele, first_frame, lframe=frame_num, gframe=0, img_path=None)
             if first_frame:
                 first_frame = False
 
@@ -418,7 +456,7 @@ def imageflow_demo(predictor, vis_folder, current_time, args,exp):
             adj_lists.extend(adj_list)
             fc_outputs.append(fc_output)
         else:
-            outputs.extend(predictor.inference(ele, first_frame, lframe=lframe,gframe=gframe))
+            outputs.extend(predictor.inference(ele, first_frame, lframe=lframe,gframe=gframe, img_path=None))
             if first_frame:
                 first_frame = False
     if traj_linking:
