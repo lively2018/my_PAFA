@@ -70,6 +70,7 @@ def postprocess(prediction, num_classes, fc_outputs,
                 cls_sig=True,return_idx=False, pred_idx=None):
     output = [None for _ in range(len(prediction))]
     output_ori = [None for _ in range(len(prediction))]
+    output_info = [None for _ in range(len(prediction))]
     prediction_ori = copy.deepcopy(prediction)
     cls_pred, cls_conf = [],[]
     if pred_idx is not None:
@@ -79,11 +80,13 @@ def postprocess(prediction, num_classes, fc_outputs,
     for i in range(len(prediction)):
         feat_idx = pred_idx[i]
         detections = prediction[i]
-        bboxes_pred_id_info_item = {}
+        bboxes_pred_id_info_per_frame = []
         for det, idx in zip(detections, feat_idx):
-            bboxes_pred_id_info_item['bboxes'] = det[:4]
-            bboxes_pred_id_info_item['feat_id'] = idx
-        bboxes_pred_id_info_list.append(bboxes_pred_id_info_item)
+            bboxes_pred_id_info_per_frame.append({
+                'bboxes': det[:4],
+                'feat_id': idx
+            })
+        bboxes_pred_id_info_list.append(bboxes_pred_id_info_per_frame)
 
     for _ in range(len(prediction)):
         tmp_cls,tmp_pred = torch.max(fc_outputs[_], -1, keepdim=False) #
@@ -124,7 +127,7 @@ def postprocess(prediction, num_classes, fc_outputs,
             continue
         if len(detections_high.shape)==3:
             detections_high = detections_high[0]
-        nms_out_index = iomin_suppression(
+        nms_out_index = torchvision.ops.batched_nms(
             detections_high[:, :4],
             detections_high[:, 4] * detections_high[:, 5],
             detections_high[:, 6],
@@ -139,7 +142,7 @@ def postprocess(prediction, num_classes, fc_outputs,
         #conf_mask = (detections_ori[:, 4] * detections_ori[:, 5] >= conf_thre).squeeze()
         detections_ori = detections_ori[conf_mask]
 
-        nms_out_index = iomin_suppression(
+        nms_out_index = torchvision.ops.batched_nms(
             detections_ori[:, :4],
             detections_ori[:, 4] * detections_ori[:, 5],
             detections_ori[:, 6],
