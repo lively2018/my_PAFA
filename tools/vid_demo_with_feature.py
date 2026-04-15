@@ -104,6 +104,7 @@ def make_parser():
     parser.add_argument('--save_annotation', default=True)
     parser.add_argument('--save_features_info', default=True)
     parser.add_argument('--m_conf', default=0, type=float,help='select reference features minimum conf score')
+    parser.add_argument('--reproduced_list', default="None", type=str, help="input image list")
     return parser
 
 
@@ -153,11 +154,17 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
     os.makedirs(save_folder, exist_ok=True)
     img_save_path = save_folder
     logger.add(os.path.join(img_save_path, "run.log"), mode="w")
-
-    if os.path.isdir(args.path):
-        file_names, files = get_image_list(args.path)
+    reproduced_step = True
+    if args.reproduced_list == "None":
+        if os.path.isdir(args.path):
+            file_names, files = get_image_list(args.path)
+        else:
+            raise ValueError(f"{args.path} is invalid!")
+        reproduced_step = False
     else:
-        raise ValueError(f"{args.path} is invalid!")
+        with open(args.reproduced_list, 'r') as reproduced_list_file:
+            files = [line.strip() for line in reproduced_list_file.readlines() if line.strip()]
+
     if gframe == 0:
         files, file_names = zip(*sorted(zip(files, file_names)))
         files, file_names = list(files), list(file_names)
@@ -165,14 +172,25 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
     frames = []
     outputs = []
     ori_frames = []
+    logger.info(f'file list len: {len(files)}')
+    if reproduced_step == False:
+        rep_file = open('./reproduced_list.txt', 'w')
+
+    if gframe != 0:
+        random.seed(41)
+        random.shuffle(files)
     for file in files:
         logger.info(f"read file {file}")
+        if reproduced_step == False:
+            rep_file.write(file+'\n')
         frame = cv2.imread(file)
         height, width = frame.shape[:2]
         ori_frames.append(frame)
         frame, _ = predictor.preproc(frame, None, exp.test_size)
         frames.append(torch.tensor(frame))
-    exit(0)
+    if reproduced_step == False:
+        rep_file.close()
+
     res = []
     frame_len = len(frames)
     index_list = list(range(frame_len))
@@ -185,34 +203,26 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
         split_num = int(frame_len / (gframe))
         for i in range(split_num):
             res.append(frames[i * gframe:(i + 1) * gframe])
-            ref_frame_index_list.append(index_list[i * gframe:(i + 1) * gframe])
         res.append(frames[(i + 1) * gframe:])
-        ref_frame_index_list.append(index_list[(i + 1) * gframe:])
+
     else:
         split_num = int(frame_len / (lframe))
         for i in range(split_num):
             if traj_linking and i != 0:
                 res.append(frames[i * lframe-1:(i + 1) * lframe])
-                ref_frame_index_list.append(index_list[i * lframe-1:(i + 1) * lframe])
             else:
                 res.append(frames[i * lframe:(i + 1) * lframe])
-                ref_frame_index_list.append(index_list[i * lframe:(i + 1) * lframe])
         if traj_linking:
             tail = frames[split_num * lframe - 1:]
-            ref_frame_index_list.append(index_list[split_num * lframe - 1:])
         else:
             tail = frames[split_num * lframe:]
-            ref_frame_index_list.append(index_list[split_num * lframe:])
+
         res.append(tail)
     ref_frame_list_file = open(os.path.join(img_save_path, "ref_frame_list_file_name.txt"), "w")
-    ref_frame_name_list = []
-    for i, glist in enumerate(ref_frame_index_list):
-        ref_frame_list_file.write(f"{i} set\n")
-        for idx in range(len(glist)):
-            ref_frame_list_file.write(file_names[glist[idx]] + "\n")
-            ref_frame_name_list.append(args.path + "/" + file_names[glist[idx]])
-
+    for file in files:
+        ref_frame_list_file.write(file+'\n')
     ref_frame_list_file.close()
+    exit(0)
     outputs, adj_lists, fc_outputs, names = [], [], [], []
     updated_feat_info_list = []
     mem_feat_info_list = []

@@ -1454,8 +1454,9 @@ class YOLOXHead(nn.Module):
                 detections_temp[:, 6],
                 nms_thre,
             )
-
-
+            topk_idx = sort_idx[nms_out_index[:self.topK]]
+            output[i] = detections[topk_idx, :]
+            output_index[i] = topk_idx
 
         return output, output_index
 
