@@ -166,12 +166,13 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
     outputs = []
     ori_frames = []
     for file in files:
+        logger.info(f"read file {file}")
         frame = cv2.imread(file)
         height, width = frame.shape[:2]
         ori_frames.append(frame)
         frame, _ = predictor.preproc(frame, None, exp.test_size)
         frames.append(torch.tensor(frame))
-
+    exit(0)
     res = []
     frame_len = len(frames)
     index_list = list(range(frame_len))
@@ -181,7 +182,7 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
         #random.shuffle(index_list)
         #random.seed(41)
         #random.shuffle(frames)
-        split_num = int(frame_len / (gframe))#
+        split_num = int(frame_len / (gframe))
         for i in range(split_num):
             res.append(frames[i * gframe:(i + 1) * gframe])
             ref_frame_index_list.append(index_list[i * gframe:(i + 1) * gframe])

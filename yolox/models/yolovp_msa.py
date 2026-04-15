@@ -273,13 +273,11 @@ class YOLOXHead(nn.Module):
         before_nms_regf = []
 
 
-        #batch_size = len(imgs)
-        #if batch_size == 16 or batch_size == 32:
-        #    need_aggregation = True
-        #else:
-        #    need_aggregation = False
-
-        need_aggregation = True
+        batch_size = len(imgs)
+        if batch_size == 16 or batch_size == 32:
+            need_aggregation = True
+        else:
+            need_aggregation = False
 
         if self.training:
             for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
@@ -1457,24 +1455,7 @@ class YOLOXHead(nn.Module):
                 nms_thre,
             )
 
-            topk_idx = sort_idx[nms_out_index[:self.topK]]
-            #output[i] = detections[topk_idx, :]
-            detections_high = detections[topk_idx, :]
-            nms_out_iou_min = self.iou_min(detections_high[:, :4],
-                                           detections_high[:, 4] * detections_high[:, 5],
-                                           detections_high[:, 6],
-                                           nms_thre)
-            kept_dets = detections_high[nms_out_iou_min, :]
-            kept_idx  = topk_idx[nms_out_iou_min]
-            # Pad to topK so pred_result and fc_output stay aligned
-            n = len(nms_out_iou_min)
-            if n < self.topK:
-                pad = self.topK - n
-                kept_dets = torch.cat([kept_dets, kept_dets[-1:].expand(pad, -1)], dim=0)
-                kept_idx  = torch.cat([kept_idx,  kept_idx[-1:].expand(pad)],       dim=0)
-            output[i] = kept_dets
-            output_index[i] = kept_idx
-            #output_index[i] = topk_idx
+
 
         return output, output_index
 
