@@ -425,29 +425,31 @@ class YOLOXHead(nn.Module):
         #reg_feat_flatten_file.close()
 
         if need_aggregation:
-            #half = len(pred_idx[1]) // 2
-            #new_idx = [p[:half] for p in pred_idx]
+            if self.train:
+                record = False
+            else:
+                record = True
             if first:
                 # reset all level memory banks
-                self.aggregator.reset_memory_bank(0)
-                self.aggregator.reset_memory_bank(1)
-                self.aggregator.reset_memory_bank(2)
+                self.aggregator.reset_memory_bank(0, record=record)
+                self.aggregator.reset_memory_bank(1, record=record)
+                self.aggregator.reset_memory_bank(2, record=record)
                 #Generate reference features from 16 batch files
                 ref_feature_p3, ref_feature_p4, ref_feature_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
                 # Initialize all level memory banks
 
-                self.aggregator.init_memory_bank(ref_feature_p3, 0)
-                self.aggregator.init_memory_bank(ref_feature_p4, 1)
-                self.aggregator.init_memory_bank(ref_feature_p5, 2)
+                self.aggregator.init_memory_bank(ref_feature_p3, 0, record=record)
+                self.aggregator.init_memory_bank(ref_feature_p4, 1, record=record)
+                self.aggregator.init_memory_bank(ref_feature_p5, 2, record=record)
                 #logger.info(f"Initialized memory bank with ref features from current batch set frames {video_path}, batchset count: {self.batchset_count}  ")
             else:
                 #Generate key features from 16 batch files
                 key_features_p3, key_features_p4, key_features_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
                 # Update all level memory banks
 
-                self.aggregator.update_memory_bank(key_features_p3, 0)
-                self.aggregator.update_memory_bank(key_features_p4, 1)
-                self.aggregator.update_memory_bank(key_features_p5, 2)
+                self.aggregator.update_memory_bank(key_features_p3, 0, record=record)
+                self.aggregator.update_memory_bank(key_features_p4, 1, record=record)
+                self.aggregator.update_memory_bank(key_features_p5, 2, record=record)
                 #logger.info(f"Updated memory bank with key features from current batch set frames {video_path}, batchset count: {self.batchset_count}  ")
 
         (features_cls, features_reg, cls_scores,
