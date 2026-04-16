@@ -20,9 +20,6 @@ from .losses import IOUloss
 from .network_blocks import BaseConv, DWConv
 from yolox.models.mamba_aggregator import MambaAggregator
 #kssong
-import random
-
-#kssong
 def gpu_mem_usage():
     """
     Compute the GPU memory usage for the current device (MB).
@@ -388,17 +385,14 @@ class YOLOXHead(nn.Module):
             if need_aggregation:
                 agg_feats = []
                 #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")
-                for i, reg_one in enumerate(reg_feat):
+                for reg_one in reg_feat:
                     if self.training:
                         if len(reg_one) == 0:
                             agg_feat = reg_one
                         else:
-                            candidates = [j for j in range(batch_size) if j != i]
-                            ref_idx = random.choice(candidates)
-                            ref_feat1 = ref_feature_reg[ref_idx][k]
-                            ref_feat2 = ref_feature_reg[i][k]
-                            if len(ref_feat1) != 0 and len(ref_feat2) != 0:
-                                ref_feats = torch.cat((ref_feat1 + ref_feat2), dim=0)
+                            all_ref_feats = [feat for j in range(batch_size) for feat in ref_feature_reg[j][k]]
+                            if len(all_ref_feats) != 0:
+                                ref_feats = torch.cat(all_ref_feats, dim=0)
                                 channel, height, width = reg_one.shape
                                 reg_one = reg_one.reshape(-1, channel)
                                 #logger.info("reset_memory_bank")
