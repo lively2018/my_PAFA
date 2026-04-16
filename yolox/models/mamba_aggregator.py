@@ -32,21 +32,13 @@ class MambaAggregator(nn.Module):
         self.fc = nn.Linear(in_channels, in_channels)
         self.ref_fc = nn.Linear(in_channels, in_channels)
         self.num_attention_blocks = num_attention_blocks
-
         # instance-level memory bank
-        self.memory_bank_p3 = MemoryBank(max_length=memory_length, key_length=key_length, **memory_cfg)
-        self.memory_bank_p4 = MemoryBank(max_length=memory_length, key_length=key_length, **memory_cfg)
-        self.memory_bank_p5 = MemoryBank(max_length=memory_length, key_length=key_length, **memory_cfg)
+        self.memory_bank = MemoryBank(max_length=memory_length, key_length=key_length, **memory_cfg)
 
 
-    def forward(self, x, ref_x, type_k):
+    def forward(self, x, ref_x):
         #kssong
-        if type_k == 0:
-            ref_x = self.memory_bank_p3.sample()
-        elif type_k == 1:
-            ref_x = self.memory_bank_p4.sample()
-        elif type_k == 2:
-            ref_x = self.memory_bank_p5.sample()
+        ref_x = self.memory_bank.sample()
         #logger.info(f"ref_x shape: {ref_x.shape} x shape: {x.shape}")
         #print(f"After sampling: {gpu_mem_usage():.0f}")
         # fort he rest frames
@@ -58,33 +50,18 @@ class MambaAggregator(nn.Module):
         return aggregated_x
 
 
-    def reset_memory_bank(self, type_k):
+    def reset_memory_bank(self):
         #logger.info("reset_memory_bank")
-        if type_k == 0:
-            self.memory_bank_p3.reset()
-        elif type_k == 1:
-            self.memory_bank_p4.reset()
-        elif type_k == 2:
-            self.memory_bank_p5.reset()
+        self.memory_bank.reset()
 
-    def update_memory_bank(self, x, type_k):
+    def update_memory_bank(self, x):
         #logger.info("update_memory_bank")
-        if type_k == 0:
-            self.memory_bank_p3.update(x)
-        elif type_k == 1:
-            self.memory_bank_p4.update(x)
-        elif type_k == 2:
-            self.memory_bank_p5.update(x)
+        self.memory_bank.update(x)
 
-    def init_memory_bank(self, x, type_k):
+    def init_memory_bank(self, x):
         #logger.info("init_memory_bank")
         #logger.info("x.shape: {}".format(x.shape))
-        if type_k == 0:
-            self.memory_bank_p3.init_memory(x)
-        elif type_k == 1:
-            self.memory_bank_p4.init_memory(x)
-        elif type_k == 2:
-            self.memory_bank_p5.init_memory(x)
+        self.memory_bank.init_memory(x)
 
     def forward_with_ref_x(self, x, ref_x):
         """Aggregate the features `ref_x` of reference proposals.
@@ -109,7 +86,8 @@ class MambaAggregator(nn.Module):
         """
         roi_n = x.shape[0]
         ref_roi_n = ref_x.shape[0]
-
+        logger.info(f"roi_n: {roi_n}")
+        logger.info(f"roi_n: {ref_roi_n}")
         x = x.half()
         #logger.info(f"roi_n: {roi_n} ref_roi_n: {ref_roi_n}")
         x_embed = self.fc_embed(x)
