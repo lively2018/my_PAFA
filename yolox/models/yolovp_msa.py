@@ -390,20 +390,16 @@ class YOLOXHead(nn.Module):
             if need_aggregation:
                 agg_feats = []
                 #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")
-                for i, reg_one in enumerate(reg_feat):
+                for reg_one in reg_feat:
                     if self.training:
                         if len(reg_one) == 0:
                             agg_feat = reg_one
                         else:
-                            candidates = [j for j in range(batch_size) if j != i]
-                            ref_idx = random.choice(candidates)
-                            ref_feat1 = ref_feature_reg[ref_idx][k]
-                            ref_feat2 = ref_feature_reg[i][k]
-                            if len(ref_feat1) != 0 and len(ref_feat2) != 0:
-                                ref_feats = torch.cat((ref_feat1 + ref_feat2), dim=0)
+                            all_ref_feats = [feat for j in range(batch_size) for feat in ref_feature_reg[j][k]]
+                            if len(all_ref_feats) != 0:
+                                ref_feats = torch.cat(all_ref_feats, dim=0)
                                 channel, height, width = reg_one.shape
                                 reg_one = reg_one.reshape(-1, channel)
-
                                 if k == 0:
                                     self.aggregator_p3.reset_memory_bank()
                                     self.aggregator_p3.init_memory_bank(ref_feats)
@@ -427,7 +423,12 @@ class YOLOXHead(nn.Module):
                             channel, height, width = reg_one.shape
                             reg_one = reg_one.reshape(-1, channel)
                             #logger.info(f"reg_one.shape: {reg_one.shape}")
-                            agg_feat = reg_one + self.aggregator(reg_one, None, k)
+                            if k == 0:
+                                agg_feat = reg_one + self.aggregator_p3(reg_one, None)
+                            elif k == 1:
+                                agg_feat = reg_one + self.aggregator_p4(reg_one, None)
+                            else:
+                                agg_feat = reg_one + self.aggregator_p5(reg_one, None)
                             agg_feat = self.inplace_false_relu(agg_feat)
                             #logger.info(f"agg_feat.shape: {agg_feat.shape}")
                             agg_feat = agg_feat.reshape(channel, height, width)
