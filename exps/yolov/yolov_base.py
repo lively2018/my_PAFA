@@ -41,7 +41,7 @@ class Exp(BaseExp):
         # multi head number
         self.head = 4
         # defualt proposal number per frame
-        self.defualt_p = [30, 30, 30] # P3, P4, P5
+        self.defualt_p = 30
         # similarity thresh hold for ave pooling
         self.sim_thresh = 0.75
         # first stage preposal nms threshold
@@ -216,6 +216,7 @@ class Exp(BaseExp):
         self.m_conf = [0, 0, 0]  # [P3, P4, P5]
         self.memory_length = [4800, 4800, 4800] # [P3, P4, P5]
         self.key_length = [480, 480, 480] # [P3, P4, P5]
+        self.target_n = [90, 150, 90] # [P3, P4, P5]
 
     def get_model(self):
         # rewrite get model func from yolox
@@ -296,7 +297,8 @@ class Exp(BaseExp):
                          use_score=self.use_score, defualt_p=self.defualt_p, sim_thresh=self.sim_thresh,
                          pre_nms=self.pre_nms, ave=self.ave, defulat_pre=self.defualt_pre, test_conf=self.test_conf,
                          use_mask=self.use_mask,gmode=self.gmode,lmode=self.lmode,both_mode=self.both_mode,
-                         localBlocks = self.localBlocks,m_conf=self.m_conf, memory_length=self.memory_length, key_length=self.key_length, **more_args)
+                         localBlocks = self.localBlocks,m_conf=self.m_conf, memory_length=self.memory_length, key_length=self.key_length, \
+                            target_n=self.target_n, **more_args)
 
         for layer in head.stems.parameters():
             layer.requires_grad = False  # set stem fixed

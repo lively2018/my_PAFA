@@ -113,6 +113,8 @@ def make_parser():
                         help='per-level features memory size (P3 P4 P5)')
     parser.add_argument('--key_length', default=[480, 480, 480], type=int, nargs=3, metavar=('P3', 'P4', 'P5'),
                         help='per-level features key length (P3 P4 P5)')
+    parser.add_argument('--target_n', default=[30, 30, 30], type=int, nargs=3, metavar=('P3', 'P4', 'P5'),
+                        help='per-level input features number (P3 P4 P5)')
     return parser
 
 
@@ -173,7 +175,7 @@ if __name__ == "__main__":
         args.experiment_name = exp.exp_name
     exp.memory_length = args.memory_length
     exp.key_length = args.key_length
-
+    exp.target_n = args.target_n
     num_gpu = get_num_devices() if args.devices is None else args.devices
     assert num_gpu <= get_num_devices()
     args.machine_rank = 1
