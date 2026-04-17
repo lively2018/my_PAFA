@@ -214,8 +214,8 @@ class Exp(BaseExp):
         # nms threshold
         self.nmsthre = 0.5
         self.m_conf = [0, 0, 0]  # [P3, P4, P5]
-        self.memory_length = 4800
-        self.key_length = 480
+        self.memory_length = [4800, 4800, 4800] # [P3, P4, P5]
+        self.key_length = [480, 480, 480] # [P3, P4, P5]
 
     def get_model(self):
         # rewrite get model func from yolox

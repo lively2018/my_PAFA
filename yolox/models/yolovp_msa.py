@@ -53,8 +53,8 @@ class YOLOXHead(nn.Module):
             both_mode=False,
             localBlocks=1,
             m_conf=None,
-            memory_length=4800,
-            key_length=480,
+            memory_length=None,
+            key_length=None,
             **kwargs
     ):
         """
@@ -218,17 +218,27 @@ class YOLOXHead(nn.Module):
         # self.eval = eval
         #if self.eval:
         #self.aggregator = MambaAggregator(in_channels=128, num_attention_blocks=4)
-        self.memory_length = memory_length
-        self.key_length = key_length
-        self.aggregator_p3 = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=self.memory_length, key_length=self.key_length)
-        self.aggregator_p4 = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=self.memory_length, key_length=self.key_length)
-        self.aggregator_p5 = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=self.memory_length, key_length=self.key_length)
+        if memory_length is None:
+            memory_length = [4800, 4800, 4800]
+        elif not hasattr(memory_length, '__len__'):
+             memory_length = [memory_length, memory_length, memory_length]
+        self.memory_length_p3, self.memory_length_p4, self.memory_length_p5 = memory_length[0], memory_length[1], memory_length[2]
+        if key_length is None:
+            key_length = [480, 480, 480]
+        elif not hasattr(key_length, '__len__'):
+            key_length = [key_length, key_length, key_length]
+        self.key_length_p3, self.key_length_p4, self.key_length_p5 = key_length[0], key_length[1], key_length[2]
+
+        self.aggregator_p3 = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=self.memory_length_p3, key_length=self.key_length_p3)
+        self.aggregator_p4 = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=self.memory_length_p4, key_length=self.key_length_p4)
+        self.aggregator_p5 = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=self.memory_length_p5, key_length=self.key_length_p5)
         #kssong
         self.inplace_false_relu = nn.ReLU(inplace=False)
         if m_conf is None:
             m_conf = [0, 0, 0]
         elif not hasattr(m_conf, '__len__'):
             m_conf = [m_conf, m_conf, m_conf]
+
         self.m_conf_p3, self.m_conf_p4, self.m_conf_p5 = m_conf[0], m_conf[1], m_conf[2]
 
 

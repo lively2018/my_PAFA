@@ -103,8 +103,11 @@ def make_parser():
     parser.add_argument('--m_conf', default=[0, 0, 0], type=float, nargs=3, metavar=('P3', 'P4', 'P5'),
                         help='per-level minimum conf score for selecting reference features (P3 P4 P5)')
     parser.add_argument('--mode', default='random', help='frame sample mode')
-    parser.add_argument('--memory_length', default=4800, type=int, help='memory length for Mamba aggregator')
-    parser.add_argument('--key_length', default=480, type=int, help='key length for Mamba aggregator')
+    parser.add_argument('--memory_length', default=[4800, 4800, 4800], type=int, nargs=3, metavar=('P3', 'P4', 'P5'),
+                        help='per-level features memory size (P3 P4 P5)')
+    parser.add_argument('--key_length', default=[480, 480, 480], type=int, nargs=3, metavar=('P3', 'P4', 'P5'),
+                        help='per-level features key length (P3 P4 P5)')
+
     return parser
 
 @logger.catch
