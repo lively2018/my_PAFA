@@ -86,8 +86,7 @@ class MambaAggregator(nn.Module):
         """
         roi_n = x.shape[0]
         ref_roi_n = ref_x.shape[0]
-        logger.info(f"roi_n: {roi_n}")
-        logger.info(f"roi_n: {ref_roi_n}")
+
         x = x.half()
         #logger.info(f"roi_n: {roi_n} ref_roi_n: {ref_roi_n}")
         x_embed = self.fc_embed(x)
