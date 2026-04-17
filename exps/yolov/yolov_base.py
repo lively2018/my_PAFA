@@ -41,7 +41,7 @@ class Exp(BaseExp):
         # multi head number
         self.head = 4
         # defualt proposal number per frame
-        self.defualt_p = 30
+        self.defualt_p = [30, 30, 30] # P3, P4, P5
         # similarity thresh hold for ave pooling
         self.sim_thresh = 0.75
         # first stage preposal nms threshold
