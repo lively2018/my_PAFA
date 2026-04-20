@@ -84,6 +84,9 @@ class YOLOXHead(nn.Module):
         self.obj_preds = nn.ModuleList()
         self.cls_convs2 = nn.ModuleList()
 
+        self.agg_reg_preds = nn.ModuleList()
+        self.agg_obj_preds = nn.ModuleList()
+
         self.width = int(256 * width)
         self.sim_thresh = sim_thresh
         self.ave = ave
@@ -208,7 +211,24 @@ class YOLOXHead(nn.Module):
                     padding=0,
                 )
             )
-
+            self.agg_reg_preds.append(
+                nn.Conv2d(
+                    in_channels=int(256 * width),
+                    out_channels=4,
+                    kernel_size=1,
+                    stride=1,
+                    padding=0,
+                )
+            )
+            self.agg_obj_preds.append(
+                nn.Conv2d(
+                    in_channels=int(256 * width),
+                    out_channels=self.n_anchors * 1,
+                    kernel_size=1,
+                    stride=1,
+                    padding=0,
+                )
+            )
         self.use_l1 = False
         self.l1_loss = nn.L1Loss(reduction="none")
         self.bcewithlog_loss = nn.BCEWithLogitsLoss(reduction="none")
@@ -263,6 +283,33 @@ class YOLOXHead(nn.Module):
         new_xin = xin + self.aggreator(xin, ref_xin)
         return new_xin
     # kssong
+    def replace_agg_feat_in_reg_feat(self, reg_feat_flatten, p3_agg_feats, p4_agg_feats, p5_agg_feats, pred_idx_p3, pred_idx_p4, pred_idx_p5):
+        for i in range(reg_feat_flatten.shape[0]):
+            reg_feature = reg_feat_flatten[i]
+            p3_idx_list = pred_idx_p3[i]
+            p4_idx_list = pred_idx_p4[i]
+            p5_idx_list = pred_idx_p5[i]
+            if len(p3_idx_list) > self.target_n_p3:
+                p3_idx_list = p3_idx_list[: self.target_n_p3]
+            if len(p4_idx_list) > self.target_n_p4:
+                p4_idx_list = p4_idx_list[: self.target_n_p4]
+            if len(p5_idx_list) > self.target_n_p5:
+                p5_idx_list = p5_idx_list[: self.target_n_p5]
+
+            for j, idx in enumerate(p3_idx_list):
+                if idx >= 0 and idx < 6400:
+                    reg_feature[idx] = p3_agg_feats[i][j]
+            for j, idx in enumerate(p4_idx_list):
+                if idx >= 6400 and idx < 6400+1600:
+                    reg_feature[idx] = p4_agg_feats[i][j]
+            for j, idx in enumerate(p5_idx_list):
+                if idx >= 6400+1600 and idx < 6400+1600+400:
+                    reg_feature[idx] = p5_agg_feats[i][j]
+        B, N, C = reg_feat_flatten.shape
+        p3 = reg_feat_flatten[:, :6400, :].permute(0, 2, 1).reshape(B, C, 80, 80)
+        p4 = reg_feat_flatten[:, 6400:8000, :].permute(0, 2, 1).reshape(B, C, 40, 40)
+        p5 = reg_feat_flatten[:, 8000:8400, :].permute(0, 2, 1).reshape(B, C, 20, 20)
+        return [p3, p4, p5]
     def forward(self, xin, first, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32):
     #def forward(self, xin, ref_xin, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32):
         #kssong
@@ -284,28 +331,184 @@ class YOLOXHead(nn.Module):
         expanded_strides = []
         before_nms_features = []
         before_nms_regf = []
-
         batch_size = len(imgs)
-        if batch_size == 16 or batch_size == 32:
-            need_aggregation = True
-        else:
+        if not self.training and imgs.shape[0] == 1:
             need_aggregation = False
+        else:
+            need_aggregation = True
         #kssong
-        #reg_output_list = []
+        reg_feat_list = []
 
-        if self.training:
-            for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
-                    zip(self.cls_convs, self.cls_convs2, self.reg_convs, self.strides, xin)
-            ):
-                x = self.stems[k](x)
-                reg_feat = reg_conv(x)
-                cls_feat = cls_conv(x)
-                cls_feat2 = cls_conv2(x)
+        cls_output_list = []
+
+        for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
+                zip(self.cls_convs, self.cls_convs2, self.reg_convs, self.strides, xin)
+        ):
+            x = self.stems[k](x)
+            reg_feat = reg_conv(x)
+            cls_feat = cls_conv(x)
+            cls_feat2 = cls_conv2(x)
+
+            # this part should be the same as the original model
+            obj_output = self.obj_preds[k](reg_feat)
+            reg_output = self.reg_preds[k](reg_feat)
+            cls_output = self.cls_preds[k](cls_feat)
+            cls_output_list.append(cls_output)
+            logger.info(f"reg_feat.shape[0]: {reg_feat.shape[0]}")
+            logger.info(f"reg_feat shape: {reg_feat.shape} cls_feat shape: {cls_feat.shape} cls_feat2 shape: {cls_feat2.shape}")
+            logger.info(f"obj_output shape: {obj_output.shape} reg_output shape: {reg_output.shape} cls_output shape: {cls_output.shape}")
+
+            if self.training:
+                output = torch.cat([reg_output, obj_output, cls_output], 1)
+                output_decode = torch.cat(
+                    [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
+                )
+
+                output, grid = self.get_output_and_grid(
+                    output, k, stride_this_level, xin[0].type()
+                )
+                x_shifts.append(grid[:, :, 0])
+                y_shifts.append(grid[:, :, 1])
+                expanded_strides.append(
+                    torch.zeros(1, grid.shape[1])
+                    .fill_(stride_this_level)
+                    .type_as(xin[0])
+                )
+                if self.use_l1:
+                    batch_size = reg_output.shape[0]
+                    hsize, wsize = reg_output.shape[-2:]
+                    reg_output = reg_output.view(
+                        batch_size, self.n_anchors, 4, hsize, wsize
+                    )
+                    reg_output = reg_output.permute(0, 1, 3, 4, 2).reshape(
+                        batch_size, -1, 4
+                    )
+                    origin_preds.append(reg_output.clone())
+
+                outputs.append(output)
+                before_nms_features.append(cls_feat2)
+                before_nms_regf.append(reg_feat)
+            else:
+                output_decode = torch.cat(
+                    [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
+                )
+
+                # which features to choose
+                before_nms_features.append(cls_feat2)
+                before_nms_regf.append(reg_feat)
+            outputs_decode.append(output_decode)
+        self.hw = [x.shape[-2:] for x in outputs_decode]
+
+        outputs_decode = torch.cat([x.flatten(start_dim=2) for x in outputs_decode], dim=2
+                                ).permute(0, 2, 1)
+        decode_res = self.decode_outputs(outputs_decode, dtype=xin[0].type())
+
+        if self.kwargs.get('ota_mode',False) and self.training:
+            ota_idxs,reg_targets = self.get_fg_idx( imgs,
+                x_shifts,
+                y_shifts,
+                expanded_strides,
+                labels,
+                torch.cat(outputs, 1),)
+        else:
+            ota_idxs = None
+
+        pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
+                                                    nms_thre=self.nms_thresh,
+                                                    topK=self.Afternum,
+                                                    ota_idxs=ota_idxs,
+                                                    )
+        if need_aggregation:
+            pred_idx_p3, pred_idx_p4, pred_idx_p5 = self.postpro_input_n(decode_res, num_classes=self.num_classes,
+                                                    nms_thre=self.nms_thresh,
+                                                    topK=self.Afternum,
+                                                    ota_idxs=ota_idxs,
+                                                    )
+            reg_feat_flatten = torch.cat(
+                [x.flatten(start_dim=2) for x in before_nms_regf], dim=2
+                ).permute(0, 2, 1)
+            #Generate reference features from 16 batch files
+
+            logger.info(f"len(pred_idx_p3): {len(pred_idx_p3)} len(pred_idx_p3[0]): {len(pred_idx_p3[0])}")
+            logger.info(f"len(pred_idx_p4): {len(pred_idx_p4)} len(pred_idx_p4[0]): {len(pred_idx_p4[0])}")
+            logger.info(f"len(pred_idx_p5): {len(pred_idx_p5)} len(pred_idx_p5[0]): {len(pred_idx_p5[0])}")
+            input_feature_reg_p3, input_feature_reg_p4, input_feature_reg_p5 = self.select_input_feature_in_reg_feature(reg_feat_flatten, pred_idx_p3, pred_idx_p4, pred_idx_p5)
+            logger.info(f"input_feature_reg_p3 shape: {input_feature_reg_p3.shape} input_feature_reg_p4 shape: {input_feature_reg_p4.shape} input_feature_reg_p5 shape: {input_feature_reg_p5.shape}")
+            ref_input_feature_reg_p3 = None
+            ref_input_feature_reg_p4 = None
+            ref_input_feature_reg_p5 = None
+            if first:
+                ref_feat_p3_num = int(self.memory_length_p3 / batch_size)
+                ref_feat_p4_num = int(self.memory_length_p4 / batch_size)
+                ref_feat_p5_num = int(self.memory_length_p5 / batch_size)
+                # input_feature_reg_p* shape: [B, target_n, C]
+                # slice per sample then flatten all samples -> [B, B*ref_feat_num, C]
+                ref_input_feature_reg_p3 = input_feature_reg_p3[:, :ref_feat_p3_num, :]  # [B, ref_feat_p3_num, C]
+                ref_input_feature_reg_p4 = input_feature_reg_p4[:, :ref_feat_p4_num, :]
+                ref_input_feature_reg_p5 = input_feature_reg_p5[:, :ref_feat_p5_num, :]
+                logger.info(f"ref_input_feature_reg_p3 shape: {ref_input_feature_reg_p3.shape}")
+                logger.info(f"ref_input_feature_reg_p4 shape: {ref_input_feature_reg_p4.shape}")
+                logger.info(f"ref_input_feature_reg_p5 shape: {ref_input_feature_reg_p5.shape}")
+            p3_agg_feats = torch.zeros_like(input_feature_reg_p3)
+            p4_agg_feats = torch.zeros_like(input_feature_reg_p4)
+            p5_agg_feats = torch.zeros_like(input_feature_reg_p5)
+
+            for i, p3_reg_one in enumerate(input_feature_reg_p3):
+                logger.info(f"p3_reg_one shape : {p3_reg_one.shape}")
+                if first:
+                    all_ref_feats_p3 = ref_input_feature_reg_p3.reshape(-1, ref_input_feature_reg_p3.shape[-1])
+                    logger.info(f'all_ref_feats_p3 shape: {all_ref_feats_p3.shape}')
+                    self.aggregator_p3.reset_memory_bank()
+                    self.aggregator_p3.init_memory_bank(all_ref_feats_p3)
+                    agg_feat = p3_reg_one + self.aggregator_p3(p3_reg_one, None)
+                    agg_feat = self.inplace_false_relu(agg_feat)
+                else:
+                    agg_feat = p3_reg_one + self.aggregator_p3(p3_reg_one, None)
+                    agg_feat = self.inplace_false_relu(agg_feat)
+                self.aggregator_p3.update_memory_bank(agg_feat)
+                p3_agg_feats[i] = agg_feat
+            logger.info(f"p3_agg_feats shape: {p3_agg_feats.shape}")
+            for i, p4_reg_one in enumerate(input_feature_reg_p4):
+                logger.info(f"p4_reg_one shape : {p4_reg_one.shape}")
+                if first:
+                    all_ref_feats_p4 = ref_input_feature_reg_p4.reshape(-1, ref_input_feature_reg_p4.shape[-1])
+                    self.aggregator_p4.reset_memory_bank()
+                    self.aggregator_p4.init_memory_bank(all_ref_feats_p4)
+                    agg_feat = p4_reg_one + self.aggregator_p4(p4_reg_one, None)
+                    agg_feat = self.inplace_false_relu(agg_feat)
+                else:
+                    agg_feat = p4_reg_one + self.aggregator_p4(p4_reg_one, None)
+                    agg_feat = self.inplace_false_relu(agg_feat)
+                self.aggregator_p4.update_memory_bank(agg_feat)
+                p4_agg_feats[i] = agg_feat
+            for i, p5_reg_one in enumerate(input_feature_reg_p5):
+                logger.info(f"p5_reg_one shape : {p5_reg_one.shape}")
+                if first:
+                    all_ref_feats_p5 = ref_input_feature_reg_p5.reshape(-1, ref_input_feature_reg_p5.shape[-1])
+                    self.aggregator_p5.reset_memory_bank()
+                    self.aggregator_p5.init_memory_bank(all_ref_feats_p5)
+                    agg_feat = p5_reg_one + self.aggregator_p5(p5_reg_one, None)
+                    agg_feat = self.inplace_false_relu(agg_feat)
+
+                else:
+                    agg_feat = p5_reg_one + self.aggregator_p5(p5_reg_one, None)
+                    agg_feat = self.inplace_false_relu(agg_feat)
+                self.aggregator_p5.update_memory_bank(agg_feat)
+                p5_agg_feats[i] = agg_feat
+            reg_feat_list.extend(self.replace_agg_feat_in_reg_feat(reg_feat_flatten, p3_agg_feats, p4_agg_feats, p5_agg_feats, pred_idx_p3, pred_idx_p4, pred_idx_p5))
+            outputs = []
+            outputs_decode = []
+            origin_preds = []
+            x_shifts = []
+            y_shifts = []
+            expanded_strides = []
+            before_nms_features = []
+            before_nms_regf = []
+            for k, (cls_output, reg_feat, stride_this_level) in enumerate(zip(cls_output_list, reg_feat_list, self.strides)):
 
                 # this part should be the same as the original model
-                obj_output = self.obj_preds[k](reg_feat)
-                reg_output = self.reg_preds[k](reg_feat)
-                cls_output = self.cls_preds[k](cls_feat)
+                obj_output = self.agg_obj_preds[k](reg_feat)
+                reg_output = self.agg_reg_preds[k](reg_feat)
 
 
                 if self.training:
@@ -349,9 +552,8 @@ class YOLOXHead(nn.Module):
                 outputs_decode.append(output_decode)
             self.hw = [x.shape[-2:] for x in outputs_decode]
 
-
             outputs_decode = torch.cat([x.flatten(start_dim=2) for x in outputs_decode], dim=2
-                                    ).permute(0, 2, 1)
+                                ).permute(0, 2, 1)
             decode_res = self.decode_outputs(outputs_decode, dtype=xin[0].type())
 
             if self.kwargs.get('ota_mode',False) and self.training:
@@ -363,236 +565,34 @@ class YOLOXHead(nn.Module):
                     torch.cat(outputs, 1),)
             else:
                 ota_idxs = None
-
-            pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
-                                                        nms_thre=self.nms_thresh,
-                                                        topK=self.Afternum,
-                                                        ota_idxs=ota_idxs,
-                                                        )
-            pred_idx_p3, pred_idx_p4, pred_idx_p5 = self.postpro_input_n(decode_res, num_classes=self.num_classes,
-                                                        nms_thre=self.nms_thresh,
-                                                        topK=self.Afternum,
-                                                        ota_idxs=ota_idxs,
-                                                        )
+            cls_feat_flatten = torch.cat(
+                [x.flatten(start_dim=2) for x in before_nms_features], dim=2
+            ).permute(0, 2, 1)  # [b,features,channels]
             reg_feat_flatten = torch.cat(
                 [x.flatten(start_dim=2) for x in before_nms_regf], dim=2
                 ).permute(0, 2, 1)
-            #Generate reference features from 16 batch files
-            ref_feature_reg = self.select_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
-            logger.info(f"len(pred_idx_p3): {len(pred_idx_p3)} len(pred_idx_p3[0]): {len(pred_idx_p3[0])}")
-            logger.info(f"len(pred_idx_p4): {len(pred_idx_p4)} len(pred_idx_p4[0]): {len(pred_idx_p4[0])}")
-            logger.info(f"len(pred_idx_p5): {len(pred_idx_p5)} len(pred_idx_p5[0]): {len(pred_idx_p5[0])}")
-            input_feature_reg_p3, input_feature_reg_p4, input_feature_reg_p5 = self.select_input_feature_in_reg_feature(reg_feat_flatten, pred_idx_p3, pred_idx_p4, pred_idx_p5)
-            logger.info(f"len(input_feature_reg_p3): {len(input_feature_reg_p3)} len(input_feature_reg_p3[0]): {len(input_feature_reg_p3[0])}")
-            logger.info(f"len(input_feature_reg_p4): {len(input_feature_reg_p4)} len(input_feature_reg_p4[0]): {len(input_feature_reg_p4[0])}")
-            logger.info(f"len(input_feature_reg_p5): {len(input_feature_reg_p5)} len(input_feature_reg_p5[0]): {len(input_feature_reg_p5[0])}")
-            exit(0)
-        del outputs, outputs_decode, origin_preds, x_shifts, y_shifts, expanded_strides, before_nms_features, before_nms_regf
-        outputs = []
-        outputs_decode = []
-        origin_preds = []
-        x_shifts = []
-        y_shifts = []
-        expanded_strides = []
-        before_nms_features = []
-        before_nms_regf = []
-        reg_feat_list = []
-        cls_feat_list = []
-        cls_feat2_list = []
-
-        for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
-                zip(self.cls_convs, self.cls_convs2, self.reg_convs, self.strides, xin)
-        ):
-            x = self.stems[k](x)
-            reg_feat = reg_conv(x)
-            cls_feat = cls_conv(x)
-            cls_feat2 = cls_conv2(x)
-            reg_feat_list.append(reg_feat)
-            cls_feat_list.append(cls_feat)
-            cls_feat2_list.append(cls_feat2)
-
-
-            if need_aggregation:
-                agg_feats = []
-                #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")
-                for reg_one in reg_feat:
-                    if self.training:
-                        if len(reg_one) == 0:
-                            agg_feat = reg_one
-                        else:
-                            all_ref_feats = [feat for j in range(batch_size) for feat in ref_feature_reg[j][k]]
-                            if len(all_ref_feats) != 0:
-                                ref_feats = torch.cat(all_ref_feats, dim=0)
-                                channel, height, width = reg_one.shape
-                                reg_one = reg_one.reshape(-1, channel)
-                                if k == 0:
-                                    self.aggregator_p3.reset_memory_bank()
-                                    self.aggregator_p3.init_memory_bank(ref_feats)
-                                    agg_feat = reg_one + self.aggregator_p3(reg_one, None)
-                                elif k == 1:
-                                    self.aggregator_p4.reset_memory_bank()
-                                    self.aggregator_p4.init_memory_bank(ref_feats)
-                                    agg_feat = reg_one + self.aggregator_p4(reg_one, None)
-                                else:
-                                    self.aggregator_p5.reset_memory_bank()
-                                    self.aggregator_p5.init_memory_bank(ref_feats)
-                                    agg_feat = reg_one + self.aggregator_p5(reg_one, None)
-                                #logger.info("after aggreagtaion")
-                                agg_feat = self.inplace_false_relu(agg_feat)
-                                agg_feat = agg_feat.reshape(channel, height, width)
-                            else:
-                                agg_feat = reg_one
-                    else:
-                        if not first:
-                            #logger.info(f"reg_one.shape: {reg_one.shape}")
-                            channel, height, width = reg_one.shape
-                            reg_one = reg_one.reshape(-1, channel)
-                            #logger.info(f"reg_one.shape: {reg_one.shape}")
-                            if k == 0:
-                                agg_feat = reg_one + self.aggregator_p3(reg_one, None)
-                            elif k == 1:
-                                agg_feat = reg_one + self.aggregator_p4(reg_one, None)
-                            else:
-                                agg_feat = reg_one + self.aggregator_p5(reg_one, None)
-                            agg_feat = self.inplace_false_relu(agg_feat)
-                            #logger.info(f"agg_feat.shape: {agg_feat.shape}")
-                            agg_feat = agg_feat.reshape(channel, height, width)
-                        else:
-                            agg_feat = reg_one
-                    #logger.info(f"agg_feat.shape: {agg_feat.shape}")
-                    agg_feats.append(agg_feat)
-                    #logger.info(f"agg_feat.type: {agg_feat.type}")
-                reg_feat = torch.stack(agg_feats, dim=0)
-                #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")
-
-            # this part should be the same as the original model
-            obj_output = self.obj_preds[k](reg_feat)
-            reg_output = self.reg_preds[k](reg_feat)
-            cls_output = self.cls_preds[k](cls_feat)
-
-            if self.training:
-                output = torch.cat([reg_output, obj_output, cls_output], 1)
-                output_decode = torch.cat(
-                    [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
-                )
-
-                output, grid = self.get_output_and_grid(
-                    output, k, stride_this_level, xin[0].type()
-                )
-                x_shifts.append(grid[:, :, 0])
-                y_shifts.append(grid[:, :, 1])
-                expanded_strides.append(
-                    torch.zeros(1, grid.shape[1])
-                    .fill_(stride_this_level)
-                    .type_as(xin[0])
-                )
-                if self.use_l1:
-                    batch_size = reg_output.shape[0]
-                    hsize, wsize = reg_output.shape[-2:]
-                    reg_output = reg_output.view(
-                        batch_size, self.n_anchors, 4, hsize, wsize
-                    )
-                    reg_output = reg_output.permute(0, 1, 3, 4, 2).reshape(
-                        batch_size, -1, 4
-                    )
-                    origin_preds.append(reg_output.clone())
-
-                outputs.append(output)
-                before_nms_features.append(cls_feat2)
-                before_nms_regf.append(reg_feat)
-            else:
-                output_decode = torch.cat(
-                    [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
-                )
-
-                # which features to choose
-                before_nms_features.append(cls_feat2)
-                before_nms_regf.append(reg_feat)
-            outputs_decode.append(output_decode)
-        self.hw = [x.shape[-2:] for x in outputs_decode]
-
-
-        outputs_decode = torch.cat([x.flatten(start_dim=2) for x in outputs_decode], dim=2
-                                   ).permute(0, 2, 1)
-        #kssong
-        #reg_output_file = open('./reg_output.txt', 'a')
-        #reg_output_file.write(f'{len(reg_output_list), reg_output_list[0].shape}\n')
-        #reg_output_file.close()
-        #before_nms_features_file = open('./before_nms_features.txt', 'a')
-        #before_nms_features_file.write(f'{len(before_nms_features), before_nms_features[0].shape }\n')
-        #before_nms_features_file.close()
-
-        #kssong
-        #outputs_decode_file = open('./outputs_decode.txt', 'a')
-        #outputs_decode_file.write(f'{outputs_decode.shape}\n')
-        #outputs_decode_file.close()
-
-        decode_res = self.decode_outputs(outputs_decode, dtype=xin[0].type())
-
-        if self.kwargs.get('ota_mode',False) and self.training:
-            ota_idxs,reg_targets = self.get_fg_idx( imgs,
-                x_shifts,
-                y_shifts,
-                expanded_strides,
-                labels,
-                torch.cat(outputs, 1),)
+            pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
+                                                    nms_thre=self.nms_thresh,
+                                                    topK=self.Afternum,
+                                                    ota_idxs=ota_idxs,
+                                                    )
         else:
-            ota_idxs = None
-
-        pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
-                                                     nms_thre=self.nms_thresh,
-                                                     topK=self.Afternum,
-                                                     ota_idxs=ota_idxs,
-                                                     )
-        #kssong
-        #pred_result_file = open('./pred_result.txt', 'a')
-        #pred_result_file.write(f'{len(pred_result), pred_result[0].shape}\n')
-        #pred_result_file.close()
-
+            cls_feat_flatten = torch.cat(
+                [x.flatten(start_dim=2) for x in before_nms_features], dim=2
+            ).permute(0, 2, 1)  # [b,features,channels]
+            reg_feat_flatten = torch.cat(
+                [x.flatten(start_dim=2) for x in before_nms_regf], dim=2
+                ).permute(0, 2, 1)
         if not self.training and imgs.shape[0] == 1:
             return self.postprocess_single_img(pred_result, self.num_classes)
 
 
-
-        cls_feat_flatten = torch.cat(
-            [x.flatten(start_dim=2) for x in before_nms_features], dim=2
-        ).permute(0, 2, 1)  # [b,features,channels]
-        reg_feat_flatten = torch.cat(
-            [x.flatten(start_dim=2) for x in before_nms_regf], dim=2
-        ).permute(0, 2, 1)
-        #kssong
-        #reg_feat_flatten_file = open('./reg_feat_flatten.txt', 'a')
-        #reg_feat_flatten_file.write(f'{reg_feat_flatten.shape}\n')
-        #reg_feat_flatten_file.close()
-
-        if not self.training and need_aggregation:
-            #half = len(pred_idx[1]) // 2
-            #new_idx = [p[:half] for p in pred_idx]
-            if first:
-                # reset all level memory banks
-                self.aggregator_p3.reset_memory_bank()
-                self.aggregator_p4.reset_memory_bank()
-                self.aggregator_p5.reset_memory_bank()
-                #Generate reference features from 16 batch files
-                ref_feature_p3, ref_feature_p4, ref_feature_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
-                # Initialize all level memory banks
-                self.aggregator_p3.init_memory_bank(ref_feature_p3)
-                self.aggregator_p4.init_memory_bank(ref_feature_p4)
-                self.aggregator_p5.init_memory_bank(ref_feature_p5)
-            else:
-                #Generate key features from 16 batch files
-                key_features_p3, key_features_p4, key_features_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
-                # Update all level memory banks
-                self.aggregator_p3.update_memory_bank(key_features_p3)
-                self.aggregator_p4.update_memory_bank(key_features_p4)
-                self.aggregator_p5.update_memory_bank(key_features_p5)
-
         (features_cls, features_reg, cls_scores,
-         fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
+            fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
                                                                 pred_idx,
                                                                 reg_feat_flatten,
                                                                 imgs,
-                                                                                        pred_result)
+                                                                pred_result)
 
 
         #kssong
@@ -732,60 +732,27 @@ class YOLOXHead(nn.Module):
         all_scores = torch.cat(all_scores)
         return features_cls, features_reg, cls_scores, fg_scores, locs, all_scores
     def select_input_feature_in_reg_feature(self, reg_features, pred_idx_p3, pred_idx_p4, pred_idx_p5):
-        key_features_p3 = [[] for _ in range(len(pred_idx_p3))]
-        key_features_p4 = [[] for _ in range(len(pred_idx_p4))]
-        key_features_p5 = [[] for _ in range(len(pred_idx_p5))]
-        for i in range(reg_features.shape[0]):
-            reg_feature = reg_features[i]
-            if reg_features is None:
-                raise ValueError("reg_feature is None")
-            p3_idx_list = pred_idx_p3[i]
-            p4_idx_list = pred_idx_p4[i]
-            p5_idx_list = pred_idx_p5[i]
-            if p3_idx_list is None:
-                raise ValueError("p3_idx_list is None")
-            if p4_idx_list is None:
-                raise ValueError("p4_idx_list is None")
-            if p5_idx_list is None:
-                raise ValueError("p5_idx_list is None")
-            if len(p3_idx_list) > self.target_n_p3:
-                p3_idx_list = p3_idx_list[: self.target_n_p3]
-            if len(p4_idx_list) > self.target_n_p4:
-                p4_idx_list = p4_idx_list[: self.target_n_p4]
-            if len(p5_idx_list) > self.target_n_p5:
-                p5_idx_list = p5_idx_list[: self.target_n_p5]
+        B, _, C = reg_features.shape
+        device = reg_features.device
+        result_p3 = torch.zeros(B, self.target_n_p3, C, device=device)
+        result_p4 = torch.zeros(B, self.target_n_p4, C, device=device)
+        result_p5 = torch.zeros(B, self.target_n_p5, C, device=device)
 
-            for idx in p3_idx_list:
-                if idx >=0 and idx < 6400:
-                    key_features_p3[i].append(idx)
-                elif idx >= 6400 and idx < 8000:
-                    key_features_p3[i].append(idx)
-                else:
-                    key_features_p3[i].append(idx)
+        for i in range(B):
+            reg_feature = reg_features[i]  # [8400, C]
 
-            for idx in p4_idx_list:
-                if idx >=0 and idx < 6400:
-                    key_features_p4[i].append(idx)
-                elif idx >= 6400 and idx < 8000:
-                    key_features_p4[i].append(idx)
-                else:
-                    key_features_p4[i].append(idx)
+            def fill(idx_list, result, n_target):
+                idx = idx_list[:n_target]
+                if len(idx) == 0:
+                    return
+                idx = torch.stack(idx) if not isinstance(idx, torch.Tensor) else idx
+                result[i, :len(idx)] = reg_feature[idx]
 
-            for idx in p5_idx_list:
-                if idx >=0 and idx < 6400:
-                    key_features_p5[i].append(idx)
-                elif idx >= 6400 and idx < 8000:
-                    key_features_p5[i].append(idx)
-                else:
-                    key_features_p5[i].append(idx)
-            if len(key_features_p3) == 0:
-                logger.info("key_feature_p3 is empty")
-            if len(key_features_p4) == 0:
-                logger.info("key_feature_p4 is empty")
-            if len(key_features_p5) ==0:
-                logger.info("key_feature_p5 is empty")
+            fill(pred_idx_p3[i], result_p3, self.target_n_p3)
+            fill(pred_idx_p4[i], result_p4, self.target_n_p4)
+            fill(pred_idx_p5[i], result_p5, self.target_n_p5)
 
-        return key_features_p3, key_features_p4, key_features_p5
+        return result_p3, result_p4, result_p5
 
     def select_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results):
         key_features_list = []
