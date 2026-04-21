@@ -339,7 +339,7 @@ class YOLOXHead(nn.Module):
         #kssong
         reg_feat_list = []
         cls_output_list = []
-
+        need_aggregation = False
         for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
                 zip(self.cls_convs, self.cls_convs2, self.reg_convs, self.strides, xin)
         ):
@@ -352,6 +352,9 @@ class YOLOXHead(nn.Module):
             obj_output = self.obj_preds[k](reg_feat)
             reg_output = self.reg_preds[k](reg_feat)
             cls_output = self.cls_preds[k](cls_feat)
+            #logger.info(f"k: {k}, cls_output shape: {cls_output.shape}")
+            #logger.info(f"k: {k}, reg_feat shape: {reg_feat.shape}")
+            #logger.info(f"k: {k}, stride_this_level: {stride_this_level}")
             cls_output_list.append(cls_output)
             #logger.info(f"reg_feat.shape[0]: {reg_feat.shape[0]}")
             #logger.info(f"reg_feat shape: {reg_feat.shape} cls_feat shape: {cls_feat.shape} cls_feat2 shape: {cls_feat2.shape}")
@@ -383,7 +386,7 @@ class YOLOXHead(nn.Module):
                         batch_size, -1, 4
                     )
                     origin_preds.append(reg_output.clone())
-
+                #logger.info(f"output shape: {output.shape}")
                 outputs.append(output)
                 before_nms_features.append(cls_feat2)
                 before_nms_regf.append(reg_feat)
@@ -425,9 +428,6 @@ class YOLOXHead(nn.Module):
         agg_outputs = []
         agg_outputs_decode = []
         agg_origin_preds = []
-        agg_x_shifts = []
-        agg_y_shifts = []
-        agg_expanded_strides = []
         agg_before_nms_regf = []
         if need_aggregation:
             pred_idx_p3, pred_idx_p4, pred_idx_p5 = self.postpro_input_n(decode_res, num_classes=self.num_classes,
@@ -510,6 +510,8 @@ class YOLOXHead(nn.Module):
 
             for k, (cls_output, reg_feat, stride_this_level) in enumerate(zip(cls_output_list, reg_feat_list, self.strides)):
 
+                #logger.info(f"k: {k}, cls_output shape: {cls_output.shape} reg_feat shape: {reg_feat.shape}")
+                #logger.info(f"k: {k}, stride_this_level: {stride_this_level}")
                 # this part should be the same as the original model
                 obj_output = self.agg_obj_preds[k](reg_feat)
                 reg_output = self.agg_reg_preds[k](reg_feat)
@@ -524,13 +526,7 @@ class YOLOXHead(nn.Module):
                     output, grid = self.get_output_and_grid(
                         output, k, stride_this_level, xin[0].type()
                     )
-                    agg_x_shifts.append(grid[:, :, 0])
-                    agg_y_shifts.append(grid[:, :, 1])
-                    agg_expanded_strides.append(
-                        torch.zeros(1, grid.shape[1])
-                        .fill_(stride_this_level)
-                        .type_as(xin[0])
-                    )
+
                     if self.use_l1:
                         batch_size = reg_output.shape[0]
                         hsize, wsize = reg_output.shape[-2:]
@@ -541,7 +537,7 @@ class YOLOXHead(nn.Module):
                             batch_size, -1, 4
                         )
                         agg_origin_preds.append(reg_output.clone())
-
+                    #logger.info(f"output shape: {output.shape}")
                     agg_outputs.append(output)
 
                     agg_before_nms_regf.append(reg_feat)
@@ -562,9 +558,9 @@ class YOLOXHead(nn.Module):
 
             if self.kwargs.get('ota_mode',False) and self.training:
                 ota_idxs,reg_targets = self.get_fg_idx( imgs,
-                    agg_x_shifts,
-                    agg_y_shifts,
-                    agg_expanded_strides,
+                    x_shifts,
+                    y_shifts,
+                    expanded_strides,
                     labels,
                     torch.cat(agg_outputs, 1),)
             else:
@@ -660,9 +656,7 @@ class YOLOXHead(nn.Module):
                 if need_aggregation:
                     outputs = agg_outputs
             if need_aggregation:
-                 x_shifts = agg_x_shifts
-                 y_shifts = agg_y_shifts
-                 expanded_strides = agg_expanded_strides
+                 origin_preds = agg_origin_preds
 
             return self.get_losses(
                 imgs,
