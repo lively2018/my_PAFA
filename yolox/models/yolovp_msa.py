@@ -56,6 +56,7 @@ class YOLOXHead(nn.Module):
             memory_length=None,
             key_length=None,
             target_n=None,
+            updating_policy='random',
             **kwargs
     ):
         """
@@ -249,10 +250,10 @@ class YOLOXHead(nn.Module):
         elif not hasattr(key_length, '__len__'):
             key_length = [key_length, key_length, key_length]
         self.key_length_p3, self.key_length_p4, self.key_length_p5 = key_length[0], key_length[1], key_length[2]
-
-        self.aggregator_p3 = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=self.memory_length_p3, key_length=self.key_length_p3)
-        self.aggregator_p4 = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=self.memory_length_p4, key_length=self.key_length_p4)
-        self.aggregator_p5 = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=self.memory_length_p5, key_length=self.key_length_p5)
+        self.updating_policy = updating_policy
+        self.aggregator_p3 = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=self.memory_length_p3, key_length=self.key_length_p3, updating_policy=self.updating_policy)
+        self.aggregator_p4 = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=self.memory_length_p4, key_length=self.key_length_p4, updating_policy=self.updating_policy)
+        self.aggregator_p5 = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=self.memory_length_p5, key_length=self.key_length_p5, updating_policy=self.updating_policy)
         #kssong
         self.inplace_false_relu = nn.ReLU(inplace=False)
         if m_conf is None:
@@ -264,6 +265,7 @@ class YOLOXHead(nn.Module):
         if target_n is None:
             target_n = [90, 150, 90]
         self.target_n_p3, self.target_n_p4, self.target_n_p5 = target_n[0], target_n[1], target_n[2]
+
 
     def initialize_biases(self, prior_prob):
         for conv in self.cls_preds:

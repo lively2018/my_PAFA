@@ -116,6 +116,17 @@ class MemoryBank(nn.Module):
                             kept_old = self.feat[old_ind_to_keep]
                             new_feat_combined = torch.cat([kept_old, new_feat], dim=0).detach().clone()
                         update_length = len(new_feat)
+                elif self.updating_policy == "fifo":
+                    if len(new_feat) >= self.max_length:
+                        new_feat_combined = new_feat[:self.max_length].detach().clone()
+                        update_length = self.max_length
+                    else:
+                        slots_available = self.max_length - len(self.feat)
+                        if len(new_feat) <= slots_available:
+                            new_feat_combined = torch.cat([self.feat, new_feat], dim=0).detach().clone()
+                        else:
+                            new_feat_combined = torch.cat([self.feat[-(self.max_length - len(new_feat)):], new_feat], dim=0).detach().clone()
+                        update_length = len(new_feat)
                 else:
                     NotImplementedError("Only random updating policy is implemented")
             else:
