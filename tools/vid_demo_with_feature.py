@@ -243,6 +243,7 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
     mem_feat_info_list = []
     sampled_mem_feat_info_list = []
     input_feat_info_list = []
+    outputs_info_list = []
     first_frame = True
     for ele_id,ele in enumerate(res):
         if ele == []: continue
@@ -271,6 +272,26 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
         ref_pred_info = head._ref_pred_info  # Get the reference prediction info from the head
         logger.info(f"After inference of set {ele_id}, got ref_pred_info with length: {len(ref_pred_info)}")
         updated_feat_info_list.append([[[t.cpu().numpy() for t in pX] for pX in batch_item] for batch_item in ref_pred_info])
+        outputs_info = head._outputs_info  # Get the outputs info from the head
+        logger.info(f"After inference of set {ele_id}, got outputs_info with length: {len(outputs_info)}")
+        def _to_np(v):
+            return v.cpu().numpy() if isinstance(v, torch.Tensor) else v
+        converted_outputs_info = []
+        for det_list in outputs_info:
+            if det_list is None:
+                converted_outputs_info.append([])
+                continue
+            item_result = []
+            for det in det_list:
+                bboxes = _to_np(det['bboxes'])
+                item_result.append([
+                    det['batch_set'], det['batch_item'],
+                    bboxes[0], bboxes[1], bboxes[2], bboxes[3],
+                    _to_np(det['obj_score']), _to_np(det['cls_score']),
+                    _to_np(det['label']), det['feat_id'] if det['feat_id'] is not None else -1
+                ])
+            converted_outputs_info.append(item_result)
+        outputs_info_list.append(converted_outputs_info)
         #for level_idx, level_info in enumerate(ref_pred_info):
         #    level_info_p3, level_info_p4, level_info_p5 = level_info
         #    logger.info(f"Level {level_idx} - len(level_info_p3): {len(level_info_p3)}, \
@@ -320,6 +341,7 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
     logger.info("Saving detection image result in {}".format(img_save_path))
     img_anno_res = {}
     for (output,img, file_path) in zip(outputs,ori_frames[:len(outputs)],files):
+        logger.info(f"Processing file {file_path}")
         if args.post:
             ratio = 1
         result_frame = predictor.visual(output,img,ratio,cls_conf=args.conf,color_idx=12)
@@ -378,6 +400,10 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
         with open(sampled_mem_feat_info_save_path, "wb") as f:
             pickle.dump(sampled_mem_feat_info_list, f)
         logger.info("Saving detection prediction sampled memory feature info in {}".format(sampled_mem_feat_info_save_path))
+        outputs_info_save_path = os.path.join(img_save_path, "my_model_outputs_info.pkl")
+        with open(outputs_info_save_path, "wb") as f:
+            pickle.dump(outputs_info_list, f)
+        logger.info("Saving detection prediction outputs info in {}".format(outputs_info_save_path))
 
 def imageflow_demo(predictor, vis_folder, current_time, args,exp):
     gframe = exp.gframe_val

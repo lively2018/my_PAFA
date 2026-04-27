@@ -12,6 +12,7 @@ import torch.nn.functional as F
 import torchvision
 from loguru import logger
 
+from yolox.models.memory_result import MemoryResult
 from yolox.models.post_process import postprocess, get_linking_mat
 from yolox.models.post_trans import MSA_yolov, LocalAggregation
 from yolox.utils import bboxes_iou
@@ -231,6 +232,9 @@ class YOLOXHead(nn.Module):
         self._mem_info = None
         self._sampled_mem_feat_info = None
         self._original_ref_pred_info = None
+        self.memory_result = MemoryResult(max_length=4800)
+        self._outputs_info = None
+        self._memory_result_info = None
 
     def initialize_biases(self, prior_prob):
         for conv in self.cls_preds:
@@ -611,7 +615,7 @@ class YOLOXHead(nn.Module):
                 self.aggregator.init_memory_bank(ref_feature_p3, 0)
                 self.aggregator.init_memory_bank(ref_feature_p4, 1)
                 self.aggregator.init_memory_bank(ref_feature_p5, 2)
-                self.batch_set += 1
+                #self.batch_set += 1
                 self._mem_info = self.aggregator.get_memory_feature_info()
                 p3_mem_info = self._mem_info['p3']
                 logger.info(f"batch {self.batch_set} memory len(p3_mem_info): {len(p3_mem_info)}, ")
@@ -654,7 +658,7 @@ class YOLOXHead(nn.Module):
                 logger.info(f"batch {self.batch_set} memory len(p4_mem_info): {len(p4_mem_info)}, ")
                 p5_mem_info = self._mem_info['p5']
                 logger.info(f"batch {self.batch_set} memory len(p5_mem_info): {len(p5_mem_info)}, ")
-                self.batch_set += 1
+                #self.batch_set += 1
         (features_cls, features_reg, cls_scores,
          fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
                                                                 pred_idx,
@@ -719,6 +723,7 @@ class YOLOXHead(nn.Module):
         if self.training:
             if self.both_mode:
                 labels = labels[:lframe]
+            self.batch_set += 1
             return self.get_losses(
                 imgs,
                 x_shifts,
@@ -734,13 +739,23 @@ class YOLOXHead(nn.Module):
                 conf_output = conf_output
             )
         else:
-            result, result_ori = postprocess(copy.deepcopy(pred_result),
+            logger.info(f"Batch set: {self.batch_set}")
+            result, result_ori, output_info = postprocess(copy.deepcopy(pred_result),
                                              self.num_classes,
                                              fc_output,
                                              conf_output = conf_output,
                                              nms_thre=nms_thresh,
                                              pred_idx=pred_idx, batch_set=self.batch_set
                                              )
+            if first:
+                self.memory_result.reset_memory_result()
+                self.memory_result.init_memory_result(output_info)
+            else:
+                self.memory_result.update_memory_result(output_info)
+
+            self._outputs_info = output_info
+            self._memory_result_info = self.memory_result.get_memory_result_info()
+            self.batch_set += 1
             return result, result_ori  # result
 
     def get_output_and_grid(self, output, k, stride, dtype):

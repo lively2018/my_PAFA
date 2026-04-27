@@ -124,7 +124,7 @@ def postprocess(prediction, num_classes, fc_outputs,
         if return_idx:
             nms_out_idxs.append(nms_out_index + i*detections.size(0))
     if return_idx: return output, output_ori,torch.cat(nms_out_idxs,dim=0)
-    return output, output_ori
+    return output, output_ori , output_info
 
 
 def postprocess_pure(prediction, num_classes, fc_outputs, conf_thre=0.001, nms_thre=0.5):

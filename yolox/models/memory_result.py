@@ -21,27 +21,16 @@ class MemoryResult(nn.Module):
         self.results = []
         self.age = 0
 
+    def get_memory_result_info(self):
+        return self.results
 
-    def reset(self):
+    def reset_memory_result(self):
         #kssong
         if self.results is not None:
             self.results.clear()  # Clear the list to free memory
         self.age = 0
         self.results = []
         logger.info(f"reset_memory_result, memory result size: {len(self.results)}")
-
-    def init_memory_result_info(self, result_info, batch_set, batch_item):
-
-        #kssong
-        logger.info(f"init_memory_result_info, batch_set: {batch_set}, batch_item: {batch_item}, len(result_info): {len(result_info)}")
-        if result_info is not None:
-            self.results.extend([[(batch_set-1), batch_item, result_info_item] for result_info_item in result_info])
-
-    def update_memory_result_info(self, result_info, batch_set, batch_item):
-        #kssong
-        logger.info(f"update_memory_result_info, batch_set: {batch_set}, batch_item: {batch_item}, len(result_info): {len(result_info)}")
-        if result_info is not None:
-            self.results.extend([[(batch_set-1), batch_item, result_info_item] for result_info_item in result_info])
 
     def init_memory_result(self, result):
         """
@@ -55,16 +44,16 @@ class MemoryResult(nn.Module):
 
         logger.info(f"init_memory_result, len(result): {len(result)}")
         for result_item in result:
-            logger.info(f"result_item: {result_item}")
+            #logger.info(f"result_item: {result_item}")
             self.results.append(result_item)
             self.age += 1
 
 
     def update_memory_result(self, new_result):
-
+        logger.info(f"update_memory_result, len(new_result): {len(new_result)}, current memory result size: {len(self.results)}")
         if len(self.results) < self.max_length:
             for result_item in new_result:
-                logger.info(f"result_item: {result_item}")
+                #logger.info(f"result_item: {result_item}")
                 self.results.append(result_item)
                 self.age += 1
 
