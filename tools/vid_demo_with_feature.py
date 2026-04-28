@@ -325,8 +325,7 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
             p5_sampled_mem_info = sampled_mem_feat_info['p5']
             logger.info(f"Set {ele_id} - sampled_mem_feat_info - len(p5_sampled_mem_info): {len(p5_sampled_mem_info)}")
             sampled_mem_feat_info_list.append({k: list(v) for k, v in sampled_mem_feat_info.items()})
-        if ele_id == 1:
-            break
+
     if traj_linking:
         outputs = post_linking(fc_outputs, adj_lists, outputs, P, Cls, names, exp)
 

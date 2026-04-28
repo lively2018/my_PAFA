@@ -6,6 +6,7 @@ import argparse
 import os
 import pickle
 import time
+from xml.dom import minidom
 from loguru import logger
 
 import cv2
@@ -13,6 +14,7 @@ import cv2
 from sympy import arg
 import torch
 
+from tools.vid_demo_with_feature import _VID_SYNSET_TO_IDX
 from yolox.data.datasets import COCO_CLASSES
 from yolox.data.datasets.vid_classes import VID_classes
 import numpy as np
@@ -47,7 +49,7 @@ def make_parser():
     parser.add_argument('--tsize', default=640, type=int, help='test image size')
     parser.add_argument('--input_frame_name', default='000000.JPEG', help='input frame name to check')
     parser.add_argument('--input_image_path', default='/home/kssong/ILSVRC2015/Data/VID/val/ILSVRC2015_val_00118007', help='input frame name to check')
-
+    parser.add_argument('--save_result_with_gt', default=False)
     return parser
 
 def read_ref_frame_list(args, n_frames):
@@ -652,6 +654,24 @@ def visualize_result_info_on_frame(args, result_info, frame_save_path):
                  cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
                  cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                  file_name = args.input_frame_name + f'_Result_{i}.JPEG'
+                 if args.save_result_with_gt:
+                    xml_path = input_frame_path.replace("Data", "Annotations").replace(".JPEG", ".xml").replace(".jpeg", ".xml").replace(".jpg", ".xml")
+                    if os.path.exists(xml_path):
+                        xml_doc = minidom.parse(xml_path)
+                        root = xml_doc.documentElement
+                        for obj in root.getElementsByTagName("object"):
+                            synset = obj.getElementsByTagName("name")[0].firstChild.data
+                            xmin = int(obj.getElementsByTagName("xmin")[0].firstChild.data)
+                            ymin = int(obj.getElementsByTagName("ymin")[0].firstChild.data)
+                            xmax = int(obj.getElementsByTagName("xmax")[0].firstChild.data)
+                            ymax = int(obj.getElementsByTagName("ymax")[0].firstChild.data)
+                            cls_idx = _VID_SYNSET_TO_IDX.get(synset, -1)
+                            label = VID_classes[cls_idx] if cls_idx >= 0 else synset
+                            cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (0, 0, 255), 2)
+                            cv2.putText(frame, 'GT:' + label, (xmax-10, max(ymin - 4, 10)),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+                    else:
+                        logger.warning("GT xml not found: {}".format(xml_path))
                  cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
                  logger.info(f"    Result -{i}th bbox: ({int(result[0])}, {int(result[1])}, {int(result[2])}, {int(result[3])}), \
                                 cls_score: {cls_score:.3f}, \
@@ -726,7 +746,7 @@ def main(exp, args):
     batch_set, batch_item = find_batch_set_and_item_for_input_frame(ref_frame_batch_set, args.input_frame_name)
     input_feat_info_item = read_input_feature_info_list(args, batch_set, batch_item)
 
-    #visualize_feature_info_on_frame(args, "Input", [input_feat_info_item], save_folder, exp)
+    visualize_feature_info_on_frame(args, "Input", [input_feat_info_item], save_folder, exp)
 
     if batch_set == 0:
         logger.info(f"Batch set for input frame is 0, which may not have memory features.")
