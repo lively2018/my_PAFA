@@ -921,9 +921,9 @@ class YOLOXHead(nn.Module):
             if len(p5_items) == 0:
                 p5_items.append(torch.zeros(7 + self.num_classes))
             pred_info.append([p3_items, p4_items, p5_items])
-            #logger.info(f"Batch {i} - len(p3_items): {len(p3_items)},\
-            #             len(p4_items): {len(p4_items)}, \
-            #                len(p5_items): {len(p5_items)}")
+            logger.info(f"Batch {i} - len(p3_items): {len(p3_items)},\
+                         len(p4_items): {len(p4_items)}, \
+                            len(p5_items): {len(p5_items)}")
             #for idx, items in enumerate(p3_items):
             #    logger.info(f"Batch {i} - p3 item {idx} th - p3 item shape: {items.shape}")
             #    logger.info(f"Batch {i} - p3 item {idx} th - p3 items: {int(items[36])}")

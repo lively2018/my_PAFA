@@ -76,10 +76,6 @@ def read_input_feature_info_list(args, check_batch_set, check_batch_item, save_f
     logger.info(f"len(feat_info_list): {len(feat_info_list)}")
     check_batch_set_num = check_batch_set
     check_batch_item_num = check_batch_item
-    csv_save_path = os.path.join(save_folder, "input_features.csv")
-    csv_file = open(csv_save_path, "w", newline="")
-    csv_writer = csv.writer(csv_file)
-    csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_pred", "class_label", "class_label_name", "feat_num"])
     for batch_set, feat_info_set in enumerate(feat_info_list):
         if batch_set == check_batch_set_num:
             logger.info(f"Batch set {batch_set} - num batch items: {len(feat_info_set)}")
@@ -99,9 +95,6 @@ def read_input_feature_info_list(args, check_batch_set, check_batch_item, save_f
                  feat_num = int(p3[6 + len(VID_classes)])
                  conf_score = cls_score * obj_score
                  class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
-                 csv_writer.writerow(["P3", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
-                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}",\
-                                          f"{np.array2string(class_pred, precision=6, floatmode='fixed', suppress_small=True)}", f"{class_label}", f"{class_label_name}", f"{feat_num}"])
                  if batch_set == check_batch_set_num and batch_item == check_batch_item_num:
                     logger.info(f"    p3 -{i}th - bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                                 obj_score: {obj_score:.3f}, \
@@ -122,9 +115,6 @@ def read_input_feature_info_list(args, check_batch_set, check_batch_item, save_f
                  feat_num = int(p4[6 + len(VID_classes)])
                  conf_score = cls_score * obj_score
                  class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
-                 csv_writer.writerow(["P4", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
-                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}",\
-                                          f"{np.array2string(class_pred, precision=6, floatmode='fixed', suppress_small=True)}", f"{class_label}", f"{class_label_name}", f"{feat_num}"])
                  if batch_set == check_batch_set_num and batch_item == check_batch_item_num:
                     logger.info(f"    p4 -{i}th - bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                                 obj_score: {obj_score:.3f}, \
@@ -146,9 +136,6 @@ def read_input_feature_info_list(args, check_batch_set, check_batch_item, save_f
                  feat_num = int(p5[6 + len(VID_classes)])
                  conf_score = cls_score * obj_score
                  class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
-                 csv_writer.writerow(["P5", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
-                                        f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}",\
-                                            f"{np.array2string(class_pred, precision=6, floatmode='fixed', suppress_small=True)}", f"{class_label}", f"{class_label_name}", f"{feat_num}"])
                  if batch_set == check_batch_set_num and batch_item == check_batch_item_num:
                     logger.info(f"    p5 -{i}th - bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                                 obj_score: {obj_score:.3f}, \
@@ -162,8 +149,6 @@ def read_input_feature_info_list(args, check_batch_set, check_batch_item, save_f
                     break
         if batch_set == check_batch_set_num:
             break
-    csv_file.close()
-    logger.info(f"Saved input feature info to CSV: {csv_save_path}")
     return feat_info_item
 
 def read_outputs_info_list(args, check_batch_set, check_batch_item, save_folder):
@@ -175,10 +160,7 @@ def read_outputs_info_list(args, check_batch_set, check_batch_item, save_folder)
     check_batch_set_num = check_batch_set
     check_batch_item_num = check_batch_item
     selected_outputs_info_list = []
-    csv_save_path = os.path.join(save_folder, "outputs_features.csv")
-    csv_file = open(csv_save_path, "w", newline="")
-    csv_writer = csv.writer(csv_file)
-    csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_label", "class_label_name", "feat_num"])
+
     for batch_set, outputs_info_set in enumerate(outputs_info_list):
         if batch_set == check_batch_set_num:
             logger.info(f"Batch set {batch_set} - num batch items: {len(outputs_info_set)}")
@@ -208,14 +190,6 @@ def read_outputs_info_list(args, check_batch_set, check_batch_item, save_folder)
                                  class_label: {class_label}, \
                                  class_label_name: {class_label_name}, \
                                  feat_num: {feat_num}")
-                     if feat_num >= 0 and feat_num < 6400:  # Assuming feat_num corresponds to P3, P4, P5 respectively
-                         level = "P3"
-                     elif feat_num >= 6400 and feat_num < 6400 + 1600:
-                         level = "P4"
-                     else:
-                         level = "P5"
-                     csv_writer.writerow([level, f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
-                                         f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
                 return selected_outputs_info_list
 
     return selected_outputs_info_list
@@ -226,11 +200,6 @@ def read_mem_feature_info_list(args, check_batch_set, save_folder):
             mem_feat_info_list = pickle.load(f)
     logger.info(f"len(mem_feat_info_list): {len(mem_feat_info_list)}")
     check_batch_set_num = check_batch_set
-    csv_save_path = os.path.join(save_folder, "outputs_features.csv")
-    csv_file = open(csv_save_path, "w", newline="")
-    csv_writer = csv.writer(csv_file)
-    csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_label", "class_label_name", "feat_num"])
-
     for batch_set, mem_feat_info in enumerate(mem_feat_info_list):
          if batch_set == check_batch_set_num:
              p3_mem_info = mem_feat_info['p3']
@@ -257,9 +226,6 @@ def read_mem_feature_info_list(args, check_batch_set, save_folder):
                             class_label: {class_label}, \
                             class_label_name: {class_label_name}, \
                             feat_num: {feat_num}")
-                csv_writer.writerow(["P3", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
-                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
-
              for i, p4 in enumerate(p4_mem_info):
                 det = p4[2]
                 if torch.all(det == 0):
@@ -279,9 +245,6 @@ def read_mem_feature_info_list(args, check_batch_set, save_folder):
                             class_label: {class_label}, \
                             class_label_name: {class_label_name}, \
                             feat_num: {feat_num}")
-                csv_writer.writerow(["P4", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
-                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
-
              for i, p5 in enumerate(p5_mem_info):
                 det = p5[2]
                 if torch.all(det == 0):
@@ -301,8 +264,6 @@ def read_mem_feature_info_list(args, check_batch_set, save_folder):
                             class_label: {class_label}, \
                             class_label_name: {class_label_name}, \
                             feat_num: {feat_num}")
-                csv_writer.writerow(["P5", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
-                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
 
              break
 
@@ -314,10 +275,6 @@ def read_sampled_mem_feature_info_list(args, check_batch_set, save_folder):
             sampled_mem_feat_info_list = pickle.load(f)
     logger.info(f"len(sampled_mem_feat_info_list): {len(sampled_mem_feat_info_list)}")
     check_batch_set_num = check_batch_set
-    csv_save_path = os.path.join(save_folder, "sampled_mem_features.csv")
-    csv_file = open(csv_save_path, "w", newline="")
-    csv_writer = csv.writer(csv_file)
-    csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_label", "class_label_name", "feat_num"])
     for batch_set, sampled_mem_feat_info in enumerate(sampled_mem_feat_info_list):
          if batch_set == check_batch_set_num:
              p3_sampled_mem_info = sampled_mem_feat_info['p3']
@@ -344,8 +301,6 @@ def read_sampled_mem_feature_info_list(args, check_batch_set, save_folder):
                             class_label: {class_label}, \
                             class_label_name: {class_label_name}, \
                             feat_num: {feat_num}")
-                csv_writer.writerow(["P3", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
-                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
              for i, p4 in enumerate(p4_sampled_mem_info):
                 det = p4[2]
                 if torch.all(det == 0):
@@ -365,8 +320,6 @@ def read_sampled_mem_feature_info_list(args, check_batch_set, save_folder):
                             class_label: {class_label}, \
                             class_label_name: {class_label_name}, \
                             feat_num: {feat_num}")
-                csv_writer.writerow(["P4", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
-                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
              for i, p5 in enumerate(p5_sampled_mem_info):
                 det = p5[2]
                 if torch.all(det == 0):
@@ -386,8 +339,6 @@ def read_sampled_mem_feature_info_list(args, check_batch_set, save_folder):
                             class_label: {class_label}, \
                             class_label_name: {class_label_name}, \
                             feat_num: {feat_num}")
-                csv_writer.writerow(["P5", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
-                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
              break
     return sampled_mem_feat_info
 def read_updated_feature_info_list(args,check_batch_set, check_batch_item, save_folder):
@@ -397,10 +348,7 @@ def read_updated_feature_info_list(args,check_batch_set, check_batch_item, save_
     logger.info(f"len(updated_feat_info_list): {len(updated_feat_info_list)}")
     check_batch_set_num = check_batch_set
     check_batch_item_num = check_batch_item
-    csv_save_path = os.path.join(save_folder, "updated_features.csv")
-    csv_file = open(csv_save_path, "w", newline="")
-    csv_writer = csv.writer(csv_file)
-    csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_label", "class_label_name", "feat_num"])
+
     for batch_set, updated_feat_info_set in enumerate(updated_feat_info_list):
         if batch_set == check_batch_set_num:
             logger.info(f"Batch set {batch_set} - num batch items: {len(updated_feat_info_set)}")
@@ -428,8 +376,6 @@ def read_updated_feature_info_list(args,check_batch_set, check_batch_item, save_
                                  class_label: {class_label}, \
                                  class_label_name: {class_label_name}, \
                                  feat_num: {feat_num}")
-                     csv_writer.writerow(["P3", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
-                                          f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
                 for i, p4 in enumerate(p4_list):
                      if np.all(p4 == 0):
                          continue
@@ -448,8 +394,6 @@ def read_updated_feature_info_list(args,check_batch_set, check_batch_item, save_
                                  class_label: {class_label}, \
                                  class_label_name: {class_label_name}, \
                                  feat_num: {feat_num}")
-                     csv_writer.writerow(["P4", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
-                                              f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
                 for i, p5 in enumerate(p5_list):
                      if np.all(p5 == 0):
                          continue
@@ -468,8 +412,6 @@ def read_updated_feature_info_list(args,check_batch_set, check_batch_item, save_
                                  class_label: {class_label}, \
                                  class_label_name: {class_label_name}, \
                                  feat_num: {feat_num}")
-                     csv_writer.writerow(["P5", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
-                                              f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
                 if batch_set == check_batch_set_num and batch_item == check_batch_item_num:
                     break
         if batch_set == check_batch_set_num:
@@ -512,6 +454,10 @@ def visualize_mem_info_on_frame(args, type_name, feat_info_list, frame_save_path
     p4_mem_info = feat_info_list['p4']
     p5_mem_info = feat_info_list['p5']
 
+    csv_save_path = os.path.join(frame_save_path, f"{type_name}_features.csv")
+    with open(csv_save_path, mode='w', newline='') as csv_file:
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow(['batch_set', 'batch_item', 'feature_level', 'bbox_x1', 'bbox_y1', 'bbox_x2', 'bbox_y2', 'obj_score', 'cls_score', 'conf_score', 'class_label', 'class_label_name', 'feat_num'])
 
     for i, p3 in enumerate(p3_mem_info):
          if torch.all(p3[2] == 0):
@@ -549,7 +495,8 @@ def visualize_mem_info_on_frame(args, type_name, feat_info_list, frame_save_path
          cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
          logger.info(f"Saved visualized frame with p3 feature info: {os.path.join(frame_save_path, file_name)}")
          logger.info(f"Finished visualizing p3 feature info for {input_frame_path}")
-
+         csv_writer.writerow([p3[0], p3[1], 'P3', int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]), f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", \
+                               f"{class_label}", f"{class_label_name}", f"{feat_num}"])
     for i, p4 in enumerate(p4_mem_info):
          if torch.all(p4[2] == 0):
              continue
@@ -583,6 +530,9 @@ def visualize_mem_info_on_frame(args, type_name, feat_info_list, frame_save_path
          cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
          file_name = input_frame_name + f'_{type_name}_P4_{i}.JPEG'
          cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
+         csv_writer.writerow([p4[0], p4[1], 'P4', int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]), f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", \
+                               f"{class_label}", f"{class_label_name}", f"{feat_num}"])
+
     for i, p5 in enumerate(p5_mem_info):
          if torch.all(p5[2] == 0):
              continue
@@ -616,8 +566,10 @@ def visualize_mem_info_on_frame(args, type_name, feat_info_list, frame_save_path
          cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
          file_name = input_frame_name + f'_{type_name}_P5_{i}.JPEG'
          cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
-
-
+         csv_writer.writerow([p5[0], p5[1], 'P5', int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]), f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", \
+                               f"{class_label}", f"{class_label_name}", f"{feat_num}"])
+    csv_file.close()
+    logger.info(f"Finished visualizing mem feature info and saved to: {frame_save_path}")
 def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_path,exp=None):
     input_frame_path = os.path.join(args.input_image_path, args.input_frame_name)
     logger.info(f"Visualizing feature info on frame: {input_frame_path}")
@@ -627,6 +579,11 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
         ratio = min(exp.test_size[0] / height, exp.test_size[1] / width)
     else:
         ratio = 1.0
+    csv_save_path = os.path.join(frame_save_path, f"{type_name}_features.csv")
+
+    csv_file = open(csv_save_path, "w", newline="")
+    csv_writer = csv.writer(csv_file)
+    csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_pred", "class_label", "class_label_name", "feat_num"])
 
     for feat_info in feat_info_list:
             p3_list, p4_list, p5_list = feat_info
@@ -654,6 +611,10 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
                  cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                  file_name = args.input_frame_name + f'_{type_name}_P3_{i}.JPEG'
                  cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
+                 csv_writer.writerow(["P3", f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
+                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}",\
+                                          f"{np.array2string(class_pred, precision=6, floatmode='fixed', suppress_small=True)}", f"{class_label}", f"{class_label_name}", f"{feat_num}"])
+
             for i, p4 in enumerate(p4_list):
                  if np.all(p4 == 0):
                      continue
@@ -666,7 +627,7 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
                  feat_num = int(p4[6 + len(VID_classes)])
                  conf_score = cls_score * obj_score
                  class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
-                 label_text = f"{class_label_name} {conf_score:.31f}"
+                 label_text = f"{class_label_name} {conf_score:.3f}"
                  cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
                  cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                  file_name = args.input_frame_name + f'_{type_name}_P4_{i}.JPEG'
@@ -678,6 +639,10 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
                             class_label: {class_label}, \
                             class_label_name: {class_label_name},\
                             feat_num: {feat_num}")
+                 csv_writer.writerow(["P4", f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
+                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}",\
+                                          f"{np.array2string(class_pred, precision=6, floatmode='fixed', suppress_small=True)}", f"{class_label}", f"{class_label_name}", f"{feat_num}"])
+
             for i, p5 in enumerate(p5_list):
                  if np.all(p5 == 0):
                      continue
@@ -702,6 +667,11 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
                                 class_label: {class_label}, \
                                 class_label_name: {class_label_name},\
                                 feat_num: {feat_num}")
+                 csv_writer.writerow(["P5", f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
+                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}",\
+                                          f"{np.array2string(class_pred, precision=6, floatmode='fixed', suppress_small=True)}", f"{class_label}", f"{class_label_name}", f"{feat_num}"])
+    csv_file.close()
+    logger.info(f"Saved input feature info to CSV: {csv_save_path}")
 
 def visualize_result_info_on_frame(args, result_info, frame_save_path):
     input_frame_path = os.path.join(args.input_image_path, args.input_frame_name)
@@ -748,8 +718,18 @@ def visualize_outputs_info_on_frame(args, outputs_info, frame_save_path, exp=Non
     input_frame_path = os.path.join(args.input_image_path, args.input_frame_name)
     logger.info(f"Visualizing outputs info on frame: {input_frame_path}")
     frame = cv2.imread(input_frame_path)
+    csv_save_path = os.path.join(frame_save_path, "outputs_features.csv")
+    csv_file = open(csv_save_path, "w", newline="")
+    csv_writer = csv.writer(csv_file)
+    csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_label", "class_label_name", "feat_num"])
+
     for i, output_info in enumerate(outputs_info):
         frame = cv2.imread(input_frame_path)
+        height, width = frame.shape[:2]
+        if exp is not None:
+            ratio = min(exp.test_size[0] / height, exp.test_size[1] / width)
+        else:
+            ratio = 1.0
         logger.info(f"    output_info -{i}th - len: {len(output_info)}")
         logger.info(f"    output_info -{i}th - content: {output_info}")
         batch_set_output = output_info[0]
@@ -757,7 +737,7 @@ def visualize_outputs_info_on_frame(args, outputs_info, frame_save_path, exp=Non
         if batch_set_output != batch_set or batch_item_output != batch_item:
             logger.info(f"Skipping output info -{i}th because batch_set_output: {batch_set_output}, batch_item_output: {batch_item_output} do not match input frame's batch_set: {batch_set}, batch_item: {batch_item}")
             continue
-        bbox = output_info[2:6]
+        bbox = [v / ratio for v in output_info[2:6]]
         obj_score = float(output_info[6])
         cls_score = float(output_info[7])
         class_label = int(output_info[8])
@@ -765,12 +745,6 @@ def visualize_outputs_info_on_frame(args, outputs_info, frame_save_path, exp=Non
         conf_score = cls_score * obj_score
         class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
         label_text = f"{class_label_name} {conf_score:.3f}"
-        height, width = frame.shape[:2]
-        if exp is not None:
-            ratio = min(exp.test_size[0] / height, exp.test_size[1] / width)
-        else:
-            ratio = 1.0
-        bbox = [v / ratio for v in bbox]
         cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
         cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
         file_name = args.input_frame_name + f'_Output_Info_{i}.JPEG'
@@ -782,7 +756,16 @@ def visualize_outputs_info_on_frame(args, outputs_info, frame_save_path, exp=Non
                     class_label: {class_label}, \
                     class_label_name: {class_label_name}, \
                     feat_num: {feat_num}")
-
+        if feat_num >= 0 and feat_num < 6400:  # Assuming feat_num corresponds to P3, P4, P5 respectively
+            level = "P3"
+        elif feat_num >= 6400 and feat_num < 6400 + 1600:
+            level = "P4"
+        else:
+            level = "P5"
+        csv_writer.writerow([level, f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
+                                         f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
+    csv_file.close()
+    logger.info(f"Saved outputs feature info to CSV: {csv_save_path}")
 
 def main(exp, args):
 
