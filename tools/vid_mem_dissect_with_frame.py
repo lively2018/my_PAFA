@@ -3,6 +3,7 @@
 # Copyright (c) Megvii, Inc. and its affiliates.
 
 import argparse
+import csv
 import os
 import pickle
 import time
@@ -67,7 +68,7 @@ def read_ref_frame_list(args, n_frames):
             ref_frame_batch = []
     return ref_frame_batch_set
 
-def read_input_feature_info_list(args, check_batch_set, check_batch_item):
+def read_input_feature_info_list(args, check_batch_set, check_batch_item, save_folder):
     # feat_info_list: list of (pred_info_p3, pred_info_p4, pred_info_p5) per batchset
     feat_info_save_path = os.path.join(args.input_dir, "my_model_input_feat_info.pkl")
     with open(feat_info_save_path, "rb") as f:
@@ -75,6 +76,10 @@ def read_input_feature_info_list(args, check_batch_set, check_batch_item):
     logger.info(f"len(feat_info_list): {len(feat_info_list)}")
     check_batch_set_num = check_batch_set
     check_batch_item_num = check_batch_item
+    csv_save_path = os.path.join(save_folder, "input_features.csv")
+    csv_file = open(csv_save_path, "w", newline="")
+    csv_writer = csv.writer(csv_file)
+    csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_pred", "class_label", "class_label_name", "feat_num"])
     for batch_set, feat_info_set in enumerate(feat_info_list):
         if batch_set == check_batch_set_num:
             logger.info(f"Batch set {batch_set} - num batch items: {len(feat_info_set)}")
@@ -94,13 +99,17 @@ def read_input_feature_info_list(args, check_batch_set, check_batch_item):
                  feat_num = int(p3[6 + len(VID_classes)])
                  conf_score = cls_score * obj_score
                  class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
+                 csv_writer.writerow(["P3", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
+                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}",\
+                                          f"{np.array2string(class_pred, precision=6, floatmode='fixed', suppress_small=True)}", f"{class_label}", f"{class_label_name}", f"{feat_num}"])
                  if batch_set == check_batch_set_num and batch_item == check_batch_item_num:
                     logger.info(f"    p3 -{i}th - bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                                 obj_score: {obj_score:.3f}, \
                                 cls_score: {cls_score:.3f}, \
                                 conf_score: {conf_score:.3f}, \
+                                class_pred: {np.array2string(class_pred, precision=6, floatmode='fixed', suppress_small=True)}, \
                                 class_label: {class_label}, \
-                                class_label_name: {class_label_name}\
+                                class_label_name: {class_label_name}, \
                                 feat_num: {feat_num}")
             for i, p4 in enumerate(p4_list):
                  if np.all(p4 == 0):
@@ -113,14 +122,19 @@ def read_input_feature_info_list(args, check_batch_set, check_batch_item):
                  feat_num = int(p4[6 + len(VID_classes)])
                  conf_score = cls_score * obj_score
                  class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
+                 csv_writer.writerow(["P4", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
+                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}",\
+                                          f"{np.array2string(class_pred, precision=6, floatmode='fixed', suppress_small=True)}", f"{class_label}", f"{class_label_name}", f"{feat_num}"])
                  if batch_set == check_batch_set_num and batch_item == check_batch_item_num:
                     logger.info(f"    p4 -{i}th - bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                                 obj_score: {obj_score:.3f}, \
                                 cls_score: {cls_score:.3f}, \
                                 conf_score: {conf_score:.3f}, \
+                                class_pred: {np.array2string(class_pred, precision=6, floatmode='fixed', suppress_small=True)}, \
                                 class_label: {class_label}, \
                                 class_label_name: {class_label_name}, \
                                 feat_num: {feat_num}")
+
             for i, p5 in enumerate(p5_list):
                  if np.all(p5 == 0):
                      continue
@@ -132,11 +146,15 @@ def read_input_feature_info_list(args, check_batch_set, check_batch_item):
                  feat_num = int(p5[6 + len(VID_classes)])
                  conf_score = cls_score * obj_score
                  class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
+                 csv_writer.writerow(["P5", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
+                                        f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}",\
+                                            f"{np.array2string(class_pred, precision=6, floatmode='fixed', suppress_small=True)}", f"{class_label}", f"{class_label_name}", f"{feat_num}"])
                  if batch_set == check_batch_set_num and batch_item == check_batch_item_num:
                     logger.info(f"    p5 -{i}th - bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                                 obj_score: {obj_score:.3f}, \
                                 cls_score: {cls_score:.3f}, \
                                 conf_score: {conf_score:.3f}, \
+                                class_pred: {np.array2string(class_pred, precision=6, floatmode='fixed', suppress_small=True)}, \
                                 class_label: {class_label}, \
                                 class_label_name: {class_label_name}, \
                                 feat_num: {feat_num}")
@@ -144,9 +162,11 @@ def read_input_feature_info_list(args, check_batch_set, check_batch_item):
                     break
         if batch_set == check_batch_set_num:
             break
+    csv_file.close()
+    logger.info(f"Saved input feature info to CSV: {csv_save_path}")
     return feat_info_item
 
-def read_outputs_info_list(args, check_batch_set, check_batch_item):
+def read_outputs_info_list(args, check_batch_set, check_batch_item, save_folder):
     outputs_info_list = []
     outputs_info_save_path = os.path.join(args.input_dir, "my_model_outputs_info.pkl")
     with open(outputs_info_save_path, "rb") as f:
@@ -155,6 +175,10 @@ def read_outputs_info_list(args, check_batch_set, check_batch_item):
     check_batch_set_num = check_batch_set
     check_batch_item_num = check_batch_item
     selected_outputs_info_list = []
+    csv_save_path = os.path.join(save_folder, "outputs_features.csv")
+    csv_file = open(csv_save_path, "w", newline="")
+    csv_writer = csv.writer(csv_file)
+    csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_label", "class_label_name", "feat_num"])
     for batch_set, outputs_info_set in enumerate(outputs_info_list):
         if batch_set == check_batch_set_num:
             logger.info(f"Batch set {batch_set} - num batch items: {len(outputs_info_set)}")
@@ -184,16 +208,29 @@ def read_outputs_info_list(args, check_batch_set, check_batch_item):
                                  class_label: {class_label}, \
                                  class_label_name: {class_label_name}, \
                                  feat_num: {feat_num}")
+                     if feat_num >= 0 and feat_num < 6400:  # Assuming feat_num corresponds to P3, P4, P5 respectively
+                         level = "P3"
+                     elif feat_num >= 6400 and feat_num < 6400 + 1600:
+                         level = "P4"
+                     else:
+                         level = "P5"
+                     csv_writer.writerow([level, f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
+                                         f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
                 return selected_outputs_info_list
 
     return selected_outputs_info_list
 
-def read_mem_feature_info_list(args, check_batch_set):
+def read_mem_feature_info_list(args, check_batch_set, save_folder):
     mem_feat_info_save_path = os.path.join(args.input_dir, "my_model_mem_feat_info.pkl")
     with open(mem_feat_info_save_path, "rb") as f:
             mem_feat_info_list = pickle.load(f)
     logger.info(f"len(mem_feat_info_list): {len(mem_feat_info_list)}")
     check_batch_set_num = check_batch_set
+    csv_save_path = os.path.join(save_folder, "outputs_features.csv")
+    csv_file = open(csv_save_path, "w", newline="")
+    csv_writer = csv.writer(csv_file)
+    csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_label", "class_label_name", "feat_num"])
+
     for batch_set, mem_feat_info in enumerate(mem_feat_info_list):
          if batch_set == check_batch_set_num:
              p3_mem_info = mem_feat_info['p3']
@@ -220,6 +257,9 @@ def read_mem_feature_info_list(args, check_batch_set):
                             class_label: {class_label}, \
                             class_label_name: {class_label_name}, \
                             feat_num: {feat_num}")
+                csv_writer.writerow(["P3", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
+                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
+
              for i, p4 in enumerate(p4_mem_info):
                 det = p4[2]
                 if torch.all(det == 0):
@@ -239,6 +279,9 @@ def read_mem_feature_info_list(args, check_batch_set):
                             class_label: {class_label}, \
                             class_label_name: {class_label_name}, \
                             feat_num: {feat_num}")
+                csv_writer.writerow(["P4", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
+                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
+
              for i, p5 in enumerate(p5_mem_info):
                 det = p5[2]
                 if torch.all(det == 0):
@@ -258,16 +301,23 @@ def read_mem_feature_info_list(args, check_batch_set):
                             class_label: {class_label}, \
                             class_label_name: {class_label_name}, \
                             feat_num: {feat_num}")
+                csv_writer.writerow(["P5", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
+                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
+
              break
 
     return mem_feat_info
 
-def read_sampled_mem_feature_info_list(args, check_batch_set):
+def read_sampled_mem_feature_info_list(args, check_batch_set, save_folder):
     sampled_mem_feat_info_save_path = os.path.join(args.input_dir, "my_model_sampled_mem_feat_info.pkl")
     with open(sampled_mem_feat_info_save_path, "rb") as f:
             sampled_mem_feat_info_list = pickle.load(f)
     logger.info(f"len(sampled_mem_feat_info_list): {len(sampled_mem_feat_info_list)}")
     check_batch_set_num = check_batch_set
+    csv_save_path = os.path.join(save_folder, "sampled_mem_features.csv")
+    csv_file = open(csv_save_path, "w", newline="")
+    csv_writer = csv.writer(csv_file)
+    csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_label", "class_label_name", "feat_num"])
     for batch_set, sampled_mem_feat_info in enumerate(sampled_mem_feat_info_list):
          if batch_set == check_batch_set_num:
              p3_sampled_mem_info = sampled_mem_feat_info['p3']
@@ -294,6 +344,8 @@ def read_sampled_mem_feature_info_list(args, check_batch_set):
                             class_label: {class_label}, \
                             class_label_name: {class_label_name}, \
                             feat_num: {feat_num}")
+                csv_writer.writerow(["P3", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
+                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
              for i, p4 in enumerate(p4_sampled_mem_info):
                 det = p4[2]
                 if torch.all(det == 0):
@@ -313,6 +365,8 @@ def read_sampled_mem_feature_info_list(args, check_batch_set):
                             class_label: {class_label}, \
                             class_label_name: {class_label_name}, \
                             feat_num: {feat_num}")
+                csv_writer.writerow(["P4", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
+                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
              for i, p5 in enumerate(p5_sampled_mem_info):
                 det = p5[2]
                 if torch.all(det == 0):
@@ -332,15 +386,21 @@ def read_sampled_mem_feature_info_list(args, check_batch_set):
                             class_label: {class_label}, \
                             class_label_name: {class_label_name}, \
                             feat_num: {feat_num}")
+                csv_writer.writerow(["P5", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
+                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
              break
     return sampled_mem_feat_info
-def read_updated_feature_info_list(args,check_batch_set, check_batch_item):
+def read_updated_feature_info_list(args,check_batch_set, check_batch_item, save_folder):
     updated_feat_info_save_path = os.path.join(args.input_dir, "my_model_updated_feat_info.pkl")
     with open(updated_feat_info_save_path, "rb") as f:
             updated_feat_info_list = pickle.load(f)
     logger.info(f"len(updated_feat_info_list): {len(updated_feat_info_list)}")
     check_batch_set_num = check_batch_set
     check_batch_item_num = check_batch_item
+    csv_save_path = os.path.join(save_folder, "updated_features.csv")
+    csv_file = open(csv_save_path, "w", newline="")
+    csv_writer = csv.writer(csv_file)
+    csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_label", "class_label_name", "feat_num"])
     for batch_set, updated_feat_info_set in enumerate(updated_feat_info_list):
         if batch_set == check_batch_set_num:
             logger.info(f"Batch set {batch_set} - num batch items: {len(updated_feat_info_set)}")
@@ -368,6 +428,8 @@ def read_updated_feature_info_list(args,check_batch_set, check_batch_item):
                                  class_label: {class_label}, \
                                  class_label_name: {class_label_name}, \
                                  feat_num: {feat_num}")
+                     csv_writer.writerow(["P3", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
+                                          f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
                 for i, p4 in enumerate(p4_list):
                      if np.all(p4 == 0):
                          continue
@@ -386,6 +448,8 @@ def read_updated_feature_info_list(args,check_batch_set, check_batch_item):
                                  class_label: {class_label}, \
                                  class_label_name: {class_label_name}, \
                                  feat_num: {feat_num}")
+                     csv_writer.writerow(["P4", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
+                                              f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
                 for i, p5 in enumerate(p5_list):
                      if np.all(p5 == 0):
                          continue
@@ -404,6 +468,8 @@ def read_updated_feature_info_list(args,check_batch_set, check_batch_item):
                                  class_label: {class_label}, \
                                  class_label_name: {class_label_name}, \
                                  feat_num: {feat_num}")
+                     csv_writer.writerow(["P5", f"({int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])})",
+                                              f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", class_label, class_label_name, feat_num])
                 if batch_set == check_batch_set_num and batch_item == check_batch_item_num:
                     break
         if batch_set == check_batch_set_num:
@@ -670,6 +736,7 @@ def visualize_result_info_on_frame(args, result_info, frame_save_path):
                             cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (0, 0, 255), 2)
                             cv2.putText(frame, 'GT:' + label, (xmax-10, max(ymin - 4, 10)),
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+                            logger.info(f"    GT bbox: ({xmin}, {ymin}, {xmax}, {ymax}), label: {label}")
                     else:
                         logger.warning("GT xml not found: {}".format(xml_path))
                  cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
@@ -744,25 +811,25 @@ def main(exp, args):
         ref_frame_batch_set = read_ref_frame_list(args, args.lframe)
 
     batch_set, batch_item = find_batch_set_and_item_for_input_frame(ref_frame_batch_set, args.input_frame_name)
-    input_feat_info_item = read_input_feature_info_list(args, batch_set, batch_item)
+    input_feat_info_item = read_input_feature_info_list(args, batch_set, batch_item, save_folder)
 
     visualize_feature_info_on_frame(args, "Input", [input_feat_info_item], save_folder, exp)
 
     if batch_set == 0:
         logger.info(f"Batch set for input frame is 0, which may not have memory features.")
     else:
-        mem_feat_info = read_mem_feature_info_list(args, (batch_set-1))
+        mem_feat_info = read_mem_feature_info_list(args, (batch_set-1),save_folder)
         visualize_mem_info_on_frame(args, "Memory", mem_feat_info, save_folder, exp, ref_frame_batch_set)
-        sampled_mem_feat_info = read_sampled_mem_feature_info_list(args, (batch_set-1))
+        sampled_mem_feat_info = read_sampled_mem_feature_info_list(args, (batch_set-1),save_folder)
         visualize_mem_info_on_frame(args, "Sampled_Memory", sampled_mem_feat_info, save_folder, exp, ref_frame_batch_set)
 
-    updated_feat_info = read_updated_feature_info_list(args, batch_set, batch_item)
+    updated_feat_info = read_updated_feature_info_list(args, batch_set, batch_item, save_folder)
     visualize_feature_info_on_frame(args, "Updated", [updated_feat_info], save_folder, exp)
 
     result_info = read_result_info_list(args)
     visualize_result_info_on_frame(args,  [result_info], save_folder)
 
-    outputs_info = read_outputs_info_list(args, batch_set, batch_item)
+    outputs_info = read_outputs_info_list(args, batch_set, batch_item, save_folder)
     visualize_outputs_info_on_frame(args,  outputs_info, save_folder, exp, batch_set, batch_item)
 
 

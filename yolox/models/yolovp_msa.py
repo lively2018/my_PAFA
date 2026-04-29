@@ -584,7 +584,7 @@ class YOLOXHead(nn.Module):
             #half = len(pred_idx[1]) // 2
             #new_idx = [p[:half] for p in pred_idx]
             _, _, _, original_ref_pred_info = \
-                self.select_level_key_feature_in_reg_feature(original_reg_feat_flatten, pred_idx_original, pred_result_original)
+                self.select_level_key_feature_in_reg_feature_with_test_conf(original_reg_feat_flatten, pred_idx_original, pred_result_original, test_conf=0.001)
             self._original_ref_pred_info = original_ref_pred_info
             if first:
                 # reset all level memory banks
@@ -939,6 +939,65 @@ class YOLOXHead(nn.Module):
         # Pad each batch's detections to the same length and stack → [16, x, 36]
         return key_features_p3, key_features_p4, key_features_p5, pred_info
 
+    def select_level_key_feature_in_reg_feature_with_test_conf(self, reg_features, pred_idx, pred_results, test_conf):
+        key_features_p3 = []
+        key_features_p4 = []
+        key_features_p5 = []
+        pred_info = []  # per batch: [pred_info_p3, pred_info_p4, pred_info_p5], each pred_info_pX shape: [x_i, 36] — columns: [x1, y1, x2, y2, obj_score, cls_score, class_pred x num_classes]
+
+        #logger.info(f"reg_features.shape: {reg_features.shape} pred_idx length: {len(pred_idx)} pred_results length: {len(pred_results)}")
+        for i in range(reg_features.shape[0]):
+            #logger.info(f"Processing batch {i} for select_level_key_feature_in_reg_feature")
+            reg_feature = reg_features[i]
+            idx_list = pred_idx[i]
+            pred_result = pred_results[i]
+            conf_score_list = pred_result[:, 4] * pred_result[:, 5]
+            mask_idx = torch.nonzero(conf_score_list > test_conf, as_tuple=False).squeeze()
+            if mask_idx.ndim == 0:
+                mask_idx = mask_idx.unsqueeze(0)
+            #logger.info("conf_score_list masked > 0.01: {}".format(mask_idx))
+            mask_idx_list = idx_list[mask_idx]
+            #logger.info(" masked_idx_list: {}".format(mask_idx_list))
+            #logger.info(" idx_list: {}".format(idx_list))
+            p3_items = []
+            p4_items = []
+            p5_items = []
+            for j, idx in enumerate(mask_idx_list):
+                det = pred_result[mask_idx[j]]
+                info = torch.cat([det[[0, 1, 2, 3, 4, 5]], det[7: 7 + self.num_classes], idx.unsqueeze(0)])  # x1, y1, x2, y2, obj_score, cls_score, class_pred[num_classes], idx
+                if idx >= 0 and idx < 6400:
+                    key_features_p3.append(reg_feature[idx])
+                    p3_items.append(info)
+                elif idx >= 6400 and idx < 8000:
+                    key_features_p4.append(reg_feature[idx])
+                    p4_items.append(info)
+                else:
+                    key_features_p5.append(reg_feature[idx])
+                    p5_items.append(info)
+            if len(p3_items) == 0:
+                p3_items.append(torch.zeros(7 + self.num_classes))
+            if len(p4_items) == 0:
+                p4_items.append(torch.zeros(7 + self.num_classes))
+            if len(p5_items) == 0:
+                p5_items.append(torch.zeros(7 + self.num_classes))
+            pred_info.append([p3_items, p4_items, p5_items])
+            #logger.info(f"Batch {i} - len(p3_items): {len(p3_items)},\
+            #             len(p4_items): {len(p4_items)}, \
+            #                len(p5_items): {len(p5_items)}")
+            #for idx, items in enumerate(p3_items):
+            #    logger.info(f"Batch {i} - p3 item {idx} th - p3 item shape: {items.shape}")
+            #    logger.info(f"Batch {i} - p3 item {idx} th - p3 items: {int(items[36])}")
+            #for idx, items in enumerate(p4_items):
+            #    logger.info(f"Batch {i} - p4 item {idx} th - p4 item shape: {items.shape}")
+            #    logger.info(f"Batch {i} - p4 item {idx} th - p4 items: {int(items[36])}")
+            #for idx, items in enumerate(p5_items):
+            #    logger.info(f"Batch {i} - p5 item {idx} th - p5 item shape: {items.shape}")
+            #    logger.info(f"Batch {i} - p5 item {idx} th - p5 items: {int(items[36])}")
+        key_features_p3 = torch.stack(key_features_p3, dim=0) if key_features_p3 else torch.empty(0, 128)
+        key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128)
+        key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128)
+        # Pad each batch's detections to the same length and stack → [16, x, 36]
+        return key_features_p3, key_features_p4, key_features_p5, pred_info
     def get_losses(
             self,
             imgs,
