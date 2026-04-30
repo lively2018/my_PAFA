@@ -53,11 +53,18 @@ def postprocess(prediction, num_classes, fc_outputs,
             tmp_cls_score = fc_outputs[i].sigmoid()
         else:
             tmp_cls_score = fc_outputs[i]
+        #for j, det in enumerate(detections):
+        #    logger.info(f"  [pre-mask] batch_item {i}, proposal {j}: "
+        #                f"bbox=({int(det[0])},{int(det[1])},{int(det[2])},{int(det[3])}), "
+        #                f"obj={det[4]:.3f}, top1_cls_conf={det[5]:.3f}, top1_cls_pred={int(det[6])}, "
+        #                f"top1_conf={det[4]*det[5]:.3f}, "
+        #                f"cls_scores=[{', '.join(f'{v:.3f}' for v in tmp_cls_score[j].tolist())}]")
         cls_mask = tmp_cls_score >= conf_thre
         cls_loc = torch.where(cls_mask)
         scores = torch.gather(tmp_cls_score[cls_loc[0]],dim=-1,index=cls_loc[1].unsqueeze(1))#[:,cls_loc[1]]#tmp_cls_score[torch.stack(cls_loc).T]#torch.gather(tmp_cls_score, dim=1, index=torch.stack(cls_loc).T)
 
         detections[:, -num_classes:] = tmp_cls_score
+
         detections_raw = detections[:, :7]
         new_detetions = detections_raw[cls_loc[0]]
         new_detetions[:, -1] = cls_loc[1]
