@@ -455,9 +455,9 @@ def visualize_mem_info_on_frame(args, type_name, feat_info_list, frame_save_path
     p5_mem_info = feat_info_list['p5']
 
     csv_save_path = os.path.join(frame_save_path, f"{type_name}_features.csv")
-    with open(csv_save_path, mode='w', newline='') as csv_file:
-        csv_writer = csv.writer(csv_file)
-        csv_writer.writerow(['batch_set', 'batch_item', 'feature_level', 'bbox_x1', 'bbox_y1', 'bbox_x2', 'bbox_y2', 'obj_score', 'cls_score', 'conf_score', 'class_label', 'class_label_name', 'feat_num'])
+    csv_file = open(csv_save_path, mode='w', newline='')
+    csv_writer = csv.writer(csv_file)
+    csv_writer.writerow(['batch_set', 'batch_item', 'image_name', 'feature_level', 'bbox', 'obj_score', 'cls_score', 'conf_score', 'class_label', 'class_label_name', 'feat_num'])
 
     for i, p3 in enumerate(p3_mem_info):
          if torch.all(p3[2] == 0):
@@ -482,7 +482,9 @@ def visualize_mem_info_on_frame(args, type_name, feat_info_list, frame_save_path
          conf_score = cls_score * obj_score
          class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
          label_text = f"{class_label_name} {conf_score:.3f}"
-         logger.info(f"    p3 -{i}th batch_set: {p3[0]}, batch_item: {p3[1]}, bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
+         logger.info(f"    p3 -{i}th batch_set: {p3[0]}, batch_item: {p3[1]},\
+                     image_name: {input_frame_name}, \
+                     im bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                     obj_score: {obj_score:.3f}, \
                     cls_score: {cls_score:.3f}, \
                     conf_score: {conf_score:.3f}, \
@@ -495,7 +497,7 @@ def visualize_mem_info_on_frame(args, type_name, feat_info_list, frame_save_path
          cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
          logger.info(f"Saved visualized frame with p3 feature info: {os.path.join(frame_save_path, file_name)}")
          logger.info(f"Finished visualizing p3 feature info for {input_frame_path}")
-         csv_writer.writerow([p3[0], p3[1], 'P3', int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]), f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", \
+         csv_writer.writerow([p3[0], p3[1], input_frame_name, 'P3', f"[{int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}]", f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", \
                                f"{class_label}", f"{class_label_name}", f"{feat_num}"])
     for i, p4 in enumerate(p4_mem_info):
          if torch.all(p4[2] == 0):
@@ -519,7 +521,9 @@ def visualize_mem_info_on_frame(args, type_name, feat_info_list, frame_save_path
          conf_score = cls_score * obj_score
          class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
          label_text = f"{class_label_name} {conf_score:.3f}"
-         logger.info(f"    p4 -{i}th batch_set: {p4[0]}, batch_item: {p4[1]}, bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
+         logger.info(f"    p4 -{i}th batch_set: {p4[0]}, batch_item: {p4[1]}, \
+                     image_name: {input_frame_name}, \
+                     bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                     obj_score: {obj_score:.3f}, \
                     cls_score: {cls_score:.3f}, \
                     conf_score: {conf_score:.3f}, \
@@ -530,7 +534,7 @@ def visualize_mem_info_on_frame(args, type_name, feat_info_list, frame_save_path
          cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
          file_name = input_frame_name + f'_{type_name}_P4_{i}.JPEG'
          cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
-         csv_writer.writerow([p4[0], p4[1], 'P4', int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]), f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", \
+         csv_writer.writerow([p4[0], p4[1], input_frame_name, 'P4', f"[{int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}]", f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", \
                                f"{class_label}", f"{class_label_name}", f"{feat_num}"])
 
     for i, p5 in enumerate(p5_mem_info):
@@ -555,7 +559,9 @@ def visualize_mem_info_on_frame(args, type_name, feat_info_list, frame_save_path
          conf_score = cls_score * obj_score
          class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
          label_text = f"{class_label_name} {conf_score:.3f}"
-         logger.info(f"    p5 -{i}th batch_set: {p5[0]}, batch_item: {p5[1]}, bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
+         logger.info(f"    p5 -{i}th batch_set: {p5[0]}, batch_item: {p5[1]}, \
+                     image_name: {input_frame_name}, \
+                     bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                     obj_score: {obj_score:.3f}, \
                     cls_score: {cls_score:.3f}, \
                     conf_score: {conf_score:.3f}, \
@@ -566,7 +572,7 @@ def visualize_mem_info_on_frame(args, type_name, feat_info_list, frame_save_path
          cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
          file_name = input_frame_name + f'_{type_name}_P5_{i}.JPEG'
          cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
-         csv_writer.writerow([p5[0], p5[1], 'P5', int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3]), f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", \
+         csv_writer.writerow([p5[0], p5[1], input_frame_name, 'P5', f"[{int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}]", f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.3f}", \
                                f"{class_label}", f"{class_label_name}", f"{feat_num}"])
     csv_file.close()
     logger.info(f"Finished visualizing mem feature info and saved to: {frame_save_path}")
