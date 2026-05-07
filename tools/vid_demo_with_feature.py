@@ -244,6 +244,7 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
     sampled_mem_feat_info_list = []
     input_feat_info_list = []
     outputs_info_list = []
+    aggregated_selected_feat_info_list = []
     first_frame = True
     for ele_id,ele in enumerate(res):
         if ele == []: continue
@@ -274,6 +275,8 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
         updated_feat_info_list.append([[[t.cpu().numpy() for t in pX] for pX in batch_item] for batch_item in ref_pred_info])
         outputs_info = head._outputs_info  # Get the outputs info from the head
         logger.info(f"After inference of set {ele_id}, got outputs_info with length: {len(outputs_info)}")
+        aggregated_selected_feat_info = head._aggregated_selected_feat_info  # Get the aggregated selected feature info from the head
+        aggregated_selected_feat_info_list.append([[[t.cpu().numpy() for t in pX] for pX in batch_item] for batch_item in aggregated_selected_feat_info])
         def _to_np(v):
             return v.cpu().numpy() if isinstance(v, torch.Tensor) else v
         converted_outputs_info = []
@@ -402,7 +405,10 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
         with open(outputs_info_save_path, "wb") as f:
             pickle.dump(outputs_info_list, f)
         logger.info("Saving detection prediction outputs info in {}".format(outputs_info_save_path))
-
+        aggregated_selected_feat_info_save_path = os.path.join(img_save_path, "my_model_agg_feat_info.pkl")
+        with open(aggregated_selected_feat_info_save_path, "wb") as f:
+            pickle.dump(aggregated_selected_feat_info_list, f)
+        logger.info("Saving detection prediction aggregated selected feature info in {}".format(aggregated_selected_feat_info_save_path))
 def imageflow_demo(predictor, vis_folder, current_time, args,exp):
     gframe = exp.gframe_val
     lframe = exp.lframe_val

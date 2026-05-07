@@ -53,6 +53,19 @@ def make_parser():
     parser.add_argument('--save_result_with_gt', default=False)
     return parser
 
+def find_batch_set_and_item_for_input_frame(ref_frame_batch_set, input_frame_name):
+    #logger.info(f"Finding batch set and item for input frame: {input_frame_name}")
+    for batch_set_idx, ref_frame_batch in enumerate(ref_frame_batch_set):
+        for batch_item_idx, ref_frame in enumerate(ref_frame_batch):
+            #logger.info(f"Checking batch set {batch_set_idx}, batch item {batch_item_idx}, ref frame: {ref_frame}")
+            ref_frame_name = os.path.basename(ref_frame)
+            #logger.info(f"Extracted ref frame name: {ref_frame_name}")
+            if ref_frame_name == input_frame_name:
+                logger.info(f"Found input frame {input_frame_name} in batch set {batch_set_idx}, batch item {batch_item_idx}")
+                return batch_set_idx, batch_item_idx
+    logger.warning(f"Input frame {input_frame_name} not found in any batch set or batch item")
+    return None, None
+
 def read_ref_frame_list(args, n_frames):
     ref_frame_list_path = os.path.join(args.input_dir, "my_model_ref_frame_list.npy")
     ref_frame_list = np.load(ref_frame_list_path, allow_pickle=True)
@@ -417,19 +430,82 @@ def read_updated_feature_info_list(args,check_batch_set, check_batch_item, save_
         if batch_set == check_batch_set_num:
             break
     return updated_feat_info_item
+def read_agg_feature_info_list(args, check_batch_set, check_batch_item, save_folder):
+    agg_feat_info_save_path = os.path.join(args.input_dir, "my_model_agg_feat_info.pkl")
+    with open(agg_feat_info_save_path, "rb") as f:
+            agg_feat_info_list = pickle.load(f)
+    logger.info(f"len(agg_feat_info_list): {len(agg_feat_info_list)}")
+    check_batch_set_num = check_batch_set
+    check_batch_item_num = check_batch_item
 
-def find_batch_set_and_item_for_input_frame(ref_frame_batch_set, input_frame_name):
-    #logger.info(f"Finding batch set and item for input frame: {input_frame_name}")
-    for batch_set_idx, ref_frame_batch in enumerate(ref_frame_batch_set):
-        for batch_item_idx, ref_frame in enumerate(ref_frame_batch):
-            #logger.info(f"Checking batch set {batch_set_idx}, batch item {batch_item_idx}, ref frame: {ref_frame}")
-            ref_frame_name = os.path.basename(ref_frame)
-            #logger.info(f"Extracted ref frame name: {ref_frame_name}")
-            if ref_frame_name == input_frame_name:
-                logger.info(f"Found input frame {input_frame_name} in batch set {batch_set_idx}, batch item {batch_item_idx}")
-                return batch_set_idx, batch_item_idx
-    logger.warning(f"Input frame {input_frame_name} not found in any batch set or batch item")
-    return None, None
+    for batch_set, agg_feat_info_set in enumerate(agg_feat_info_list):
+        if batch_set == check_batch_set_num:
+            logger.info(f"Batch set {batch_set} - num batch items: {len(agg_feat_info_set)}")
+        for batch_item, agg_feat_info_item in enumerate(agg_feat_info_set):
+            if batch_set == check_batch_set_num and batch_item == check_batch_item_num:
+                logger.info(f"  Batch item {batch_item} - num features: {len(agg_feat_info_item)}")
+                p3_list, p4_list, p5_list = agg_feat_info_item
+                logger.info(f"  Batch item {batch_item} - p3: {len(p3_list)} items,\
+                             p4: {len(p4_list)} items, p5: {len(p5_list)} items")
+                for i, p3 in enumerate(p3_list):
+                     if np.all(p3 == 0):
+                         continue
+                     bbox = p3[:4]
+                     obj_score = p3[4]
+                     cls_score = p3[5]
+                     class_pred = p3[6: 6 + len(VID_classes)]
+                     class_label = int(np.argmax(class_pred))
+                     feat_num = int(p3[6 + len(VID_classes)])
+                     conf_score = cls_score * obj_score
+                     class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
+                     logger.info(f"    p3 -{i}th batch_set: {batch_set}, batch_item: {batch_item}, bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
+                                 obj_score: {obj_score:.3f}, \
+                                 cls_score: {cls_score:.3f}, \
+                                 conf_score: {conf_score:.3f}, \
+                                 class_label: {class_label}, \
+                                 class_label_name: {class_label_name}, \
+                                 feat_num: {feat_num}")
+                for i, p4 in enumerate(p4_list):
+                     if np.all(p4 == 0):
+                         continue
+                     bbox = p4[:4]
+                     obj_score = p4[4]
+                     cls_score = p4[5]
+                     class_pred = p4[6: 6 + len(VID_classes)]
+                     class_label = int(np.argmax(class_pred))
+                     feat_num = int(p4[6 + len(VID_classes)])
+                     conf_score = cls_score * obj_score
+                     class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
+                     logger.info(f"    p4 -{i}th batch_set: {batch_set}, batch_item: {batch_item}, bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
+                                 obj_score: {obj_score:.3f}, \
+                                 cls_score: {cls_score:.3f}, \
+                                 conf_score: {conf_score:.3f}, \
+                                 class_label: {class_label}, \
+                                 class_label_name: {class_label_name}, \
+                                 feat_num: {feat_num}")
+                for i, p5 in enumerate(p5_list):
+                     if np.all(p5 == 0):
+                         continue
+                     bbox = p5[:4]
+                     obj_score = p5[4]
+                     cls_score = p5[5]
+                     class_pred = p5[6: 6 + len(VID_classes)]
+                     class_label = int(np.argmax(class_pred))
+                     feat_num = int(p5[6 + len(VID_classes)])
+                     conf_score = cls_score * obj_score
+                     class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
+                     logger.info(f"    p5 -{i}th batch_set: {batch_set}, batch_item: {batch_item}, bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
+                                 obj_score: {obj_score:.3f}, \
+                                 cls_score: {cls_score:.3f}, \
+                                 conf_score: {conf_score:.3f}, \
+                                 class_label: {class_label}, \
+                                 class_label_name: {class_label_name}, \
+                                 feat_num: {feat_num}")
+                if batch_set == check_batch_set_num and batch_item == check_batch_item_num:
+                    break
+        if batch_set == check_batch_set_num:
+            break
+    return agg_feat_info_item
 def read_result_info_list(args):
     result_info_save_path = os.path.join(args.input_dir, "my_model_result_info.pkl")
     logger.info(f'Reading result info from: {result_info_save_path}')
@@ -823,6 +899,8 @@ def main(exp, args):
 
     updated_feat_info = read_updated_feature_info_list(args, batch_set, batch_item, save_folder)
     visualize_feature_info_on_frame(args, "Updated", [updated_feat_info], save_folder, exp)
+    agg_feat_info = read_agg_feature_info_list(args, batch_set, batch_item, save_folder)
+    visualize_feature_info_on_frame(args, "Agg", [agg_feat_info], save_folder, exp)
 
     result_info = read_result_info_list(args)
     visualize_result_info_on_frame(args,  [result_info], save_folder)

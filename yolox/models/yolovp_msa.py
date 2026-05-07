@@ -235,6 +235,7 @@ class YOLOXHead(nn.Module):
         self.memory_result = MemoryResult(max_length=4800)
         self._outputs_info = None
         self._memory_result_info = None
+        self._aggregated_selected_feat_info = None
 
     def initialize_biases(self, prior_prob):
         for conv in self.cls_preds:
@@ -550,11 +551,7 @@ class YOLOXHead(nn.Module):
                                                      topK=self.Afternum,
                                                      ota_idxs=ota_idxs,
                                                      )
-        pred_result_original, pred_idx_original = self.postpro_woclass(original_decode_res, num_classes=self.num_classes,
-                                                                      nms_thre=self.nms_thresh,
-                                                                      topK=self.Afternum,
-                                                                      ota_idxs=ota_idxs,
-                                                                      )
+        pred_result_original, pred_idx_original = self.postpro_orig_woclass(original_decode_res, num_classes=self.num_classes, topK=750)
         #kssong
         #pred_result_file = open('./pred_result.txt', 'a')
         #pred_result_file.write(f'{len(pred_result), pred_result[0].shape}\n')
@@ -586,6 +583,8 @@ class YOLOXHead(nn.Module):
             _, _, _, original_ref_pred_info = \
                 self.select_level_key_feature_in_reg_feature_with_test_conf(original_reg_feat_flatten, pred_idx_original, pred_result_original, test_conf=0.001)
             self._original_ref_pred_info = original_ref_pred_info
+            _,_,_, self._aggregated_selected_feat_info = \
+                self.select_level_key_feature_in_reg_feature_with_test_conf(reg_feat_flatten, pred_idx, pred_result, test_conf=0.001)
             if first:
                 # reset all level memory banks
                 self.aggregator.reset_memory_bank(0)
@@ -1533,6 +1532,51 @@ class YOLOXHead(nn.Module):
             topk_idx = sort_idx[nms_out_index[:self.topK]]
             output[i] = detections[topk_idx, :]
             output_index[i] = topk_idx
+
+        return output, output_index
+
+    def postpro_orig_woclass(self, prediction, num_classes,  topK=750):
+        # find topK predictions, play the same role as RPN
+        '''
+
+        Args:
+            prediction: [batch,feature_num,5+clsnum]
+            num_classes:
+            conf_thre:
+            conf_thre_high:
+            nms_thre:
+
+        Returns:
+            [batch,topK,5+clsnum]
+        '''
+
+        box_corner = prediction.new(prediction.shape)
+        box_corner[:, :, 0] = prediction[:, :, 0] - prediction[:, :, 2] / 2
+        box_corner[:, :, 1] = prediction[:, :, 1] - prediction[:, :, 3] / 2
+        box_corner[:, :, 2] = prediction[:, :, 0] + prediction[:, :, 2] / 2
+        box_corner[:, :, 3] = prediction[:, :, 1] + prediction[:, :, 3] / 2
+        prediction[:, :, :4] = box_corner[:, :, :4]
+
+        output = [None for _ in range(len(prediction))]
+        output_index = [None for _ in range(len(prediction))]
+
+        for i, image_pred in enumerate(prediction):
+            #take ota idxs as output in training mode
+
+            if not image_pred.size(0):
+                continue
+            # Get score and class with highest confidence
+            class_conf, class_pred = torch.max(image_pred[:, 5: 5 + num_classes], 1, keepdim=True)
+
+            # Detections ordered as (x1, y1, x2, y2, obj_conf, class_conf, class_pred)
+            detections = torch.cat(
+                (image_pred[:, :5], class_conf, class_pred.float(), image_pred[:, 5: 5 + num_classes]), 1)
+
+            conf_score = image_pred[:, 4]
+            top_pre = torch.topk(conf_score, k=topK)
+            sort_idx = top_pre.indices
+            output[i] = detections[sort_idx, :]
+            output_index[i] = sort_idx
 
         return output, output_index
 
