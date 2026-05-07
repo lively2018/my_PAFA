@@ -598,6 +598,8 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
                      continue
                  frame = cv2.imread(input_frame_path)
                  bbox = p3[:4] / ratio
+                 bbox[[0, 2]] = np.clip(bbox[[0, 2]], a_min=0, a_max=None)  # clip x1, x2
+                 bbox[[1, 3]] = np.clip(bbox[[1, 3]], a_min=0, a_max=None)  # clip y1, y2
                  obj_score = p3[4]
                  cls_score = p3[5]
                  class_pred = p3[6: 6+len(VID_classes)]
@@ -606,7 +608,7 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
                  conf_score = cls_score * obj_score
                  class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
                  label_text = f"{class_label_name} {conf_score:.3f}"
-                 logger.info(f"    p3 -{i}th  bbox: ({int(p3[0])}, {int(p3[1])}, {int(p3[2])}, {int(p3[3])}), \
+                 logger.info(f"    p3 -{i}th  bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                             obj_score: {obj_score:.3f}, \
                             cls_score: {cls_score:.3f}, \
                             conf_score: {conf_score:.3f}, \
@@ -626,6 +628,8 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
                      continue
                  frame = cv2.imread(input_frame_path)
                  bbox = p4[:4] / ratio
+                 bbox[[0, 2]] = np.clip(bbox[[0, 2]], a_min=0, a_max=None)  # clip x1, x2
+                 bbox[[1, 3]] = np.clip(bbox[[1, 3]], a_min=0, a_max=None)  # clip y1, y2
                  obj_score = p4[4]
                  cls_score = p4[5]
                  class_pred = p4[6: 6 + len(VID_classes)]
@@ -638,7 +642,7 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
                  cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                  file_name = args.input_frame_name + f'_{type_name}_P4_{i}.JPEG'
                  cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
-                 logger.info(f"    p4 -{i}th  bbox: ({int(p4[0])}, {int(p4[1])}, {int(p4[2])}, {int(p4[3])}), \
+                 logger.info(f"    p4 -{i}th  bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                             obj_score: {obj_score:.3f}, \
                             cls_score: {cls_score:.3f}, \
                             conf_score: {conf_score:.3f}, \
@@ -654,6 +658,8 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
                      continue
                  frame = cv2.imread(input_frame_path)
                  bbox = p5[:4] / ratio
+                 bbox[[0, 2]] = np.clip(bbox[[0, 2]], a_min=0, a_max=None)  # clip x1, x2
+                 bbox[[1, 3]] = np.clip(bbox[[1, 3]], a_min=0, a_max=None)  # clip y1, y2
                  obj_score = p5[4]
                  cls_score = p5[5]
                  class_pred = p5[6: 6+len(VID_classes)]
@@ -666,7 +672,7 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
                  cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                  file_name = args.input_frame_name + f'_{type_name}_P5_{i}.JPEG'
                  cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
-                 logger.info(f"    p5 -{i}th bbox: ({int(p5[0])}, {int(p5[1])}, {int(p5[2])}, {int(p5[3])}), \
+                 logger.info(f"    p5 -{i}th bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                                 obj_score: {obj_score:.3f}, \
                                 cls_score: {cls_score:.3f}, \
                                 conf_score: {conf_score:.3f}, \
@@ -728,14 +734,15 @@ def visualize_outputs_info_on_frame(args, outputs_info, frame_save_path, exp=Non
     csv_file = open(csv_save_path, "w", newline="")
     csv_writer = csv.writer(csv_file)
     csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_label", "class_label_name", "feat_num"])
-
+    height, width = frame.shape[:2]
+    if exp is not None:
+        ratio = min(exp.test_size[0] / height, exp.test_size[1] / width)
+    else:
+        ratio = 1.0
+    logger.info(f"height: {height}, width: {width}, ratio: {ratio}")
     for i, output_info in enumerate(outputs_info):
         frame = cv2.imread(input_frame_path)
-        height, width = frame.shape[:2]
-        if exp is not None:
-            ratio = min(exp.test_size[0] / height, exp.test_size[1] / width)
-        else:
-            ratio = 1.0
+
         logger.info(f"    output_info -{i}th - len: {len(output_info)}")
         logger.info(f"    output_info -{i}th - content: {output_info}")
         batch_set_output = output_info[0]
@@ -743,7 +750,9 @@ def visualize_outputs_info_on_frame(args, outputs_info, frame_save_path, exp=Non
         if batch_set_output != batch_set or batch_item_output != batch_item:
             logger.info(f"Skipping output info -{i}th because batch_set_output: {batch_set_output}, batch_item_output: {batch_item_output} do not match input frame's batch_set: {batch_set}, batch_item: {batch_item}")
             continue
-        bbox = [v / ratio for v in output_info[2:6]]
+        bbox = np.array([v / ratio for v in output_info[2:6]])
+        bbox[[0, 2]] = np.clip(bbox[[0, 2]], a_min=0, a_max=None)  # clip x1, x2
+        bbox[[1, 3]] = np.clip(bbox[[1, 3]], a_min=0, a_max=None)  # clip y1, y2
         obj_score = float(output_info[6])
         cls_score = float(output_info[7])
         class_label = int(output_info[8])
