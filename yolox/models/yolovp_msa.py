@@ -551,7 +551,7 @@ class YOLOXHead(nn.Module):
                                                      topK=self.Afternum,
                                                      ota_idxs=ota_idxs,
                                                      )
-        pred_result_original, pred_idx_original = self.postpro_orig_woclass(original_decode_res, num_classes=self.num_classes, topK=750)
+        pred_result_original, pred_idx_original = self.postpro_orig_woclass(original_decode_res, num_classes=self.num_classes, topK=1000)
         #kssong
         #pred_result_file = open('./pred_result.txt', 'a')
         #pred_result_file.write(f'{len(pred_result), pred_result[0].shape}\n')
@@ -581,10 +581,10 @@ class YOLOXHead(nn.Module):
             #half = len(pred_idx[1]) // 2
             #new_idx = [p[:half] for p in pred_idx]
             _, _, _, original_ref_pred_info = \
-                self.select_level_key_feature_in_reg_feature_with_test_conf(original_reg_feat_flatten, pred_idx_original, pred_result_original, test_conf=0.001)
+                self.select_level_key_feature_in_reg_feature_with_test_conf(original_reg_feat_flatten, pred_idx_original, pred_result_original, test_conf=0.0001)
             self._original_ref_pred_info = original_ref_pred_info
             _,_,_, self._aggregated_selected_feat_info = \
-                self.select_level_key_feature_in_reg_feature_with_test_conf(reg_feat_flatten, pred_idx, pred_result, test_conf=0.001)
+                self.select_level_key_feature_in_reg_feature_with_test_conf(reg_feat_flatten, pred_idx, pred_result, test_conf=0.0001)
             if first:
                 # reset all level memory banks
                 self.aggregator.reset_memory_bank(0)
@@ -1535,7 +1535,7 @@ class YOLOXHead(nn.Module):
 
         return output, output_index
 
-    def postpro_orig_woclass(self, prediction, num_classes,  topK=750):
+    def postpro_orig_woclass(self, prediction, num_classes,  topK=1000):
         # find topK predictions, play the same role as RPN
         '''
 
