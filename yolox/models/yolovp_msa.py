@@ -261,12 +261,11 @@ class YOLOXHead(nn.Module):
         expanded_strides = []
         before_nms_features = []
         before_nms_regf = []
-
         batch_size = len(imgs)
-        if batch_size == 16 or batch_size == 32:
-            need_aggregation = True
-        else:
+        if not self.training and imgs.shape[0] == 1:
             need_aggregation = False
+        else:
+            need_aggregation = True
         #kssong
         #reg_output_list = []
 
@@ -371,7 +370,7 @@ class YOLOXHead(nn.Module):
             x = self.stems[k](x)
             reg_feat = reg_conv(x)
             cls_feat = cls_conv(x)
-            cls_feat2 = cls_conv2(x)            
+            cls_feat2 = cls_conv2(x)
             reg_feat_list.append(reg_feat)
             cls_feat_list.append(cls_feat)
             cls_feat2_list.append(cls_feat2)
@@ -388,7 +387,7 @@ class YOLOXHead(nn.Module):
                             candidates = [j for j in range(batch_size) if j != i]
                             ref_idx = random.choice(candidates)
                             ref_feat1 = ref_feature_reg[ref_idx][k]
-                            ref_feat2 = ref_feature_reg[i][k]                   
+                            ref_feat2 = ref_feature_reg[i][k]
                             if len(ref_feat1) != 0 and len(ref_feat2) != 0:
                                 ref_feats = torch.cat((ref_feat1 + ref_feat2), dim=0)
                                 channel, height, width = reg_one.shape
@@ -543,7 +542,7 @@ class YOLOXHead(nn.Module):
                 self.aggregator.update_memory_bank(key_features_p3, 0)
                 self.aggregator.update_memory_bank(key_features_p4, 1)
                 self.aggregator.update_memory_bank(key_features_p5, 2)
-        
+
         (features_cls, features_reg, cls_scores,
          fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
                                                                 pred_idx,
@@ -559,7 +558,7 @@ class YOLOXHead(nn.Module):
 
         features_reg = features_reg.unsqueeze(0)
         features_cls = features_cls.unsqueeze(0)  # [1,features,channels]
-        
+
         if not self.training:
             cls_scores = cls_scores.to(cls_feat_flatten.dtype)
             fg_scores = fg_scores.to(cls_feat_flatten.dtype)
@@ -691,7 +690,7 @@ class YOLOXHead(nn.Module):
 
     def select_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results):
         key_features_list = []
-        
+
         for i in range(reg_features.shape[0]):
             reg_feature = reg_features[i]
             if reg_features is None:
@@ -712,21 +711,21 @@ class YOLOXHead(nn.Module):
             key_features_p4 = []
             key_features_p5 = []
             for idx in mask_idx_list:
-                
+
                 if idx >= 0 and idx < 6400:
                     key_features_p3.append(reg_feature[idx].unsqueeze(0))
                 elif idx >= 6400 and idx < 8000:
                     key_features_p4.append(reg_feature[idx].unsqueeze(0))
                 else:
-                    key_features_p5.append(reg_feature[idx].unsqueeze(0))            
- 
+                    key_features_p5.append(reg_feature[idx].unsqueeze(0))
+
             if len(key_features_p3) == 0:
                 "key_feature_p3 is empty"
             if len(key_features_p4) == 0:
                 "key_feature_p4 is empty"
             if len(key_features_p5) ==0:
                 "key_feature_p5 is empty"
-            
+
             key_features =[key_features_p3, key_features_p4, key_features_p5]
             key_features_list.append(key_features)
         return key_features_list
@@ -737,7 +736,7 @@ class YOLOXHead(nn.Module):
         key_features_p5 = []
         for i in range(reg_features.shape[0]):
             reg_feature = reg_features[i]
-            idx_list = pred_idx[i]         
+            idx_list = pred_idx[i]
             pred_result = pred_results[i]
             conf_score_list = pred_result[:, 4] * pred_result[:, 5]
             mask_idx = torch.nonzero(conf_score_list > self.m_conf, as_tuple=False).squeeze()
