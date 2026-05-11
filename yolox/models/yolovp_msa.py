@@ -413,10 +413,13 @@ class YOLOXHead(nn.Module):
                             channel, height, width = reg_one.shape
                             reg_one = reg_one.reshape(-1, channel)
                             #logger.info(f"reg_one.shape: {reg_one.shape}")
-                            agg_feat = reg_one + self.aggregator(reg_one, None, k)
-                            agg_feat = self.inplace_false_relu(agg_feat)
-                            #logger.info(f"agg_feat.shape: {agg_feat.shape}")
-                            agg_feat = agg_feat.reshape(channel, height, width)
+                            agg_result = self.aggregator(reg_one, None, k)
+                            if agg_result is not None:
+                                agg_feat = reg_one + agg_result
+                                agg_feat = self.inplace_false_relu(agg_feat)
+                                agg_feat = agg_feat.reshape(channel, height, width)
+                            else:
+                                agg_feat = reg_one.reshape(channel, height, width)
                         else:
                             agg_feat = reg_one
                     #logger.info(f"agg_feat.shape: {agg_feat.shape}")

@@ -55,6 +55,9 @@ class MemoryBank(nn.Module):
 
 
         #self.feat = reshaped_feat
+        if self.max_length <= 0:
+            self.feat = None
+            return 0, 0
         if len(feat) >= self.max_length:
             self.feat = feat[:self.max_length].detach().clone().to('cuda')
             update_length = self.max_length
@@ -90,6 +93,8 @@ class MemoryBank(nn.Module):
             #self.feat = new_feat
             #return
         #print(f"Before update: {torch.cuda.memory_allocated()} / {torch.cuda.memory_reserved()}")
+        if self.max_length <= 0:
+            return 0, 0
         new_feat = new_feat.to('cuda')
         update_length = 0
         if self.feat is None:
