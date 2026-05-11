@@ -3,10 +3,10 @@ import torch
 import torchvision
 import random
 import time
-from yolox.utils import bboxes_iou
+from loguru import logger
 def postprocess(prediction, num_classes, fc_outputs,
                 conf_output, conf_thre=0.001, nms_thre=0.5,
-                cls_sig=True,return_idx=False):
+                cls_sig=True, return_idx=False, score_thre=None):
     output = [None for _ in range(len(prediction))]
     output_ori = [None for _ in range(len(prediction))]
     prediction_ori = copy.deepcopy(prediction)
@@ -57,6 +57,9 @@ def postprocess(prediction, num_classes, fc_outputs,
         )
 
         detections_high = detections_high[nms_out_index]
+        if score_thre is not None:
+            score_mask = detections_high[:, 4] * detections_high[:, 5] >= score_thre
+            detections_high = detections_high[score_mask]
         output[i] = detections_high
         detections_ori = detections_ori[:, :7]
         conf_mask = detections_ori[:, 4] * detections_ori[:, 5] >= conf_thre

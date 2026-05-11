@@ -109,6 +109,7 @@ def make_parser():
     parser.add_argument('--nms', default=0.5, type=float,help='final nms threshold')
     parser.add_argument('--m_conf', default=0, type=float,help='select reference features minimum conf score')
     parser.add_argument('--t_conf', default=0, type=float,help='set test confidence score')
+    parser.add_argument('--deploy_conf', default=0.001, type=float, help='set deployment confidence score')
     return parser
 
 
@@ -133,6 +134,8 @@ def main(exp, args):
     exp.vid_val_path = args.path
     exp.m_conf = args.m_conf
     exp.test_conf = args.t_conf
+    exp.deploy_conf = args.deploy_conf  # always None for mAP evaluation; use deploy_conf only in demo
+    logger.info(f"test_conf: {args.t_conf}, m_conf: {args.m_conf}, deploy_conf: {exp.deploy_conf}")
 #    dataset_val = vid.VIDDataset(file_path='./yolox/data/datasets/val_seq.npy',
 #                                 img_size=(args.tsize, args.tsize), preproc=Vid_Val_Transform(), lframe=lframe,
 #                                 gframe=gframe, val=True,mode=args.mode,dataset_pth=exp.data_dir,tnum=int(args.tnum),

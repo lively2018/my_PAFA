@@ -47,6 +47,7 @@ class YOLOXHead(nn.Module):
             ave=True,
             defulat_pre=750,
             test_conf=0.001,
+            deploy_conf=None,
             use_mask=False,
             gmode=True,
             lmode=False,
@@ -221,6 +222,8 @@ class YOLOXHead(nn.Module):
         self.inplace_false_relu = nn.ReLU(inplace=False)
         self.m_conf = m_conf
         self.test_conf = test_conf
+        self.deploy_conf = deploy_conf
+        logger.info(f"YOLOXHead initialized with m_conf: {self.m_conf}, test_conf: {self.test_conf}, deploy_conf: {self.deploy_conf}")
 
 
     def initialize_biases(self, prior_prob):
@@ -626,9 +629,10 @@ class YOLOXHead(nn.Module):
             result, result_ori = postprocess(copy.deepcopy(pred_result),
                                              self.num_classes,
                                              fc_output,
-                                             conf_output = conf_output,
+                                             conf_output=conf_output,
                                              conf_thre=self.test_conf,
                                              nms_thre=nms_thresh,
+                                             score_thre=self.deploy_conf,
                                              )
             return result, result_ori  # result
 
