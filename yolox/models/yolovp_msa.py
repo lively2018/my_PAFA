@@ -414,6 +414,13 @@ class YOLOXHead(nn.Module):
         else:
             ota_idxs = None
 
+        if need_aggregation:
+            pred_idx_p3, pred_idx_p4, pred_idx_p5 = self.postpro_input_n(decode_res, num_classes=self.num_classes,
+                                                    nms_thre=self.nms_thresh,
+                                                    topK=self.Afternum,
+                                                    ota_idxs=ota_idxs,
+                                                    )
+
         pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
                                                     nms_thre=self.nms_thresh,
                                                     topK=self.Afternum,
@@ -428,12 +435,8 @@ class YOLOXHead(nn.Module):
         agg_outputs_decode = []
         agg_origin_preds = []
         agg_before_nms_regf = []
+
         if need_aggregation:
-            pred_idx_p3, pred_idx_p4, pred_idx_p5 = self.postpro_input_n(decode_res, num_classes=self.num_classes,
-                                                    nms_thre=self.nms_thresh,
-                                                    topK=self.Afternum,
-                                                    ota_idxs=ota_idxs,
-                                                    )
             reg_feat_flatten = torch.cat(
                 [x.flatten(start_dim=2) for x in before_nms_regf], dim=2
                 ).permute(0, 2, 1)
@@ -551,9 +554,9 @@ class YOLOXHead(nn.Module):
                 agg_outputs_decode.append(output_decode)
             self.hw = [x.shape[-2:] for x in agg_outputs_decode]
 
-            outputs_decode = torch.cat([x.flatten(start_dim=2) for x in agg_outputs_decode], dim=2
+            agg_outputs_decode = torch.cat([x.flatten(start_dim=2) for x in agg_outputs_decode], dim=2
                                 ).permute(0, 2, 1)
-            decode_res = self.decode_outputs(outputs_decode, dtype=xin[0].type())
+            agg_decode_res = self.decode_outputs(agg_outputs_decode, dtype=xin[0].type())
 
             if self.kwargs.get('ota_mode',False) and self.training:
                 ota_idxs,reg_targets = self.get_fg_idx( imgs,
@@ -565,17 +568,17 @@ class YOLOXHead(nn.Module):
             else:
                 ota_idxs = None
 
-            reg_feat_flatten = torch.cat(
+            agg_reg_feat_flatten = torch.cat(
                 [x.flatten(start_dim=2) for x in agg_before_nms_regf], dim=2
                 ).permute(0, 2, 1)
-            pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
+            agg_pred_result, agg_pred_idx = self.postpro_woclass(agg_decode_res, num_classes=self.num_classes,
                                                     nms_thre=self.nms_thresh,
                                                     topK=self.Afternum,
                                                     ota_idxs=ota_idxs,
                                                     )
         else:
 
-            reg_feat_flatten = torch.cat(
+            agg_reg_feat_flatten = torch.cat(
                 [x.flatten(start_dim=2) for x in before_nms_regf], dim=2
                 ).permute(0, 2, 1)
 
@@ -585,10 +588,10 @@ class YOLOXHead(nn.Module):
 
         (features_cls, features_reg, cls_scores,
             fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
-                                                                pred_idx,
-                                                                reg_feat_flatten,
+                                                                agg_pred_idx,
+                                                                agg_reg_feat_flatten,
                                                                 imgs,
-                                                                pred_result)
+                                                                agg_pred_result)
 
 
         #kssong
