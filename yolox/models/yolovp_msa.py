@@ -578,21 +578,31 @@ class YOLOXHead(nn.Module):
                                                     )
         else:
 
-            agg_reg_feat_flatten = torch.cat(
+            reg_feat_flatten = torch.cat(
                 [x.flatten(start_dim=2) for x in before_nms_regf], dim=2
                 ).permute(0, 2, 1)
 
         if not self.training and imgs.shape[0] == 1:
             return self.postprocess_single_img(pred_result, self.num_classes)
 
-
-        (features_cls, features_reg, cls_scores,
+        if need_aggregation:
+            (features_cls, features_reg, cls_scores,
             fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
                                                                 agg_pred_idx,
                                                                 agg_reg_feat_flatten,
                                                                 imgs,
                                                                 agg_pred_result)
+        else:
+            (features_cls, features_reg, cls_scores,
+             fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
+                                                                pred_idx,
+                                                                reg_feat_flatten,
+                                                                imgs,
+                                                                pred_result)
 
+        if need_aggregation:
+            pred_idx = agg_pred_idx
+            pred_result = agg_pred_result
 
         #kssong
         #features_reg_file = open('./features_reg.txt', 'a')
