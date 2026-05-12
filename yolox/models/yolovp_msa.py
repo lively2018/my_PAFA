@@ -251,9 +251,9 @@ class YOLOXHead(nn.Module):
             key_length = [key_length, key_length, key_length]
         self.key_length_p3, self.key_length_p4, self.key_length_p5 = key_length[0], key_length[1], key_length[2]
         self.updating_policy = updating_policy
-        self.aggregator_p3 = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=self.memory_length_p3, key_length=self.key_length_p3, updating_policy=self.updating_policy)
-        self.aggregator_p4 = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=self.memory_length_p4, key_length=self.key_length_p4, updating_policy=self.updating_policy)
-        self.aggregator_p5 = MambaAggregator(in_channels=128, num_attention_blocks=1, memory_length=self.memory_length_p5, key_length=self.key_length_p5, updating_policy=self.updating_policy)
+        self.aggregator_p3 = MambaAggregator(in_channels=128, num_attention_blocks=4, memory_length=self.memory_length_p3, key_length=self.key_length_p3, updating_policy=self.updating_policy)
+        self.aggregator_p4 = MambaAggregator(in_channels=128, num_attention_blocks=4, memory_length=self.memory_length_p4, key_length=self.key_length_p4, updating_policy=self.updating_policy)
+        self.aggregator_p5 = MambaAggregator(in_channels=128, num_attention_blocks=4, memory_length=self.memory_length_p5, key_length=self.key_length_p5, updating_policy=self.updating_policy)
         #kssong
         self.inplace_false_relu = nn.ReLU(inplace=False)
         if m_conf is None:
