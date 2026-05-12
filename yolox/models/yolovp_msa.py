@@ -339,7 +339,6 @@ class YOLOXHead(nn.Module):
         #kssong
         reg_feat_list = []
         cls_output_list = []
-        need_aggregation = False
         for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
                 zip(self.cls_convs, self.cls_convs2, self.reg_convs, self.strides, xin)
         ):
