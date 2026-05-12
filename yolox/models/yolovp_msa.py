@@ -283,10 +283,10 @@ class YOLOXHead(nn.Module):
         before_nms_regf = []
 
         batch_size = len(imgs)
-        if batch_size == 16 or batch_size == 32:
-            need_aggregation = True
-        else:
+        if not self.training and imgs.shape[0] == 1:
             need_aggregation = False
+        else:
+            need_aggregation = True
         #kssong
         #reg_output_list = []
 
