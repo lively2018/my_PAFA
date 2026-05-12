@@ -341,7 +341,6 @@ class YOLOXHead(nn.Module):
         #kssong
         reg_feat_list = []
         cls_output_list = []
-        need_aggregation = False
         for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
                 zip(self.cls_convs, self.cls_convs2, self.reg_convs, self.strides, xin)
         ):
@@ -485,6 +484,7 @@ class YOLOXHead(nn.Module):
                 #logger.info(f"p4_reg_one shape : {p4_reg_one.shape}")
                 if first:
                     all_ref_feats_p4 = ref_input_feature_reg_p4.reshape(-1, ref_input_feature_reg_p4.shape[-1])
+                    #logger.info(f'all_ref_feats_p4 shape: {all_ref_feats_p4.shape}')
                     self.aggregator_p4.reset_memory_bank()
                     self.aggregator_p4.init_memory_bank(all_ref_feats_p4)
                     agg_feat = p4_reg_one + self.aggregator_p4(p4_reg_one, None)

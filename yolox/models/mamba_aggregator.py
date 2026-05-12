@@ -45,7 +45,7 @@ class MambaAggregator(nn.Module):
         if len(ref_x) != 0:
             aggregated_x = self.forward_with_ref_x(x, ref_x)
         else:
-            #logger.info(f"ref_x shape: {ref_x.shape}")
+            logger.info(f"ref_x shape: {ref_x.shape}")
             aggregated_x = torch.zeros_like(x)
         return aggregated_x
 
