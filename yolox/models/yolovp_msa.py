@@ -55,6 +55,7 @@ class YOLOXHead(nn.Module):
             m_conf=None,
             memory_length=None,
             key_length=None,
+            target_n=None,
             **kwargs
     ):
         """
@@ -240,7 +241,11 @@ class YOLOXHead(nn.Module):
             m_conf = [m_conf, m_conf, m_conf]
 
         self.m_conf_p3, self.m_conf_p4, self.m_conf_p5 = m_conf[0], m_conf[1], m_conf[2]
-
+        if target_n is None:
+            target_n = [80, 120, 80]
+        elif not hasattr(target_n, '__len__'):
+            target_n = [target_n, target_n, target_n]
+        self.target_n_p3, self.target_n_p4, self.target_n_p5 = target_n[0], target_n[1], target_n[2]
 
     def initialize_biases(self, prior_prob):
         for conv in self.cls_preds:
@@ -361,7 +366,7 @@ class YOLOXHead(nn.Module):
             else:
                 ota_idxs = None
 
-            pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
+            ref_pred_result, ref_pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
                                                         nms_thre=self.nms_thresh,
                                                         topK=self.Afternum,
                                                         ota_idxs=ota_idxs,
@@ -371,7 +376,7 @@ class YOLOXHead(nn.Module):
                 [x.flatten(start_dim=2) for x in before_nms_regf], dim=2
                 ).permute(0, 2, 1)
             #Generate reference features from 16 batch files
-            ref_feature_reg = self.select_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+            ref_feature_reg = self.select_key_feature_in_reg_feature(reg_feat_flatten, ref_pred_idx, ref_pred_result)
         del outputs, outputs_decode, origin_preds, x_shifts, y_shifts, expanded_strides, before_nms_features, before_nms_regf
         outputs = []
         outputs_decode = []
@@ -1258,6 +1263,65 @@ class YOLOXHead(nn.Module):
         return detections[topk_idx, :], topk_idx
 
     def postpro_woclass(self, prediction, num_classes, nms_thre=0.75, topK=75, ota_idxs=None):
+        # find topK predictions, play the same role as RPN
+        '''
+
+        Args:
+            prediction: [batch,feature_num,5+clsnum]
+            num_classes:
+            conf_thre:
+            conf_thre_high:
+            nms_thre:
+
+        Returns:
+            [batch,topK,5+clsnum]
+        '''
+        self.topK = topK
+        box_corner = prediction.new(prediction.shape)
+        box_corner[:, :, 0] = prediction[:, :, 0] - prediction[:, :, 2] / 2
+        box_corner[:, :, 1] = prediction[:, :, 1] - prediction[:, :, 3] / 2
+        box_corner[:, :, 2] = prediction[:, :, 0] + prediction[:, :, 2] / 2
+        box_corner[:, :, 3] = prediction[:, :, 1] + prediction[:, :, 3] / 2
+        prediction[:, :, :4] = box_corner[:, :, :4]
+
+        output = [None for _ in range(len(prediction))]
+        output_index = [None for _ in range(len(prediction))]
+
+        for i, image_pred in enumerate(prediction):
+            #take ota idxs as output in training mode
+            if ota_idxs is not None and len(ota_idxs[i]) > 0:
+                ota_idx = ota_idxs[i]
+                topk_idx = torch.stack(ota_idx).type_as(image_pred)
+                output[i] = image_pred[topk_idx, :]
+                output_index[i] = topk_idx
+                continue
+
+            if not image_pred.size(0):
+                continue
+            # Get score and class with highest confidence
+            class_conf, class_pred = torch.max(image_pred[:, 5: 5 + num_classes], 1, keepdim=True)
+
+            # Detections ordered as (x1, y1, x2, y2, obj_conf, class_conf, class_pred)
+            detections = torch.cat(
+                (image_pred[:, :5], class_conf, class_pred.float(), image_pred[:, 5: 5 + num_classes]), 1)
+
+            conf_score = image_pred[:, 4]
+            top_pre = torch.topk(conf_score, k=self.Prenum)
+            sort_idx = top_pre.indices[:self.Prenum]
+            detections_temp = detections[sort_idx, :]
+            nms_out_index = torchvision.ops.batched_nms(
+                detections_temp[:, :4],
+                detections_temp[:, 4] * detections_temp[:, 5],
+                detections_temp[:, 6],
+                nms_thre,
+            )
+
+            topk_idx = sort_idx[nms_out_index[:self.topK]]
+            output[i] = detections[topk_idx, :]
+            output_index[i] = topk_idx
+
+        return output, output_index
+    def ref_postpro_woclass(self, prediction, num_classes, nms_thre=0.75, ota_idxs=None):
         # find topK predictions, play the same role as RPN
         '''
 
