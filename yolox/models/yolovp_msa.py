@@ -1386,7 +1386,7 @@ class YOLOXHead(nn.Module):
             if len(topk_p5_idx) >= self.target_n_p5:
                 topk_p5_idx = topk_p5_idx[:self.target_n_p5]
             topk_idx = topk_p3_idx + topk_p4_idx + topk_p5_idx
-            logger.info(f"image {i}: topk_p3_idx: {len(topk_p3_idx)}, topk_p4_idx: {len(topk_p4_idx)}, topk_p5_idx: {len(topk_p5_idx)}")
+            #logger.info(f"image {i}: topk_p3_idx: {len(topk_p3_idx)}, topk_p4_idx: {len(topk_p4_idx)}, topk_p5_idx: {len(topk_p5_idx)}")
             output[i] = detections[topk_idx, :]
             output_index[i] = topk_idx
 
