@@ -366,11 +366,12 @@ class YOLOXHead(nn.Module):
             else:
                 ota_idxs = None
 
-            ref_pred_result, ref_pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
+            ref_pred_result, ref_pred_idx = self.ref_postpro_woclass(decode_res, num_classes=self.num_classes,
                                                         nms_thre=self.nms_thresh,
-                                                        topK=self.Afternum,
+                                                        topK = 750,
                                                         ota_idxs=ota_idxs,
                                                         )
+            #logger.info(f"len(ref_pred_idx): {len(ref_pred_idx)} len(ref_pred_result): {len(ref_pred_result)}")
 
             reg_feat_flatten = torch.cat(
                 [x.flatten(start_dim=2) for x in before_nms_regf], dim=2
@@ -1321,7 +1322,7 @@ class YOLOXHead(nn.Module):
             output_index[i] = topk_idx
 
         return output, output_index
-    def ref_postpro_woclass(self, prediction, num_classes, nms_thre=0.75, ota_idxs=None):
+    def ref_postpro_woclass(self, prediction, num_classes, topK=750, nms_thre=0.75, ota_idxs=None):
         # find topK predictions, play the same role as RPN
         '''
 
@@ -1335,7 +1336,7 @@ class YOLOXHead(nn.Module):
         Returns:
             [batch,topK,5+clsnum]
         '''
-        self.topK = topK
+
         box_corner = prediction.new(prediction.shape)
         box_corner[:, :, 0] = prediction[:, :, 0] - prediction[:, :, 2] / 2
         box_corner[:, :, 1] = prediction[:, :, 1] - prediction[:, :, 3] / 2
@@ -1365,17 +1366,27 @@ class YOLOXHead(nn.Module):
                 (image_pred[:, :5], class_conf, class_pred.float(), image_pred[:, 5: 5 + num_classes]), 1)
 
             conf_score = image_pred[:, 4]
-            top_pre = torch.topk(conf_score, k=self.Prenum)
-            sort_idx = top_pre.indices[:self.Prenum]
-            detections_temp = detections[sort_idx, :]
-            nms_out_index = torchvision.ops.batched_nms(
-                detections_temp[:, :4],
-                detections_temp[:, 4] * detections_temp[:, 5],
-                detections_temp[:, 6],
-                nms_thre,
-            )
+            top_pre = torch.topk(conf_score, k=topK)
+            sort_idx = top_pre.indices[:topK]
 
-            topk_idx = sort_idx[nms_out_index[:self.topK]]
+            topk_p3_idx = []
+            topk_p4_idx = []
+            topk_p5_idx = []
+            for  idx in sort_idx:
+                if idx >= 0 and idx < 6400:
+                        topk_p3_idx.append(idx)
+                elif idx >= 6400 and idx < 8000:
+                    topk_p4_idx.append(idx)
+                else:
+                    topk_p5_idx.append(idx)
+            if len(topk_p3_idx) >= self.target_n_p3:
+                topk_p3_idx = topk_p3_idx[:self.target_n_p3]
+            if len(topk_p4_idx) >= self.target_n_p4:
+                topk_p4_idx = topk_p4_idx[:self.target_n_p4]
+            if len(topk_p5_idx) >= self.target_n_p5:
+                topk_p5_idx = topk_p5_idx[:self.target_n_p5]
+            topk_idx = topk_p3_idx + topk_p4_idx + topk_p5_idx
+            logger.info(f"image {i}: topk_p3_idx: {len(topk_p3_idx)}, topk_p4_idx: {len(topk_p4_idx)}, topk_p5_idx: {len(topk_p5_idx)}")
             output[i] = detections[topk_idx, :]
             output_index[i] = topk_idx
 
