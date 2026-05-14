@@ -100,13 +100,13 @@ def make_parser():
     parser.add_argument('--max_epoch', default=7, type=int,help='vid max epochs')
     parser.add_argument('--pre_nms', default=0.75, type=float,help='pre nms threshold')
     parser.add_argument('--nms', default=0.5, type=float,help='final nms threshold')
-    parser.add_argument('--m_conf', default=[0, 0, 0], type=float, nargs=3, metavar=('P3', 'P4', 'P5'),
-                        help='per-level minimum conf score for selecting reference features (P3 P4 P5)')
+    parser.add_argument('--m_conf', default=[0, 0], type=float, nargs=2, metavar=('P4', 'P5'),
+                        help='per-level minimum conf score for selecting reference features (P4 P5)')
     parser.add_argument('--mode', default='random', help='frame sample mode')
-    parser.add_argument('--memory_length', default=[4800, 4800, 4800], type=int, nargs=3, metavar=('P3', 'P4', 'P5'),
-                        help='per-level features memory size (P3 P4 P5)')
-    parser.add_argument('--key_length', default=[480, 480, 480], type=int, nargs=3, metavar=('P3', 'P4', 'P5'),
-                        help='per-level features key length (P3 P4 P5)')
+    parser.add_argument('--memory_length', default=[4800, 4800], type=int, nargs=2, metavar=('P4', 'P5'),
+                        help='per-level features memory size (P4 P5)')
+    parser.add_argument('--key_length', default=[480, 480], type=int, nargs=2, metavar=('P4', 'P5'),
+                        help='per-level features key length (P4 P5)')
 
     return parser
 
