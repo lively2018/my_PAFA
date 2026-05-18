@@ -135,7 +135,7 @@ class Predictor(object):
         else:
             self.traj_linking = False
         self.post = post
-    def inference(self, img, first_frame, img_path=None,lframe=0,gframe=32):
+    def inference(self, img, first_frame, labels, img_path=None,lframe=0,gframe=32):
 
         if self.device == "gpu":
             img = img.type(self.tensor_type)
@@ -148,10 +148,10 @@ class Predictor(object):
             t0 = time.time()
             if not self.traj_linking:
 
-                outputs,outputs_ori = self.model(img,first_frame, lframe=lframe,gframe=gframe,img_path=img_path )
+                outputs,outputs_ori = self.model(img,first_frame, labels, lframe=lframe,gframe=gframe,img_path=img_path )
                 if len(outputs) <= 4: outputs = outputs_ori
             else:
-                pred_result, adj_list, fc_output = self.model(img, first_frame, lframe=lframe,gframe=gframe, img_path=img_path)
+                pred_result, adj_list, fc_output = self.model(img, first_frame, labels, lframe=lframe,gframe=gframe, img_path=img_path)
                 outputs = [pred_result, adj_list, fc_output]
         return outputs
 

@@ -530,7 +530,12 @@ class VIDEvaluator:
                 if is_time_record:
                     start = time.time()
                 #kssong
-                outputs, ori_res = model(imgs, first_frame, nms_thresh=self.nmsthre,
+                if label is not None:
+                    logger.info(f"length of lalebls: {len(label)}")
+                    logger.info(f"first label: {label[0]}")
+                else:
+                    logger.info("label is None")
+                outputs, ori_res = model(imgs, first_frame, labels=label, nms_thresh=self.nmsthre,
                                          lframe=self.lframe,
                                          gframe = self.gframe)
 

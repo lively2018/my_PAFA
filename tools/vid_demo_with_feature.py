@@ -152,6 +152,68 @@ def image_demo(predictor, vis_folder, path, current_time, save_result):
         ch = cv2.waitKey(0)
         if ch == 27 or ch == ord("q") or ch == ord("Q"):
             break
+def read_targets(args, img_path_list):
+    targets = []
+    for img_path in img_path_list:
+        logger.info(f"img_path: {img_path}")
+        xml_path = img_path.replace("Data", "Annotations").replace(".JPEG", ".xml").replace(".jpeg", ".xml").replace(".jpg", ".xml")
+        if os.path.exists(xml_path):
+            xml_doc = minidom.parse(xml_path)
+            root = xml_doc.documentElement
+            width = int(root.getElementsByTagName('width')[0].firstChild.data)
+            height = int(root.getElementsByTagName('height')[0].firstChild.data)
+            tempnode = []
+            for obj in root.getElementsByTagName("object"):
+                nameNode = obj.getElementsByTagName("name")[0].firstChild.data
+                xmin = int(obj.getElementsByTagName("xmin")[0].firstChild.data)
+                ymin = int(obj.getElementsByTagName("ymin")[0].firstChild.data)
+                xmax = int(obj.getElementsByTagName("xmax")[0].firstChild.data)
+                ymax = int(obj.getElementsByTagName("ymax")[0].firstChild.data)
+                x1 = np.max((0,xmin))
+                y1 = np.max((0,ymin))
+                x2 = np.min((width,xmax))
+                y2 = np.min((height,ymax))
+                if x2 >= x1 and y2 >= y1:
+                    #tempnode.append((name_num[nameNode],x1,y1,x2,y2,))
+                    tempnode.append(( x1, y1, x2, y2,_VID_SYNSET_TO_IDX[nameNode],))
+                #logger.info(f"x1: {x1}, y1:{y1} x2:{x2}, y2:{y2}")
+            num_objs = len(tempnode)
+            res = np.zeros((num_objs, 6))
+            r = min(args.tsize / height, args.tsize / width)
+            for ix, obj in enumerate(tempnode):
+                res[ix, 0:5] = obj[0:5]
+                res[ix, 5] = r
+            res[:, :4] = (res[:, :4] * r).astype(int)
+            targets.append(res)
+    for img_path, target in zip(img_path_list, targets):
+        logger.info(f"img_path:{img_path}")
+        logger.info(f"target:")
+        for i, node in enumerate(target):
+            logger.info(f"{i}th node: {node.tolist()} ")
+    return targets
+
+def calculate_iou_gt_img(gt_bbox, img_bbox):
+    """
+    Compute pairwise IoU between gt_bbox and img_bbox (both in xyxy format).
+    Args:
+        gt_bbox:  np.ndarray (N, 4+) — ground-truth boxes, columns 0-3 are x1,y1,x2,y2
+        img_bbox: np.ndarray (M, 4+) — predicted boxes,      columns 0-3 are x1,y1,x2,y2
+    Returns:
+        iou: np.ndarray (N, M) — pairwise IoU matrix
+    """
+    gt   = gt_bbox[:, :4].astype(np.float32)   # (N, 4)
+    pred = img_bbox[:, :4].astype(np.float32)  # (M, 4)
+
+    lt = np.maximum(gt[:, np.newaxis, :2], pred[:, :2])   # (N, M, 2)
+    rb = np.minimum(gt[:, np.newaxis, 2:], pred[:, 2:])   # (N, M, 2)
+
+    inter = np.prod(np.maximum(rb - lt, 0), axis=2)       # (N, M)
+    area_gt   = np.prod(gt[:, 2:]   - gt[:, :2],   axis=1)  # (N,)
+    area_pred = np.prod(pred[:, 2:] - pred[:, :2], axis=1)  # (M,)
+
+    union = area_gt[:, np.newaxis] + area_pred - inter     # (N, M)
+    return inter / (union + 1e-12)
+
 def imagedir_demo(predictor, vis_folder, current_time, args,exp):
     gframe = exp.gframe_val
     lframe = exp.lframe_val
@@ -250,8 +312,10 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
         if ele == []: continue
         frame_num = len(ele)
         ele = torch.stack(ele)
+        logger.info(f"ele_id: {ele_id}, ele.shape: {ele.shape}")
+        labels = read_targets(args, img_path_list[ele_id])
         if traj_linking:
-            pred_result, adj_list, fc_output = predictor.inference(ele, first_frame, lframe=frame_num, gframe=0,  img_path=img_path_list[ele_id])
+            pred_result, adj_list, fc_output = predictor.inference(ele, first_frame, labels, lframe=frame_num, gframe=0,  img_path=img_path_list[ele_id])
             if first_frame:
                 first_frame = False
             if len(outputs) != 0:  # skip the connection frame
@@ -261,10 +325,11 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
             adj_lists.extend(adj_list)
             fc_outputs.append(fc_output)
         else:
-            logger.info(f"ele_id: {ele_id}, ele.shape: {ele.shape}")
-            outputs.extend(predictor.inference(ele, first_frame, lframe=lframe,gframe=gframe, img_path=img_path_list[ele_id]))
+
+            outputs.extend(predictor.inference(ele, first_frame, labels, lframe=lframe,gframe=gframe, img_path=img_path_list[ele_id]))
             if first_frame:
                 first_frame = False
+        exit(0)
         head = predictor.model.head
         original_ref_pred_info = head._original_ref_pred_info  # Get the original reference prediction info from the head
         logger.info(f"After inference of set {ele_id}, got original_ref_pred_info length: {len(original_ref_pred_info)}")

@@ -279,10 +279,10 @@ class YOLOXHead(nn.Module):
 
 
         batch_size = len(imgs)
-        if batch_size == 16 or batch_size == 32:
-            need_aggregation = True
-        else:
+        if not self.training and imgs.shape[0] == 1:
             need_aggregation = False
+        else:
+            need_aggregation = True
 
         if self.training:
             for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
@@ -354,11 +354,10 @@ class YOLOXHead(nn.Module):
                     torch.cat(outputs, 1),)
             else:
                 ota_idxs = None
-
             pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
                                                         nms_thre=self.nms_thresh,
                                                         topK=self.Afternum,
-                                                        ota_idxs=ota_idxs,
+                                                        ota_idxs=ota_idxs
                                                         )
 
             reg_feat_flatten = torch.cat(
@@ -545,13 +544,26 @@ class YOLOXHead(nn.Module):
                 torch.cat(outputs, 1),)
         else:
             ota_idxs = None
+        if need_aggregation:
+            if labels is not None:
+                logger.info(f"length of lables: {len(labels)}")
+                for label in labels:
+                    for i, target in enumerate(label):
+                        logger.info(f"{i}th target: {target.tolist()}")
+            logger.info(f"first img_path: {img_path[0]}")
 
         pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
                                                      nms_thre=self.nms_thresh,
                                                      topK=self.Afternum,
                                                      ota_idxs=ota_idxs,
                                                      )
-        pred_result_original, pred_idx_original = self.postpro_orig_woclass(original_decode_res, num_classes=self.num_classes, topK=1000)
+        if not self.training and need_aggregation and first:
+            iou_pred_result, iou_pred_idx = self.postpro_iou(decode_res, num_classes=self.num_classes,
+                                                        nms_thre=self.nms_thresh,
+                                                        topK=self.Afternum,
+                                                        ota_idxs=ota_idxs, labels=labels
+                                                        )
+            pred_result_original, pred_idx_original = self.postpro_orig_woclass(original_decode_res, num_classes=self.num_classes, topK=1000)
         #kssong
         #pred_result_file = open('./pred_result.txt', 'a')
         #pred_result_file.write(f'{len(pred_result), pred_result[0].shape}\n')
@@ -1530,6 +1542,94 @@ class YOLOXHead(nn.Module):
                 nms_thre,
             )
             topk_idx = sort_idx[nms_out_index[:self.topK]]
+            output[i] = detections[topk_idx, :]
+            output_index[i] = topk_idx
+
+        return output, output_index
+
+    def calculate_iou_gt_img(self, gt_bbox, img_bbox):
+        x1 = torch.max(gt_bbox[0], img_bbox[0])
+        y1 = torch.max(gt_bbox[1], img_bbox[1])
+        x2 = torch.min(gt_bbox[2], img_bbox[2])
+        y2 = torch.min(gt_bbox[3], img_bbox[3])
+
+        inter = torch.clamp(x2 - x1, min=0) * torch.clamp(y2 - y1, min=0)
+        area_gt  = (gt_bbox[2]  - gt_bbox[0])  * (gt_bbox[3]  - gt_bbox[1])
+        area_img = (img_bbox[2] - img_bbox[0]) * (img_bbox[3] - img_bbox[1])
+        union = area_gt + area_img - inter
+        iou = inter / (union + 1e-12)
+        return iou
+
+    def calculate_iou_list(self, label, img_bboxes):
+        gt_bboxes = label[:, 0:4]
+        logger.info(f"length of target_bboxes: {len(gt_bboxes)}")
+        logger.info(f"length of image_bboxes: {len(img_bboxes)}")
+        iou_list = torch.zeros(len(img_bboxes))
+        for i, img_bbox in enumerate(img_bboxes):
+            bbox_iou_list = []
+            for gt_bbox in gt_bboxes:
+                bbox_iou = self.calculate_iou_gt_img(gt_bbox, img_bbox)
+                bbox_iou_list.append(bbox_iou)
+            iou_list[i] = max(bbox_iou_list)
+        return iou_list
+
+
+
+    def postpro_iou(self, prediction, num_classes, nms_thre=0.75, topK=75, ota_idxs=None, labels=None):
+        # find topK predictions, play the same role as RPN
+        '''
+
+        Args:
+            prediction: [batch,feature_num,5+clsnum]
+            num_classes:
+            conf_thre:
+            conf_thre_high:
+            nms_thre:
+
+        Returns:
+            [batch,topK,5+clsnum]
+        '''
+        box_corner = prediction.new(prediction.shape)
+        box_corner[:, :, 0] = prediction[:, :, 0] - prediction[:, :, 2] / 2
+        box_corner[:, :, 1] = prediction[:, :, 1] - prediction[:, :, 3] / 2
+        box_corner[:, :, 2] = prediction[:, :, 0] + prediction[:, :, 2] / 2
+        box_corner[:, :, 3] = prediction[:, :, 1] + prediction[:, :, 3] / 2
+        prediction[:, :, :4] = box_corner[:, :, :4]
+
+        output = [None for _ in range(len(prediction))]
+        output_index = [None for _ in range(len(prediction))]
+
+        for i, image_pred in enumerate(prediction):
+            #take ota idxs as output in training mode
+            if ota_idxs is not None and len(ota_idxs[i]) > 0:
+                ota_idx = ota_idxs[i]
+                topk_idx = torch.stack(ota_idx).type_as(image_pred)
+                output[i] = image_pred[topk_idx, :]
+                output_index[i] = topk_idx
+                continue
+
+            if not image_pred.size(0):
+                continue
+            # Get score and class with highest confidence
+            class_conf, class_pred = torch.max(image_pred[:, 5: 5 + num_classes], 1, keepdim=True)
+
+            # Calculate the IoU
+            img_iou = self.calculate_iou_list(labels[i], image_pred[:, :4])
+
+            # Detections ordered as (x1, y1, x2, y2, obj_conf, class_conf, img_iou, class_pred)
+            detections = torch.cat(
+                (image_pred[:, :5], class_conf, class_pred.float(), image_pred[:, 5: 5 + num_classes]), 1)
+
+            top_iou_pre = torch.topk(img_iou, k=self.Prenum)
+            sort_idx = top_iou_pre.indices
+            detections_temp = detections[sort_idx, :]
+            nms_out_index = torchvision.ops.batched_nms(
+                detections_temp[:, :4],
+                detections_temp[:, 4] * detections_temp[:, 5],
+                detections_temp[:, 6],
+                nms_thre,
+            )
+            topk_idx = sort_idx[nms_out_index[:topK]]
             output[i] = detections[topk_idx, :]
             output_index[i] = topk_idx
 
