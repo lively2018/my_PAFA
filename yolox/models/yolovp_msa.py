@@ -564,7 +564,7 @@ class YOLOXHead(nn.Module):
                                                         topK=self.Afternum,
                                                         ota_idxs=ota_idxs, labels=labels
                                                         )
-            #pred_result_original, pred_idx_original = self.postpro_orig_woclass(original_decode_res, num_classes=self.num_classes, topK=30)
+            pred_result_original, pred_idx_original = self.postpro_orig_woclass(original_decode_res, num_classes=self.num_classes, topK=30)
         #kssong
         #pred_result_file = open('./pred_result.txt', 'a')with size 1000
         #pred_result_file.write(f'{len(pred_result), pred_result[0].shape}\n')
@@ -593,8 +593,8 @@ class YOLOXHead(nn.Module):
         if not self.training and need_aggregation:
             #half = len(pred_idx[1]) // 2
             #new_idx = [p[:half] for p in pred_idx]
-            #_, _, _, original_ref_pred_info = \
-            #    self.select_level_key_feature_in_reg_feature_with_test_conf(original_reg_feat_flatten, pred_idx_original, pred_result_original, test_conf=0.0001)
+            _, _, _, original_ref_pred_info = \
+                self.select_level_key_feature_in_reg_feature_with_test_conf(original_reg_feat_flatten, pred_idx_original, pred_result_original, test_conf=0.0001)
             #self._original_ref_pred_info = original_ref_pred_info
             _,_,_, self._aggregated_selected_feat_info = \
                 self.select_level_key_feature_in_reg_feature_with_test_conf(reg_feat_flatten, iou_pred_idx, iou_pred_result, test_conf=0.0001)
@@ -952,7 +952,7 @@ class YOLOXHead(nn.Module):
         # Pad each batch's detections to the same length and stack → [16, x, 36]
         return key_features_p3, key_features_p4, key_features_p5, pred_info
 
-    def select_level_key_feature_in_reg_feature_with_test_conf(self, reg_features, pred_idx, pred_results, test_conf):
+    def select_level_key_feature_in_reg_feature_with_iou(self, reg_features, pred_idx, pred_results, test_conf):
         key_features_p3 = []
         key_features_p4 = []
         key_features_p5 = []
