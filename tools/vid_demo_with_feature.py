@@ -329,7 +329,6 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
             outputs.extend(predictor.inference(ele, first_frame, labels, lframe=lframe,gframe=gframe, img_path=img_path_list[ele_id]))
             if first_frame:
                 first_frame = False
-        exit(0)
         head = predictor.model.head
         original_ref_pred_info = head._original_ref_pred_info  # Get the original reference prediction info from the head
         logger.info(f"After inference of set {ele_id}, got original_ref_pred_info length: {len(original_ref_pred_info)}")
@@ -393,6 +392,8 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
             p5_sampled_mem_info = sampled_mem_feat_info['p5']
             logger.info(f"Set {ele_id} - sampled_mem_feat_info - len(p5_sampled_mem_info): {len(p5_sampled_mem_info)}")
             sampled_mem_feat_info_list.append({k: list(v) for k, v in sampled_mem_feat_info.items()})
+
+
     if traj_linking:
         outputs = post_linking(fc_outputs, adj_lists, outputs, P, Cls, names, exp)
 
