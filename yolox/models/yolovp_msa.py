@@ -4,7 +4,8 @@
 import copy
 import time
 
-
+import csv
+import os
 import math
 import torch
 import torch.nn as nn
@@ -563,9 +564,9 @@ class YOLOXHead(nn.Module):
                                                         topK=self.Afternum,
                                                         ota_idxs=ota_idxs, labels=labels
                                                         )
-            pred_result_original, pred_idx_original = self.postpro_orig_woclass(original_decode_res, num_classes=self.num_classes, topK=1000)
+            #pred_result_original, pred_idx_original = self.postpro_orig_woclass(original_decode_res, num_classes=self.num_classes, topK=30)
         #kssong
-        #pred_result_file = open('./pred_result.txt', 'a')
+        #pred_result_file = open('./pred_result.txt', 'a')with size 1000
         #pred_result_file.write(f'{len(pred_result), pred_result[0].shape}\n')
         #pred_result_file.close()
 
@@ -592,11 +593,12 @@ class YOLOXHead(nn.Module):
         if not self.training and need_aggregation:
             #half = len(pred_idx[1]) // 2
             #new_idx = [p[:half] for p in pred_idx]
-            _, _, _, original_ref_pred_info = \
-                self.select_level_key_feature_in_reg_feature_with_test_conf(original_reg_feat_flatten, pred_idx_original, pred_result_original, test_conf=0.0001)
-            self._original_ref_pred_info = original_ref_pred_info
+            #_, _, _, original_ref_pred_info = \
+            #    self.select_level_key_feature_in_reg_feature_with_test_conf(original_reg_feat_flatten, pred_idx_original, pred_result_original, test_conf=0.0001)
+            #self._original_ref_pred_info = original_ref_pred_info
             _,_,_, self._aggregated_selected_feat_info = \
-                self.select_level_key_feature_in_reg_feature_with_test_conf(reg_feat_flatten, pred_idx, pred_result, test_conf=0.0001)
+                self.select_level_key_feature_in_reg_feature_with_test_conf(reg_feat_flatten, iou_pred_idx, iou_pred_result, test_conf=0.0001)
+            exit(0)
             if first:
                 # reset all level memory banks
                 self.aggregator.reset_memory_bank(0)
@@ -604,16 +606,16 @@ class YOLOXHead(nn.Module):
                 self.aggregator.reset_memory_bank(2)
                 #Generate reference features from 16 batch files
                 ref_feature_p3, ref_feature_p4, ref_feature_p5,  ref_pred_info = \
-                    self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+                    self.select_level_key_feature_in_reg_feature(reg_feat_flatten, iou_pred_idx, iou_pred_result)
                 # Save bboxes/obj_score/cls_score for each level's reference features
                 # Shape: [N, 6+num_classes] — columns: [x1, y1, x2, y2, obj_score, cls_score, class_pred x num_classes]
                 self._ref_pred_info = ref_pred_info
-                #logger.info(f"len(ref_pred_info): {len(ref_pred_info)}")
+                logger.info(f"len(ref_pred_info): {len(ref_pred_info)}")
                 for i, level_info in enumerate(ref_pred_info):
                     level_info_p3, level_info_p4, level_info_p5 = level_info
-                #    logger.info(f"Level {i} - len(level_info_p3): {len(level_info_p3)}, \
-                #                len(level_info_p4): {len(level_info_p4)}, \
-                #                    len(level_info_p5): {len(level_info_p5)}")
+                    logger.info(f"Level {i} - len(level_info_p3): {len(level_info_p3)}, \
+                                len(level_info_p4): {len(level_info_p4)}, \
+                                    len(level_info_p5): {len(level_info_p5)}")
                 #for i, level_info in enumerate(ref_pred_info):
                 #    level_info_p3, level_info_p4, level_info_p5 = level_info
                 #    logger.info(f"batch_item {i} - len(level_info_p3): {len(level_info_p3)}, \
@@ -637,7 +639,7 @@ class YOLOXHead(nn.Module):
             else:
                 #Generate key features from 16 batch files
                 key_features_p3, key_features_p4, key_features_p5,  key_pred_info = \
-                    self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+                    self.select_level_key_feature_in_reg_feature(reg_feat_flatten, iou_pred_idx, iou_pred_result)
                 # Save bboxes/obj_score/cls_score for each level's key features
                 # Shape: [N, 6+num_classes] — columns: [x1, y1, x2, y2, obj_score, cls_score, class_pred x num_classes]
                 self._ref_pred_info = key_pred_info
@@ -956,25 +958,19 @@ class YOLOXHead(nn.Module):
         key_features_p5 = []
         pred_info = []  # per batch: [pred_info_p3, pred_info_p4, pred_info_p5], each pred_info_pX shape: [x_i, 36] — columns: [x1, y1, x2, y2, obj_score, cls_score, class_pred x num_classes]
 
-        #logger.info(f"reg_features.shape: {reg_features.shape} pred_idx length: {len(pred_idx)} pred_results length: {len(pred_results)}")
+        logger.info(f"reg_features.shape: {reg_features.shape} pred_idx length: {len(pred_idx)} pred_results length: {len(pred_results)}")
         for i in range(reg_features.shape[0]):
             #logger.info(f"Processing batch {i} for select_level_key_feature_in_reg_feature")
             reg_feature = reg_features[i]
             idx_list = pred_idx[i]
             pred_result = pred_results[i]
-            conf_score_list = pred_result[:, 4] * pred_result[:, 5]
-            mask_idx = torch.nonzero(conf_score_list > test_conf, as_tuple=False).squeeze()
-            if mask_idx.ndim == 0:
-                mask_idx = mask_idx.unsqueeze(0)
-            #logger.info("conf_score_list masked > 0.01: {}".format(mask_idx))
-            mask_idx_list = idx_list[mask_idx]
-            #logger.info(" masked_idx_list: {}".format(mask_idx_list))
-            #logger.info(" idx_list: {}".format(idx_list))
+
+            logger.info(f"length of idx_list: {len(idx_list)}")
             p3_items = []
             p4_items = []
             p5_items = []
-            for j, idx in enumerate(mask_idx_list):
-                det = pred_result[mask_idx[j]]
+            for j, idx in enumerate(idx_list):
+                det = pred_result[j]
                 info = torch.cat([det[[0, 1, 2, 3, 4, 5]], det[7: 7 + self.num_classes], idx.unsqueeze(0)])  # x1, y1, x2, y2, obj_score, cls_score, class_pred[num_classes], idx
                 if idx >= 0 and idx < 6400:
                     key_features_p3.append(reg_feature[idx])
@@ -992,18 +988,18 @@ class YOLOXHead(nn.Module):
             if len(p5_items) == 0:
                 p5_items.append(torch.zeros(7 + self.num_classes))
             pred_info.append([p3_items, p4_items, p5_items])
-            #logger.info(f"Batch {i} - len(p3_items): {len(p3_items)},\
-            #             len(p4_items): {len(p4_items)}, \
-            #                len(p5_items): {len(p5_items)}")
-            #for idx, items in enumerate(p3_items):
-            #    logger.info(f"Batch {i} - p3 item {idx} th - p3 item shape: {items.shape}")
-            #    logger.info(f"Batch {i} - p3 item {idx} th - p3 items: {int(items[36])}")
-            #for idx, items in enumerate(p4_items):
-            #    logger.info(f"Batch {i} - p4 item {idx} th - p4 item shape: {items.shape}")
-            #    logger.info(f"Batch {i} - p4 item {idx} th - p4 items: {int(items[36])}")
-            #for idx, items in enumerate(p5_items):
-            #    logger.info(f"Batch {i} - p5 item {idx} th - p5 item shape: {items.shape}")
-            #    logger.info(f"Batch {i} - p5 item {idx} th - p5 items: {int(items[36])}")
+            logger.info(f"Batch {i} - len(p3_items): {len(p3_items)},\
+                         len(p4_items): {len(p4_items)}, \
+                            len(p5_items): {len(p5_items)}")
+            for idx, items in enumerate(p3_items):
+                logger.info(f"Batch {i} - p3 item {idx} th - p3 item shape: {items.shape}")
+                logger.info(f"Batch {i} - p3 item {idx} th - p3 items: {int(items[36])}")
+            for idx, items in enumerate(p4_items):
+                logger.info(f"Batch {i} - p4 item {idx} th - p4 item shape: {items.shape}")
+                logger.info(f"Batch {i} - p4 item {idx} th - p4 items: {int(items[36])}")
+            for idx, items in enumerate(p5_items):
+                logger.info(f"Batch {i} - p5 item {idx} th - p5 item shape: {items.shape}")
+                logger.info(f"Batch {i} - p5 item {idx} th - p5 items: {int(items[36])}")
         key_features_p3 = torch.stack(key_features_p3, dim=0) if key_features_p3 else torch.empty(0, 128)
         key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128)
         key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128)
@@ -1560,19 +1556,48 @@ class YOLOXHead(nn.Module):
         iou = inter / (union + 1e-12)
         return iou
 
-    def calculate_iou_list(self, label, img_bboxes):
-        gt_bboxes = label[:, 0:4]
+    def calculate_iou_list(self, label, img_bboxes, batch_item):
+        gt_bboxes = torch.tensor(label[:, 0:4], dtype=img_bboxes.dtype, device=img_bboxes.device)
         logger.info(f"length of target_bboxes: {len(gt_bboxes)}")
         logger.info(f"length of image_bboxes: {len(img_bboxes)}")
-        iou_list = torch.zeros(len(img_bboxes))
+        iou_list = torch.zeros(len(img_bboxes), dtype=img_bboxes.dtype, device=img_bboxes.device)
+        csv_save_path = os.path.join("./", f"img_bboxes_{batch_item}.csv")
+        csv_file = open(csv_save_path, mode='w', newline='')
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow(['bbox'])
+        scale = label[0, 5]
+        logger.info(f"scale: {scale}")
+        img_bboxes = torch.clamp(img_bboxes, min=0)
         for i, img_bbox in enumerate(img_bboxes):
             bbox_iou_list = []
+            img_bbox = img_bbox * scale
+            csv_bbox = img_bbox.int().tolist()
+            csv_writer.writerow([f"[ {csv_bbox[0]}, {csv_bbox[1]}, {csv_bbox[2]}, {csv_bbox[3]}]"])
             for gt_bbox in gt_bboxes:
                 bbox_iou = self.calculate_iou_gt_img(gt_bbox, img_bbox)
                 bbox_iou_list.append(bbox_iou)
             iou_list[i] = max(bbox_iou_list)
+        csv_file.close()
         return iou_list
 
+
+    def check_p3_p4_p5_level_features(self, idx_list, iou_score):
+        p3_level_count = 0
+        p4_level_count = 0
+        p5_level_count = 0
+
+        for i, idx in enumerate(idx_list):
+            if idx >= 0 and idx < 6400:
+                p3_level_count += 1
+                logger.info(f"p3 iou_score: {iou_score[i]}")
+            elif idx >=6400 and idx < 8000:
+                p4_level_count += 1
+                logger.info(f"p4 iou_score: {iou_score[i]}")
+            else:
+                p5_level_count += 1
+                logger.info(f"p5 iou_score: {iou_score[i]}")
+        logger.info(f"p3 level count: {p3_level_count}, p4_level_count: {p4_level_count}, \
+                    p5_level_count: {p5_level_count}")
 
 
     def postpro_iou(self, prediction, num_classes, nms_thre=0.75, topK=75, ota_idxs=None, labels=None):
@@ -1614,22 +1639,26 @@ class YOLOXHead(nn.Module):
             class_conf, class_pred = torch.max(image_pred[:, 5: 5 + num_classes], 1, keepdim=True)
 
             # Calculate the IoU
-            img_iou = self.calculate_iou_list(labels[i], image_pred[:, :4])
+            img_iou = self.calculate_iou_list(labels[i], image_pred[:, :4], i)
 
             # Detections ordered as (x1, y1, x2, y2, obj_conf, class_conf, img_iou, class_pred)
             detections = torch.cat(
                 (image_pred[:, :5], class_conf, class_pred.float(), image_pred[:, 5: 5 + num_classes]), 1)
-
             top_iou_pre = torch.topk(img_iou, k=self.Prenum)
             sort_idx = top_iou_pre.indices
             detections_temp = detections[sort_idx, :]
+            iou_score = img_iou[sort_idx]
+            #self.check_p3_p4_p5_level_features(sort_idx, iou_score)
             nms_out_index = torchvision.ops.batched_nms(
                 detections_temp[:, :4],
-                detections_temp[:, 4] * detections_temp[:, 5],
+                iou_score,
                 detections_temp[:, 6],
                 nms_thre,
             )
             topk_idx = sort_idx[nms_out_index[:topK]]
+            logger.info(f"leng of topk_idx: {len(topk_idx)} topk_idx: {topk_idx}")
+            topk_iou_score = img_iou[topk_idx]
+            self.check_p3_p4_p5_level_features(topk_idx, topk_iou_score)
             output[i] = detections[topk_idx, :]
             output_index[i] = topk_idx
 
