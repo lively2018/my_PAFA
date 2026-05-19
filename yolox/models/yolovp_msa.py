@@ -595,7 +595,7 @@ class YOLOXHead(nn.Module):
             #new_idx = [p[:half] for p in pred_idx]
             _, _, _, original_ref_pred_info = \
                 self.select_level_key_feature_in_reg_feature_with_test_conf(original_reg_feat_flatten, pred_idx_original, pred_result_original, test_conf=0.0001)
-            #self._original_ref_pred_info = original_ref_pred_info
+            self._original_ref_pred_info = original_ref_pred_info
             _,_,_, self._aggregated_selected_feat_info = \
                 self.select_level_key_feature_in_reg_feature_with_test_conf(reg_feat_flatten, iou_pred_idx, iou_pred_result, test_conf=0.0001)
             exit(0)
@@ -937,6 +937,65 @@ class YOLOXHead(nn.Module):
             logger.info(f"Batch {i} - len(p3_items): {len(p3_items)},\
                          len(p4_items): {len(p4_items)}, \
                             len(p5_items): {len(p5_items)}")
+            #for idx, items in enumerate(p3_items):
+            #    logger.info(f"Batch {i} - p3 item {idx} th - p3 item shape: {items.shape}")
+            #    logger.info(f"Batch {i} - p3 item {idx} th - p3 items: {int(items[36])}")
+            #for idx, items in enumerate(p4_items):
+            #    logger.info(f"Batch {i} - p4 item {idx} th - p4 item shape: {items.shape}")
+            #    logger.info(f"Batch {i} - p4 item {idx} th - p4 items: {int(items[36])}")
+            #for idx, items in enumerate(p5_items):
+            #    logger.info(f"Batch {i} - p5 item {idx} th - p5 item shape: {items.shape}")
+            #    logger.info(f"Batch {i} - p5 item {idx} th - p5 items: {int(items[36])}")
+        key_features_p3 = torch.stack(key_features_p3, dim=0) if key_features_p3 else torch.empty(0, 128)
+        key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128)
+        key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128)
+        # Pad each batch's detections to the same length and stack → [16, x, 36]
+        return key_features_p3, key_features_p4, key_features_p5, pred_info
+    def select_level_key_feature_in_reg_feature_with_test_conf(self, reg_features, pred_idx, pred_results, test_conf):
+        key_features_p3 = []
+        key_features_p4 = []
+        key_features_p5 = []
+        pred_info = []  # per batch: [pred_info_p3, pred_info_p4, pred_info_p5], each pred_info_pX shape: [x_i, 36] — columns: [x1, y1, x2, y2, obj_score, cls_score, class_pred x num_classes]
+
+        #logger.info(f"reg_features.shape: {reg_features.shape} pred_idx length: {len(pred_idx)} pred_results length: {len(pred_results)}")
+        for i in range(reg_features.shape[0]):
+            #logger.info(f"Processing batch {i} for select_level_key_feature_in_reg_feature")
+            reg_feature = reg_features[i]
+            idx_list = pred_idx[i]
+            pred_result = pred_results[i]
+            conf_score_list = pred_result[:, 4] * pred_result[:, 5]
+            mask_idx = torch.nonzero(conf_score_list > test_conf, as_tuple=False).squeeze()
+            if mask_idx.ndim == 0:
+                mask_idx = mask_idx.unsqueeze(0)
+            #logger.info("conf_score_list masked > 0.01: {}".format(mask_idx))
+            mask_idx_list = idx_list[mask_idx]
+            #logger.info(" masked_idx_list: {}".format(mask_idx_list))
+            #logger.info(" idx_list: {}".format(idx_list))
+            p3_items = []
+            p4_items = []
+            p5_items = []
+            for j, idx in enumerate(mask_idx_list):
+                det = pred_result[mask_idx[j]]
+                info = torch.cat([det[[0, 1, 2, 3, 4, 5]], det[7: 7 + self.num_classes], idx.unsqueeze(0)])  # x1, y1, x2, y2, obj_score, cls_score, class_pred[num_classes], idx
+                if idx >= 0 and idx < 6400:
+                    key_features_p3.append(reg_feature[idx])
+                    p3_items.append(info)
+                elif idx >= 6400 and idx < 8000:
+                    key_features_p4.append(reg_feature[idx])
+                    p4_items.append(info)
+                else:
+                    key_features_p5.append(reg_feature[idx])
+                    p5_items.append(info)
+            if len(p3_items) == 0:
+                p3_items.append(torch.zeros(7 + self.num_classes))
+            if len(p4_items) == 0:
+                p4_items.append(torch.zeros(7 + self.num_classes))
+            if len(p5_items) == 0:
+                p5_items.append(torch.zeros(7 + self.num_classes))
+            pred_info.append([p3_items, p4_items, p5_items])
+            #logger.info(f"Batch {i} - len(p3_items): {len(p3_items)},\
+            #             len(p4_items): {len(p4_items)}, \
+            #                len(p5_items): {len(p5_items)}")
             #for idx, items in enumerate(p3_items):
             #    logger.info(f"Batch {i} - p3 item {idx} th - p3 item shape: {items.shape}")
             #    logger.info(f"Batch {i} - p3 item {idx} th - p3 items: {int(items[36])}")
@@ -1570,9 +1629,10 @@ class YOLOXHead(nn.Module):
         img_bboxes = torch.clamp(img_bboxes, min=0)
         for i, img_bbox in enumerate(img_bboxes):
             bbox_iou_list = []
-            img_bbox = img_bbox * scale
+            img_bbox = img_bbox / scale
             csv_bbox = img_bbox.int().tolist()
             csv_writer.writerow([f"[ {csv_bbox[0]}, {csv_bbox[1]}, {csv_bbox[2]}, {csv_bbox[3]}]"])
+            #logger.info(f"csv_bbox: {csv_bbox}")
             for gt_bbox in gt_bboxes:
                 bbox_iou = self.calculate_iou_gt_img(gt_bbox, img_bbox)
                 bbox_iou_list.append(bbox_iou)
@@ -1641,26 +1701,38 @@ class YOLOXHead(nn.Module):
             # Calculate the IoU
             img_iou = self.calculate_iou_list(labels[i], image_pred[:, :4], i)
 
+            mask_img_iou_idx = (img_iou > 0).nonzero(as_tuple=False).squeeze(1)
+
             # Detections ordered as (x1, y1, x2, y2, obj_conf, class_conf, img_iou, class_pred)
             detections = torch.cat(
                 (image_pred[:, :5], class_conf, class_pred.float(), image_pred[:, 5: 5 + num_classes]), 1)
-            top_iou_pre = torch.topk(img_iou, k=self.Prenum)
-            sort_idx = top_iou_pre.indices
-            detections_temp = detections[sort_idx, :]
-            iou_score = img_iou[sort_idx]
-            #self.check_p3_p4_p5_level_features(sort_idx, iou_score)
+            if self.Prenum < len(mask_img_iou_idx):
+                top_iou_pre = torch.topk(img_iou, k=self.Prenum)
+                sort_idx = top_iou_pre.indices
+                detections_temp = detections[sort_idx, :]
+                iou_score = img_iou[sort_idx]
+            else:
+                detections_temp = detections[mask_img_iou_idx]
+                sort_idx = mask_img_iou_idx
+                iou_score = img_iou[mask_img_iou_idx]
+
+            self.check_p3_p4_p5_level_features(sort_idx, iou_score)
             nms_out_index = torchvision.ops.batched_nms(
                 detections_temp[:, :4],
                 iou_score,
                 detections_temp[:, 6],
                 nms_thre,
             )
-            topk_idx = sort_idx[nms_out_index[:topK]]
+            if len(nms_out_index) > topK:
+                topk_idx = sort_idx[nms_out_index[:topK]]
+            else:
+                topk_idx = sort_idx[nms_out_index]
             logger.info(f"leng of topk_idx: {len(topk_idx)} topk_idx: {topk_idx}")
             topk_iou_score = img_iou[topk_idx]
             self.check_p3_p4_p5_level_features(topk_idx, topk_iou_score)
             output[i] = detections[topk_idx, :]
             output_index[i] = topk_idx
+            exit(0)
 
         return output, output_index
 
