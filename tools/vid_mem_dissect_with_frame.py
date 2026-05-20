@@ -534,10 +534,12 @@ def visualize_mem_info_on_frame(args, type_name, feat_info_list, frame_save_path
     p4_mem_info = feat_info_list['p4']
     p5_mem_info = feat_info_list['p5']
     draw_img_flag = False
-    if args.draw_mem_info_on_frame and type_name == "Memory":
+    logger.info(f"args.draw_mem_feat_info: {args.draw_mem_feat_info}, args.draw_sampled_mem_feat_info: {args.draw_sampled_mem_feat_info}, type_name: {type_name}")
+    if type_name == "Memory" and args.draw_mem_feat_info:
         draw_img_flag = True
-    elif args.draw_sampled_mem_info_on_frame and type_name == "Sampled_Memory":
-        draw_img_flag = True
+    elif type_name == "Sampled_Memory" and args.draw_sampled_mem_feat_info:
+        draw_img_flag = False
+
     if args.save_csv_result:
         csv_save_path = os.path.join(frame_save_path, f"{type_name}_features.csv")
         csv_file = open(csv_save_path, mode='w', newline='')
@@ -622,8 +624,8 @@ def visualize_mem_info_on_frame(args, type_name, feat_info_list, frame_save_path
          if draw_img_flag:
              cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
              cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-         file_name = input_frame_name + f'_{type_name}_P4_{i}.JPEG'
-         cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
+             file_name = input_frame_name + f'_{type_name}_P4_{i}.JPEG'
+             cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
          if args.save_csv_result:
              csv_writer.writerow([p4[0], p4[1], input_frame_name, 'P4', f"[{int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}]", f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.6f}", \
                                      f"{class_label}", f"{class_label_name}", f"{feat_num}"])
