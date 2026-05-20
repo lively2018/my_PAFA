@@ -431,14 +431,21 @@ class YOLOXHead(nn.Module):
                             reg_one = reg_one.reshape(-1, channel)
                             #logger.info(f"reg_one.shape: {reg_one.shape}")
                             weighted_feat, _sampled_mem_feat_info = self.aggregator(reg_one, None, k)
+                            if _sampled_mem_feat_info == []:
+                                logger.warning(f"No memory features were sampled for level {k} in this batch.")
+
                             if k == 0:
                                 sampled_mem_feat_info['p3'] = _sampled_mem_feat_info
                             elif k == 1:
                                 sampled_mem_feat_info['p4'] = _sampled_mem_feat_info
                             elif k == 2:
                                 sampled_mem_feat_info['p5'] = _sampled_mem_feat_info
-                            agg_feat = reg_one + weighted_feat
-                            agg_feat = self.inplace_false_relu(agg_feat)
+                            if weighted_feat is None:
+                                logger.warning(f"Aggregator returned None for level {k} in this batch.")
+                                agg_feat = reg_one
+                            else:
+                                agg_feat = reg_one + weighted_feat
+                                agg_feat = self.inplace_false_relu(agg_feat)
                             #logger.info(f"agg_feat.shape: {agg_feat.shape}")
                             agg_feat = agg_feat.reshape(channel, height, width)
                         else:
@@ -650,6 +657,8 @@ class YOLOXHead(nn.Module):
                 #Generate reference features from 16 batch files
                 ref_feature_p3, ref_feature_p4, ref_feature_p5,  ref_pred_info = \
                     self.select_level_key_feature_in_reg_feature(reg_feat_flatten, iou_pred_idx, iou_pred_result)
+                #high_iou_ref_feature_p3, high_iou_ref_feature_p4, high_iou_ref_feature_p5, high_iou_ref_feat_info =\
+                #    self.select_high_iou_feature_in_aggregated_feature(aggregated_selected_feat_info, labels)
                 # Save bboxes/obj_score/cls_score for each level's reference features
                 # Shape: [N, 6+num_classes] — columns: [x1, y1, x2, y2, obj_score, cls_score, class_pred x num_classes]
                 self._ref_pred_info = ref_pred_info
@@ -935,6 +944,76 @@ class YOLOXHead(nn.Module):
             key_features_list.append(key_features)
         return key_features_list
 
+    def select_high_iou_feature_in_aggregated_feature(self, reg_features, aggregated_feature_info, labels):
+        high_iou_features_info_list = []
+        high_iou_features_p3_list = []
+        high_iou_features_p4_list = []
+        high_iou_features_p5_list = []
+        for i in range(len(aggregated_feature_info)):
+            batch_info = aggregated_feature_info[i]
+            p3_info, p4_info, p5_info = batch_info
+            label = labels[i]
+            img_bboxes = []
+            gt_bboxes = label[:, :4]
+            for p3_item in p3_info:
+                img_bboxes.append(p3_item[:4])
+            for p4_item in p4_info:
+                img_bboxes.append(p4_item[:4])
+            for p5_item in p5_info:
+                img_bboxes.append(p5_item[:4])
+            img_bboxes = torch.stack(img_bboxes, dim=0)
+            iou_list = []
+            for gt_bbox in gt_bboxes:
+                ious = self.calculate_iou_gt_img(gt_bbox, img_bboxes)
+                iou_list.append(ious)
+            topk_iou = sorted(iou_list, reverse=True)[:30]  # Get top 3 IoU values
+            topk_iou_idx = sorted(range(len(iou_list)), key=lambda i: iou_list[i], reverse=True)[:30]  # Get indices of top 3 IoU values
+            logger.info(f"topk_iou: {topk_iou}")
+            logger.info(f"topk_iou_idx: {topk_iou_idx}")
+            nms_iou_threshold = 0.5
+            nms_iou_idx = torchvision.ops.batched_nms(
+                torch.tensor(img_bboxes)[topk_iou_idx].float(),
+                torch.tensor(topk_iou).float(),
+                torch.zeros(len(topk_iou_idx), dtype=torch.long),
+                nms_iou_threshold,
+            )
+            logger.info(f"nms_iou_idx: {nms_iou_idx}")
+            actual_idx_list = []
+            for i, idx in enumerate(nms_iou_idx.tolist()):
+                actual_idx = topk_iou_idx[idx]
+                actual_idx_list.append(actual_idx)
+            logger.info(f"actual_idx_list: {actual_idx_list}")
+            high_iou_features_p3_info = []
+            high_iou_features_p4_info = []
+            high_iou_features_p5_info = []
+            high_iou_features_p3 = []
+            high_iou_features_p4 = []
+            high_iou_features_p5 = []
+            for idx in actual_idx_list:
+                if idx < len(p3_info):
+                    high_iou_features_p3_info.append(p3_info[idx])
+                    info = p3_info[idx]
+                    high_iou_features_p3.append(reg_features[info[36]])  # get the corresponding reg_feature using the idx stored in info[36 ]
+                elif idx < len(p3_info) + len(p4_info):
+                    high_iou_features_p4_info.append(p4_info[idx - len(p3_info)])
+                    info = p4_info[idx - len(p3_info)]
+                    high_iou_features_p4.append(reg_features[info[36]])
+                else:
+                    high_iou_features_p5_info.append(p5_info[idx - len(p3_info) - len(p4_info)])
+                    info = p5_info[idx - len(p3_info) - len(p4_info)]
+                    high_iou_features_p5.append(reg_features[info[36]])
+            high_iou_feature_info = torch.stack(high_iou_features_p3_info + high_iou_features_p4_info + high_iou_features_p5_info, dim=0)
+            high_iou_features_info_list.append(high_iou_feature_info)
+            if high_iou_features_p3:
+                high_iou_features_p3_list[i] = torch.stack(high_iou_features_p3, dim=0)
+            if high_iou_features_p4:
+                high_iou_features_p4_list[i] = torch.stack(high_iou_features_p4, dim=0)
+            if high_iou_features_p5:
+                high_iou_features_p5_list[i] = torch.stack(high_iou_features_p5, dim=0)
+
+        return high_iou_features_p3_list, high_iou_features_p4_list, high_iou_features_p5_list, high_iou_features_info_list
+
+
     def select_level_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results):
         key_features_p3 = []
         key_features_p4 = []
@@ -948,7 +1027,7 @@ class YOLOXHead(nn.Module):
             idx_list = pred_idx[i]
             pred_result = pred_results[i]
             conf_score_list = pred_result[:, 4] * pred_result[:, 5]
-            mask_idx = torch.nonzero(conf_score_list > self.m_conf, as_tuple=False).squeeze()
+            mask_idx = torch.nonzero(conf_score_list > 0, as_tuple=False).squeeze()
             if mask_idx.ndim == 0:
                 mask_idx = mask_idx.unsqueeze(0)
             #logger.info("conf_score_list masked > 0.01: {}".format(mask_idx))
