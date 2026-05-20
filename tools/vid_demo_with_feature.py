@@ -155,7 +155,7 @@ def image_demo(predictor, vis_folder, path, current_time, save_result):
 def read_targets(args, img_path_list):
     targets = []
     for img_path in img_path_list:
-        logger.info(f"img_path: {img_path}")
+        #logger.info(f"img_path: {img_path}")
         xml_path = img_path.replace("Data", "Annotations").replace(".JPEG", ".xml").replace(".jpeg", ".xml").replace(".jpg", ".xml")
         if os.path.exists(xml_path):
             xml_doc = minidom.parse(xml_path)
@@ -185,11 +185,11 @@ def read_targets(args, img_path_list):
                 res[ix, 5] = r
             res[:, :4] = (res[:, :4] * r).astype(int)
             targets.append(res)
-    for img_path, target in zip(img_path_list, targets):
-        logger.info(f"img_path:{img_path}")
-        logger.info(f"target:")
-        for i, node in enumerate(target):
-            logger.info(f"{i}th node: {node.tolist()} ")
+    #for img_path, target in zip(img_path_list, targets):
+        #logger.info(f"img_path:{img_path}")
+        #logger.info(f"target:")
+        #for i, node in enumerate(target):
+        #    logger.info(f"{i}th node: {node.tolist()} ")
     return targets
 
 def calculate_iou_gt_img(gt_bbox, img_bbox):
@@ -408,7 +408,7 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
     logger.info("Saving detection image result in {}".format(img_save_path))
     img_anno_res = {}
     for (output,img, file_path) in zip(outputs,ori_frames[:len(outputs)],files):
-        logger.info(f"Processing file {file_path}")
+        #logger.info(f"Processing file {file_path}")
         if args.post:
             ratio = 1
         result_frame = predictor.visual(output,img,ratio,cls_conf=args.conf,color_idx=12)

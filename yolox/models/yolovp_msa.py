@@ -463,14 +463,14 @@ class YOLOXHead(nn.Module):
             cls_output = self.cls_preds[k](cls_feat)
             obj_output_original = self.obj_preds[k](original_reg_feat)
             reg_output_original = self.reg_preds[k](original_reg_feat)
-            if first:
-                eq_feat = torch.equal(reg_feat, original_reg_feat)
-                diff_feat = (reg_feat.float() - original_reg_feat.float()).abs().max().item()
-                eq_reg = torch.equal(reg_output, reg_output_original)
-                diff_reg = (reg_output.float() - reg_output_original.float()).abs().max().item()
-                eq_obj = torch.equal(obj_output, obj_output_original)
-                diff_obj = (obj_output.float() - obj_output_original.float()).abs().max().item()
-                logger.info(f"[first] k={k} reg_feat equal={eq_feat} max_diff={diff_feat:.4f} | reg_output equal={eq_reg} max_diff={diff_reg:.4f} | obj_output equal={eq_obj} max_diff={diff_obj:.4f}")
+            #if first:
+            #    eq_feat = torch.equal(reg_feat, original_reg_feat)
+            #    diff_feat = (reg_feat.float() - original_reg_feat.float()).abs().max().item()
+            #    eq_reg = torch.equal(reg_output, reg_output_original)
+            #    diff_reg = (reg_output.float() - reg_output_original.float()).abs().max().item()
+            #    eq_obj = torch.equal(obj_output, obj_output_original)
+            #    diff_obj = (obj_output.float() - obj_output_original.float()).abs().max().item()
+            #    logger.info(f"[first] k={k} reg_feat equal={eq_feat} max_diff={diff_feat:.4f} | reg_output equal={eq_reg} max_diff={diff_reg:.4f} | obj_output equal={eq_obj} max_diff={diff_obj:.4f}")
 
             if self.training:
                 output = torch.cat([reg_output, obj_output, cls_output], 1)
@@ -536,9 +536,9 @@ class YOLOXHead(nn.Module):
                                    ).permute(0, 2, 1)
         original_outputs_decode = torch.cat([x.flatten(start_dim=2) for x in original_outputs_decode], dim=2
                                    ).permute(0, 2, 1)
-        if first:
-            is_equal = torch.equal(outputs_decode, original_outputs_decode)
-            logger.info(f"[first] outputs_decode == original_outputs_decode: {is_equal}, max_diff: {(outputs_decode - original_outputs_decode).abs().max().item()}")
+        #if first:
+        #    is_equal = torch.equal(outputs_decode, original_outputs_decode)
+        #    logger.info(f"[first] outputs_decode == original_outputs_decode: {is_equal}, max_diff: {(outputs_decode - original_outputs_decode).abs().max().item()}")
 
         #kssong
         #reg_output_file = open('./reg_output.txt', 'a')
@@ -555,9 +555,9 @@ class YOLOXHead(nn.Module):
 
         decode_res = self.decode_outputs(outputs_decode, dtype=xin[0].type())
         original_decode_res = self.decode_outputs(original_outputs_decode, dtype=xin[0].type())
-        if first:
-            is_equal = torch.equal(decode_res, original_decode_res)
-            logger.info(f"[first] decode_res == original_decode_res: {is_equal}, max_diff: {(decode_res - original_decode_res).abs().max().item()}")
+        #if first:
+        #    is_equal = torch.equal(decode_res, original_decode_res)
+        #    logger.info(f"[first] decode_res == original_decode_res: {is_equal}, max_diff: {(decode_res - original_decode_res).abs().max().item()}")
 
         if self.kwargs.get('ota_mode',False) and self.training:
             ota_idxs,reg_targets = self.get_fg_idx( imgs,
@@ -568,33 +568,33 @@ class YOLOXHead(nn.Module):
                 torch.cat(outputs, 1),)
         else:
             ota_idxs = None
-        if need_aggregation:
-            if labels is not None:
-                logger.info(f"length of lables: {len(labels)}")
-                for label in labels:
-                    for i, target in enumerate(label):
-                        logger.info(f"{i}th target: {target.tolist()}")
-            logger.info(f"first img_path: {img_path[0]}")
+        #if need_aggregation:
+            #if labels is not None:
+            #    logger.info(f"length of lables: {len(labels)}")
+            #    for label in labels:
+            #        for i, target in enumerate(label):
+            #            logger.info(f"{i}th target: {target.tolist()}")
+            #logger.info(f"first img_path: {img_path[0]}")
 
         if not self.training and need_aggregation and first:
             decode_res_orig = decode_res.clone()
+            iou_pred_result, iou_pred_idx = self.postpro_orig_woclass(decode_res_orig, num_classes=self.num_classes,
+                                                        topK=1000)
         pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
                                                      nms_thre=self.nms_thresh,
                                                      topK=self.Afternum,
                                                      ota_idxs=ota_idxs,
                                                      )
-        if not self.training and need_aggregation and first:
-            iou_pred_result, iou_pred_idx = self.postpro_orig_woclass(decode_res_orig, num_classes=self.num_classes,
-                                                        topK=1000)
+
         pred_result_original, pred_idx_original = self.postpro_orig_woclass(original_decode_res.clone(), num_classes=self.num_classes, topK=1000)
-        if not self.training and need_aggregation and first:
-            for bi, (pr, pro) in enumerate(zip(iou_pred_result, pred_result_original)):
-                if pr is None or pro is None:
-                    logger.info(f"[first] batch[{bi}] pred_result: {pr}, pred_result_original: {pro}")
-                else:
-                    is_equal = torch.equal(pr, pro)
-                    max_diff = (pr - pro).abs().max().item() if pr.shape == pro.shape else float('nan')
-                    logger.info(f"[first] batch[{bi}] pred_result == pred_result_original: {is_equal}, shape: {pr.shape} vs {pro.shape}, max_diff: {max_diff}")
+        #if not self.training and need_aggregation and first:
+        #    for bi, (pr, pro) in enumerate(zip(iou_pred_result, pred_result_original)):
+        #        if pr is None or pro is None:
+        #            logger.info(f"[first] batch[{bi}] pred_result: {pr}, pred_result_original: {pro}")
+        #        else:
+        #            is_equal = torch.equal(pr, pro)
+        #            max_diff = (pr - pro).abs().max().item() if pr.shape == pro.shape else float('nan')
+        #            logger.info(f"[first] batch[{bi}] pred_result == pred_result_original: {is_equal}, shape: {pr.shape} vs {pro.shape}, max_diff: {max_diff}")
 
         #kssong
         #pred_result_file = open('./pred_result.txt', 'a')with size 1000
@@ -615,10 +615,10 @@ class YOLOXHead(nn.Module):
         original_reg_feat_flatten = torch.cat(
             [x.flatten(start_dim=2) for x in original_before_nms_regf], dim=2
         ).permute(0, 2, 1)
-        if first:
-            eq_reg_feat = torch.equal(reg_feat_flatten, original_reg_feat_flatten)
-            max_diff_reg_feat = (reg_feat_flatten.float() - original_reg_feat_flatten.float()).abs().max().item()
-            logger.info(f"[first] reg_feat_flatten == original_reg_feat_flatten: {eq_reg_feat}, max_diff: {max_diff_reg_feat:.4f}")
+        #if first:
+        #    eq_reg_feat = torch.equal(reg_feat_flatten, original_reg_feat_flatten)
+        #    max_diff_reg_feat = (reg_feat_flatten.float() - original_reg_feat_flatten.float()).abs().max().item()
+        #    logger.info(f"[first] reg_feat_flatten == original_reg_feat_flatten: {eq_reg_feat}, max_diff: {max_diff_reg_feat:.4f}")
         #kssong
         #reg_feat_flatten_file = open('./reg_feat_flatten.txt', 'a')
         #reg_feat_flatten_file.write(f'{reg_feat_flatten.shape}\n')
@@ -632,42 +632,43 @@ class YOLOXHead(nn.Module):
 
             self._original_ref_pred_info = original_ref_pred_info
             if first:
-                _,_,_, aggregated_selected_feat_info = \
-                    self.select_level_key_feature_in_reg_feature_with_test_conf(reg_feat_flatten, iou_pred_idx, iou_pred_result, test_conf=0.0)
+                aggregated_selected_feat, aggregated_selected_feat_info = \
+                    self.select_agg_feature_in_reg_feature_with_test_conf(reg_feat_flatten, iou_pred_idx, iou_pred_result, test_conf=0.0)
+
             else:
                 _,_,_, aggregated_selected_feat_info = \
                     self.select_level_key_feature_in_reg_feature_with_test_conf(reg_feat_flatten, pred_idx, pred_result, test_conf=0.0001)
             self._aggregated_selected_feat_info = aggregated_selected_feat_info
-            if first:
-                for bi, (orig_pli, agg_pli) in enumerate(zip(original_ref_pred_info, aggregated_selected_feat_info)):
-                    for level_name, orig_level, agg_level in zip(['p3', 'p4', 'p5'], orig_pli, agg_pli):
-                        orig_t = torch.stack(orig_level)
-                        agg_t = torch.stack(agg_level)
-                        if orig_t.shape == agg_t.shape:
-                            eq = torch.equal(orig_t, agg_t)
-                            max_diff = (orig_t.float() - agg_t.float()).abs().max().item()
-                            logger.info(f"[first] feat_info[{bi}][{level_name}] equal={eq}, shape={orig_t.shape}, max_diff={max_diff:.4f}")
-                        else:
-                            logger.info(f"[first] feat_info[{bi}][{level_name}] shape mismatch: {orig_t.shape} vs {agg_t.shape}")
+            #if first:
+            #    for bi, (orig_pli, agg_pli) in enumerate(zip(original_ref_pred_info, aggregated_selected_feat_info)):
+            #        for level_name, orig_level, agg_level in zip(['p3', 'p4', 'p5'], orig_pli, agg_pli):
+            #            orig_t = torch.stack(orig_level)
+            #            agg_t = torch.stack(agg_level)
+            #            if orig_t.shape == agg_t.shape:
+            #                eq = torch.equal(orig_t, agg_t)
+            #                max_diff = (orig_t.float() - agg_t.float()).abs().max().item()
+            #                logger.info(f"[first] feat_info[{bi}][{level_name}] equal={eq}, shape={orig_t.shape}, max_diff={max_diff:.4f}")
+            #            else:
+            #                logger.info(f"[first] feat_info[{bi}][{level_name}] shape mismatch: {orig_t.shape} vs {agg_t.shape}")
             if first:
                 # reset all level memory banks
                 self.aggregator.reset_memory_bank(0)
                 self.aggregator.reset_memory_bank(1)
                 self.aggregator.reset_memory_bank(2)
                 #Generate reference features from 16 batch files
-                ref_feature_p3, ref_feature_p4, ref_feature_p5,  ref_pred_info = \
-                    self.select_level_key_feature_in_reg_feature(reg_feat_flatten, iou_pred_idx, iou_pred_result)
-                #high_iou_ref_feature_p3, high_iou_ref_feature_p4, high_iou_ref_feature_p5, high_iou_ref_feat_info =\
-                #    self.select_high_iou_feature_in_aggregated_feature(aggregated_selected_feat_info, labels)
+                high_iou_ref_feat, high_iou_ref_feat_info =\
+                    self.select_high_iou_feature_in_aggregated_feature(aggregated_selected_feat,\
+                        aggregated_selected_feat_info, labels)
                 # Save bboxes/obj_score/cls_score for each level's reference features
                 # Shape: [N, 6+num_classes] — columns: [x1, y1, x2, y2, obj_score, cls_score, class_pred x num_classes]
-                self._ref_pred_info = ref_pred_info
-                logger.info(f"len(ref_pred_info): {len(ref_pred_info)}")
-                for i, level_info in enumerate(ref_pred_info):
+                self._ref_pred_info = high_iou_ref_feat_info
+                #logger.info(f"len(ref_pred_info): {len(high_iou_ref_feat_info)}")
+                for i, level_info in enumerate(high_iou_ref_feat_info):
+                #for i, level_info in enumerate(ref_pred_info):
                     level_info_p3, level_info_p4, level_info_p5 = level_info
-                    logger.info(f"Level {i} - len(level_info_p3): {len(level_info_p3)}, \
-                                len(level_info_p4): {len(level_info_p4)}, \
-                                    len(level_info_p5): {len(level_info_p5)}")
+                    #logger.info(f"Level {i} - len(level_info_p3): {len(level_info_p3)}, \
+                    #            len(level_info_p4): {len(level_info_p4)}, \
+                    #                len(level_info_p5): {len(level_info_p5)}")
                 #for i, level_info in enumerate(ref_pred_info):
                 #    level_info_p3, level_info_p4, level_info_p5 = level_info
                 #    logger.info(f"batch_item {i} - len(level_info_p3): {len(level_info_p3)}, \
@@ -677,9 +678,33 @@ class YOLOXHead(nn.Module):
                     self.aggregator.init_memory_features_info(level_info_p3, 0, batch_set, i)
                     self.aggregator.init_memory_features_info(level_info_p4, 1, batch_set, i)
                     self.aggregator.init_memory_features_info(level_info_p5, 2, batch_set, i)
-                self.aggregator.init_memory_bank(ref_feature_p3, 0)
-                self.aggregator.init_memory_bank(ref_feature_p4, 1)
-                self.aggregator.init_memory_bank(ref_feature_p5, 2)
+
+                high_iou_feat_p3, high_iou_feat_p4, high_iou_feat_p5 = high_iou_ref_feat
+
+                #self.aggregator.init_memory_bank(ref_feature_p3, 0)
+                #self.aggregator.init_memory_bank(ref_feature_p4, 1)
+                #self.aggregator.init_memory_bank(ref_feature_p5, 2)
+                logger.info(f"batch_set: {self.batch_set}, "\
+                            f"high_iou_feat_p3 length: {len(high_iou_feat_p3)}, "\
+                            f"high_iou_feat_p4 length: {len(high_iou_feat_p4)}, "\
+                            f"high_iou_feat_p5 length: {len(high_iou_feat_p5)}")
+
+                flat_p3 = [feat for batch_feats in high_iou_feat_p3 for feat in batch_feats]
+                if flat_p3:
+                    high_iou_feat_p3 = torch.stack(flat_p3, dim=0)
+                    logger.info(f"high_iou_feat_p3 shape: {high_iou_feat_p3.shape}")
+                    self.aggregator.init_memory_bank(high_iou_feat_p3, 0)
+                flat_p4 = [feat for batch_feats in high_iou_feat_p4 for feat in batch_feats]
+                if flat_p4:
+                    high_iou_feat_p4 = torch.stack(flat_p4, dim=0)
+                    logger.info(f"high_iou_feat_p4 shape: {high_iou_feat_p4.shape}")
+                    self.aggregator.init_memory_bank(high_iou_feat_p4, 1)
+                flat_p5 = [feat for batch_feats in high_iou_feat_p5 for feat in batch_feats]
+                if flat_p5:
+                    high_iou_feat_p5 = torch.stack(flat_p5, dim=0)
+                    logger.info(f"high_iou_feat_p5 shape: {high_iou_feat_p5.shape}")
+                    self.aggregator.init_memory_bank(high_iou_feat_p5, 2)
+
                 #self.batch_set += 1
                 self._mem_info = self.aggregator.get_memory_feature_info()
                 p3_mem_info = self._mem_info['p3']
@@ -944,17 +969,29 @@ class YOLOXHead(nn.Module):
             key_features_list.append(key_features)
         return key_features_list
 
-    def select_high_iou_feature_in_aggregated_feature(self, reg_features, aggregated_feature_info, labels):
+    def select_high_iou_feature_in_aggregated_feature(self, aggregated_feat,  aggregated_feature_info, labels):
         high_iou_features_info_list = []
         high_iou_features_p3_list = []
         high_iou_features_p4_list = []
         high_iou_features_p5_list = []
+
         for i in range(len(aggregated_feature_info)):
             batch_info = aggregated_feature_info[i]
+            batch_feat = aggregated_feat[i]
+
             p3_info, p4_info, p5_info = batch_info
+            p3_feat, p4_feat, p5_feat = batch_feat
             label = labels[i]
+            #logger.info(f"{i} th batch - label: {label.tolist()}")
             img_bboxes = []
             gt_bboxes = label[:, :4]
+            high_iou_features_p3_info = []
+            high_iou_features_p4_info = []
+            high_iou_features_p5_info = []
+            high_iou_features_p3 = []
+            high_iou_features_p4 = []
+            high_iou_features_p5 = []
+            #logger.info(f"{i} th batch - gt_bboxes: {gt_bboxes}")
             for p3_item in p3_info:
                 img_bboxes.append(p3_item[:4])
             for p4_item in p4_info:
@@ -966,52 +1003,59 @@ class YOLOXHead(nn.Module):
             for gt_bbox in gt_bboxes:
                 ious = self.calculate_iou_gt_img(gt_bbox, img_bboxes)
                 iou_list.append(ious)
-            topk_iou = sorted(iou_list, reverse=True)[:30]  # Get top 3 IoU values
-            topk_iou_idx = sorted(range(len(iou_list)), key=lambda i: iou_list[i], reverse=True)[:30]  # Get indices of top 3 IoU values
-            logger.info(f"topk_iou: {topk_iou}")
-            logger.info(f"topk_iou_idx: {topk_iou_idx}")
-            nms_iou_threshold = 0.5
-            nms_iou_idx = torchvision.ops.batched_nms(
-                torch.tensor(img_bboxes)[topk_iou_idx].float(),
-                torch.tensor(topk_iou).float(),
-                torch.zeros(len(topk_iou_idx), dtype=torch.long),
-                nms_iou_threshold,
-            )
-            logger.info(f"nms_iou_idx: {nms_iou_idx}")
             actual_idx_list = []
-            for i, idx in enumerate(nms_iou_idx.tolist()):
-                actual_idx = topk_iou_idx[idx]
-                actual_idx_list.append(actual_idx)
-            logger.info(f"actual_idx_list: {actual_idx_list}")
-            high_iou_features_p3_info = []
-            high_iou_features_p4_info = []
-            high_iou_features_p5_info = []
-            high_iou_features_p3 = []
-            high_iou_features_p4 = []
-            high_iou_features_p5 = []
+            for iou in iou_list:
+                topk_iou = sorted(iou, reverse=True)[:30]
+                topk_iou_idx = sorted(range(len(iou)), key=lambda idx: iou[idx], reverse=True)[:30]
+
+                #logger.info(f"topk_iou: {topk_iou}")
+                #logger.info(f"topk_iou_idx: {topk_iou_idx}")
+                nms_iou_threshold = 0.5
+                device = img_bboxes.device
+                nms_iou_idx = torchvision.ops.batched_nms(
+                    img_bboxes.clone().detach()[topk_iou_idx].float(),
+                    torch.tensor(topk_iou, dtype=torch.float32, device=device),
+                    torch.zeros(len(topk_iou_idx), dtype=torch.long, device=device),
+                    nms_iou_threshold,
+                )
+                #logger.info(f"nms_iou_idx: {nms_iou_idx}")
+                nms_iou_idx = nms_iou_idx.clone().detach().cpu().numpy()
+
+                for idx in nms_iou_idx:
+                    actual_idx = topk_iou_idx[idx]
+                    actual_idx_list.append(actual_idx)
+            #logger.info(f"actual_idx_list: {actual_idx_list}")
             for idx in actual_idx_list:
+                #logger.info(f"idx:{idx}")
                 if idx < len(p3_info):
                     high_iou_features_p3_info.append(p3_info[idx])
+                    high_iou_features_p3.append(p3_feat[idx])
                     info = p3_info[idx]
-                    high_iou_features_p3.append(reg_features[info[36]])  # get the corresponding reg_feature using the idx stored in info[36 ]
+                    #logger.info(f"p3 info idx: {idx} info: {info[36]}")
                 elif idx < len(p3_info) + len(p4_info):
                     high_iou_features_p4_info.append(p4_info[idx - len(p3_info)])
+                    high_iou_features_p4.append(p4_feat[idx - len(p3_info)])
                     info = p4_info[idx - len(p3_info)]
-                    high_iou_features_p4.append(reg_features[info[36]])
+                    #logger.info(f"p4 info idx: {idx} info: {info[36]}")
                 else:
-                    high_iou_features_p5_info.append(p5_info[idx - len(p3_info) - len(p4_info)])
-                    info = p5_info[idx - len(p3_info) - len(p4_info)]
-                    high_iou_features_p5.append(reg_features[info[36]])
-            high_iou_feature_info = torch.stack(high_iou_features_p3_info + high_iou_features_p4_info + high_iou_features_p5_info, dim=0)
-            high_iou_features_info_list.append(high_iou_feature_info)
-            if high_iou_features_p3:
-                high_iou_features_p3_list[i] = torch.stack(high_iou_features_p3, dim=0)
-            if high_iou_features_p4:
-                high_iou_features_p4_list[i] = torch.stack(high_iou_features_p4, dim=0)
-            if high_iou_features_p5:
-                high_iou_features_p5_list[i] = torch.stack(high_iou_features_p5, dim=0)
+                    p5_idx = idx - len(p3_info) - len(p4_info)
+                    high_iou_features_p5_info.append(p5_info[p5_idx])
+                    high_iou_features_p5.append(p5_feat[p5_idx])
+                    info = p5_info[p5_idx]
+                    #logger.info(f"p5 info idx: {idx} info: {info[36]}")
 
-        return high_iou_features_p3_list, high_iou_features_p4_list, high_iou_features_p5_list, high_iou_features_info_list
+            high_iou_features_info_list.append([high_iou_features_p3_info, high_iou_features_p4_info, high_iou_features_p5_info])
+            #logger.info(f"{i} th batch - high_iou_features_p3_info length: {len(high_iou_features_p3_info)}, \
+            #            high_iou_features_p4_info length: {len(high_iou_features_p4_info)}, \
+            #                high_iou_features_p5_info length: {len(high_iou_features_p5_info)}")
+            high_iou_features_p3_list.append(high_iou_features_p3)
+            high_iou_features_p4_list.append(high_iou_features_p4)
+            high_iou_features_p5_list.append(high_iou_features_p5)
+            #logger.info(f"{i} th batch - high_iou_features_p3 length: {len(high_iou_features_p3)}, \
+            #            high_iou_features_p4 length: {len(high_iou_features_p4)}, \
+            #                high_iou_features_p5 length: {len(high_iou_features_p5)}")
+
+        return (high_iou_features_p3_list, high_iou_features_p4_list, high_iou_features_p5_list), high_iou_features_info_list
 
 
     def select_level_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results):
@@ -1056,9 +1100,9 @@ class YOLOXHead(nn.Module):
             if len(p5_items) == 0:
                 p5_items.append(torch.zeros(7 + self.num_classes))
             pred_info.append([p3_items, p4_items, p5_items])
-            logger.info(f"Batch {i} - len(p3_items): {len(p3_items)},\
-                         len(p4_items): {len(p4_items)}, \
-                            len(p5_items): {len(p5_items)}")
+            #logger.info(f"Batch {i} - len(p3_items): {len(p3_items)},\
+            #             len(p4_items): {len(p4_items)}, \
+            #                len(p5_items): {len(p5_items)}")
             #for idx, items in enumerate(p3_items):
             #    logger.info(f"Batch {i} - p3 item {idx} th - p3 item shape: {items.shape}")
             #    logger.info(f"Batch {i} - p3 item {idx} th - p3 items: {int(items[36])}")
@@ -1132,6 +1176,64 @@ class YOLOXHead(nn.Module):
         key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128)
         # Pad each batch's detections to the same length and stack → [16, x, 36]
         return key_features_p3, key_features_p4, key_features_p5, pred_info
+    def select_agg_feature_in_reg_feature_with_test_conf(self, reg_features, pred_idx, pred_results, test_conf):
+        agg_features  = []
+        pred_info = []  # per batch: [pred_info_p3, pred_info_p4, pred_info_p5], each pred_info_pX shape: [x_i, 36] — columns: [x1, y1, x2, y2, obj_score, cls_score, class_pred x num_classes]
+
+        #logger.info(f"reg_features.shape: {reg_features.shape} pred_idx length: {len(pred_idx)} pred_results length: {len(pred_results)}")
+        for i in range(reg_features.shape[0]):
+            #logger.info(f"Processing batch {i} for select_level_key_feature_in_reg_feature")
+            reg_feature = reg_features[i]
+            idx_list = pred_idx[i]
+            pred_result = pred_results[i]
+            conf_score_list = pred_result[:, 4] * pred_result[:, 5]
+            mask_idx = torch.nonzero(conf_score_list > test_conf, as_tuple=False).squeeze()
+            if mask_idx.ndim == 0:
+                mask_idx = mask_idx.unsqueeze(0)
+            #logger.info("conf_score_list masked > 0.01: {}".format(mask_idx))
+            mask_idx_list = idx_list[mask_idx]
+            #logger.info(" masked_idx_list: {}".format(mask_idx_list))
+            #logger.info(" idx_list: {}".format(idx_list))
+            p3_items = []
+            p4_items = []
+            p5_items = []
+            agg_features_p3 = []
+            agg_features_p4 = []
+            agg_features_p5 = []
+            for j, idx in enumerate(mask_idx_list):
+                det = pred_result[mask_idx[j]]
+                info = torch.cat([det[[0, 1, 2, 3, 4, 5]], det[7: 7 + self.num_classes], idx.unsqueeze(0)])  # x1, y1, x2, y2, obj_score, cls_score, class_pred[num_classes], idx
+                if idx >= 0 and idx < 6400:
+                    agg_features_p3.append(reg_feature[idx])
+                    p3_items.append(info)
+                elif idx >= 6400 and idx < 8000:
+                    agg_features_p4.append(reg_feature[idx])
+                    p4_items.append(info)
+                else:
+                    agg_features_p5.append(reg_feature[idx])
+                    p5_items.append(info)
+            if len(p3_items) == 0:
+                p3_items.append(torch.zeros(7 + self.num_classes))
+            if len(p4_items) == 0:
+                p4_items.append(torch.zeros(7 + self.num_classes))
+            if len(p5_items) == 0:
+                p5_items.append(torch.zeros(7 + self.num_classes))
+            pred_info.append([p3_items, p4_items, p5_items])
+            #logger.info(f"Batch {i} - len(p3_items): {len(p3_items)},\
+            #             len(p4_items): {len(p4_items)}, \
+            #                len(p5_items): {len(p5_items)}")
+            #for idx, items in enumerate(p3_items):
+            #    logger.info(f"Batch {i} - p3 item {idx} th - p3 item shape: {items.shape}")
+            #    logger.info(f"Batch {i} - p3 item {idx} th - p3 items: {int(items[36])}")
+            #for idx, items in enumerate(p4_items):
+            #    logger.info(f"Batch {i} - p4 item {idx} th - p4 item shape: {items.shape}")
+            #    logger.info(f"Batch {i} - p4 item {idx} th - p4 items: {int(items[36])}")
+            #for idx, items in enumerate(p5_items):
+            #    logger.info(f"Batch {i} - p5 item {idx} th - p5 item shape: {items.shape}")
+            #    logger.info(f"Batch {i} - p5 item {idx} th - p5 items: {int(items[36])}")
+        # Pad each batch's detections to the same length and stack → [16, x, 36]
+            agg_features.append([agg_features_p3, agg_features_p4, agg_features_p5])
+        return agg_features, pred_info
 
     def select_level_key_feature_in_reg_feature_with_iou(self, reg_features, pred_idx, pred_results, test_conf):
         key_features_p3 = []
@@ -1725,185 +1827,26 @@ class YOLOXHead(nn.Module):
         return output, output_index
 
     def calculate_iou_gt_img(self, gt_bbox, img_bbox):
-        gt_bbox = gt_bbox.float()
-        img_bbox = img_bbox.float()
-        x1 = torch.max(gt_bbox[0], img_bbox[0])
-        y1 = torch.max(gt_bbox[1], img_bbox[1])
-        x2 = torch.min(gt_bbox[2], img_bbox[2])
-        y2 = torch.min(gt_bbox[3], img_bbox[3])
-
-        inter = max(x2 - x1, 0) * max(y2 - y1, 0)
+        if isinstance(gt_bbox, torch.Tensor):
+            gt_bbox = gt_bbox.detach().cpu().numpy().astype(np.float32)
+        else:
+            gt_bbox = np.array(gt_bbox, dtype=np.float32)
+        if isinstance(img_bbox, torch.Tensor):
+            img_bbox = img_bbox.detach().cpu().numpy().astype(np.float32)
+        else:
+            img_bbox = np.array(img_bbox, dtype=np.float32)
+        if img_bbox.ndim == 1:
+            img_bbox = img_bbox[np.newaxis, :]
+        x1 = np.maximum(gt_bbox[0], img_bbox[:, 0])
+        y1 = np.maximum(gt_bbox[1], img_bbox[:, 1])
+        x2 = np.minimum(gt_bbox[2], img_bbox[:, 2])
+        y2 = np.minimum(gt_bbox[3], img_bbox[:, 3])
+        inter = np.maximum(x2 - x1, 0) * np.maximum(y2 - y1, 0)
         area_gt  = (gt_bbox[2]  - gt_bbox[0])  * (gt_bbox[3]  - gt_bbox[1])
-        area_img = (img_bbox[2] - img_bbox[0]) * (img_bbox[3] - img_bbox[1])
+        area_img = (img_bbox[:, 2] - img_bbox[:, 0]) * (img_bbox[:, 3] - img_bbox[:, 1])
         union = area_gt + area_img - inter
         iou = inter / (union + 1e-12)
         return iou
-
-    def calculate_iou_list(self, gt_bbox, img_bboxes):
-        iou_list = torch.zeros(len(img_bboxes), dtype=img_bboxes.dtype, device=img_bboxes.device)
-        #csv_save_path = os.path.join("./", f"img_bboxes_{batch_item}.csv")
-        #csv_file = open(csv_save_path, mode='w', newline='')
-        #csv_writer = csv.writer(csv_file)
-        #csv_writer.writerow(['bbox'])
-        #logger.info(f"scale: {scale}")
-        iou_list = []
-        img_bboxes = torch.clamp(img_bboxes, min=0)
-        for i, img_bbox in enumerate(img_bboxes):
-            csv_bbox = img_bbox.int().tolist()
-            #csv_writer.writerow([f"[ {csv_bbox[0]}, {csv_bbox[1]}, {csv_bbox[2]}, {csv_bbox[3]}]"])
-            #logger.info(f"csv_bbox: {csv_bbox}")
-
-            bbox_iou = self.calculate_iou_gt_img(gt_bbox, img_bbox)
-            #logger.info(f"bbox_iou:{bbox_iou:.4f} for gt_bbox: {gt_bbox} and img_bbox: {img_bbox}")
-            iou_list.append(bbox_iou)
-        #csv_file.close()
-        return iou_list
-
-
-    def check_p3_p4_p5_level_features(self, idx_list, iou_score):
-        p3_level_count = 0
-        p4_level_count = 0
-        p5_level_count = 0
-
-        for i, idx in enumerate(idx_list):
-            if idx >= 0 and idx < 6400:
-                p3_level_count += 1
-                #logger.info(f"p3 iou_score: {iou_score[i]}")
-            elif idx >=6400 and idx < 8000:
-                p4_level_count += 1
-                #logger.info(f"p4 iou_score: {iou_score[i]}")
-            else:
-                p5_level_count += 1
-                #logger.info(f"p5 iou_score: {iou_score[i]}")
-        logger.info(f"p3 level count: {p3_level_count}, p4_level_count: {p4_level_count}, \
-                    p5_level_count: {p5_level_count}")
-
-    def get_high_iou_img_idx(self, label, img_bboxes, topK):
-        gt_bboxes = torch.tensor(label[:, 0:4], dtype=img_bboxes.dtype, device=img_bboxes.device)
-        scale = label[0, 5]
-        img_bboxes = img_bboxes / scale
-        total_iou_list = []
-        for gt_bbox in gt_bboxes:
-            iou_list = self.calculate_iou_list(gt_bbox, img_bboxes)
-            total_iou_list.append(iou_list)
-        total_iou_list = torch.tensor(total_iou_list, dtype=img_bboxes.dtype, device=img_bboxes.device)
-        len_gt = len(label)
-        if len_gt == 0:
-            return []
-        max_topk = self.Prenum // len_gt
-        max_topk = max(max_topk, 1)
-        max_level_topk = topK // 3
-        #logger.info(f"len_gt: {len_gt}, topK: {topK}, max_topk: {max_topk}, max_level_topk: {max_level_topk}")
-
-        if max_level_topk == 0:
-            max_level_topk = 1
-        topk_iou_list = []
-
-        for i in range(len_gt):
-            gt_iou_list = total_iou_list[i]
-            topk_iou, topk_idx = torch.topk(gt_iou_list, k=max_topk)
-            #logger.info(f"gt_idx: {i}, length of topk_iou: {len(topk_iou)}, length of topk_idx: {len(topk_idx)}")
-            topk_iou_list.append((topk_iou, topk_idx))
-        return topk_iou_list
-    def postpro_iou(self, prediction, num_classes, nms_thre=0.75, topK=75, ota_idxs=None, labels=None):
-        # find topK predictions, play the same role as RPN
-        '''
-
-        Args:
-            prediction: [batch,feature_num,5+clsnum]
-            num_classes:
-            conf_thre:
-            conf_thre_high:
-            nms_thre:
-
-        Returns:
-            [batch,topK,5+clsnum]
-        '''
-        box_corner = prediction.new(prediction.shape)
-        box_corner[:, :, 0] = prediction[:, :, 0] - prediction[:, :, 2] / 2
-        box_corner[:, :, 1] = prediction[:, :, 1] - prediction[:, :, 3] / 2
-        box_corner[:, :, 2] = prediction[:, :, 0] + prediction[:, :, 2] / 2
-        box_corner[:, :, 3] = prediction[:, :, 1] + prediction[:, :, 3] / 2
-        prediction[:, :, :4] = box_corner[:, :, :4]
-
-        output = [None for _ in range(len(prediction))]
-        output_index = [None for _ in range(len(prediction))]
-
-        for i, image_pred in enumerate(prediction):
-            #take ota idxs as output in training mode
-            if ota_idxs is not None and len(ota_idxs[i]) > 0:
-                ota_idx = ota_idxs[i]
-                topk_idx = torch.stack(ota_idx).type_as(image_pred)
-                output[i] = image_pred[topk_idx, :]
-                output_index[i] = topk_idx
-                continue
-
-            if not image_pred.size(0):
-                continue
-            # Get score and class with highest confidence
-            class_conf, class_pred = torch.max(image_pred[:, 5: 5 + num_classes], 1, keepdim=True)
-
-            # Calculate the IoU
-            detections = torch.cat(
-                (image_pred[:, :5], class_conf, class_pred.float(), image_pred[:, 5: 5 + num_classes]), 1)
-
-            total_mask_iou_list = self.get_high_iou_img_idx(labels[i], detections[:, :4], topK)
-            for gt_idx, (topk_iou, topk_idx) in enumerate(total_mask_iou_list):
-                #logger.info(f"gt_idx: {gt_idx}, topk_iou: {topk_iou}, topk_idx: {topk_idx}")
-                detections_temp = detections[topk_idx, :]
-                nms_out_index = torchvision.ops.batched_nms(
-                    detections_temp[:, :4],
-                    topk_iou,
-                    detections_temp[:, 6],
-                    nms_thre,
-                )
-                count_p3_p4_p5 = [0, 0, 0]
-                max_level_topk = topK // 3
-                max_level_topk = max(max_level_topk, 1)
-                total_topk_idx = []
-                total_topk_iou = []
-                for idx in nms_out_index:
-                    if count_p3_p4_p5[0] >= max_level_topk and count_p3_p4_p5[1] >= max_level_topk and count_p3_p4_p5[2] >= max_level_topk:
-                        break
-                    if count_p3_p4_p5[0] < max_level_topk:
-                        if topk_idx[idx] >= 0 and topk_idx[idx] < 6400:
-                            count_p3_p4_p5[0] += 1
-                            total_topk_idx.append(topk_idx[idx])
-                            total_topk_iou.append(topk_iou[idx])
-                    if count_p3_p4_p5[1] < max_level_topk:
-                        if topk_idx[idx] >=6400 and topk_idx[idx] < 8000:
-                            count_p3_p4_p5[1] += 1
-                            total_topk_idx.append(topk_idx[idx])
-                            total_topk_iou.append(topk_iou[idx])
-                    if count_p3_p4_p5[2] < max_level_topk:
-                        if topk_idx[idx] >= 8000:
-                            count_p3_p4_p5[2] += 1
-                            total_topk_idx.append(topk_idx[idx])
-                            total_topk_iou.append(topk_iou[idx])
-                logger.info(f"gt_idx: {gt_idx}, count_p3_p4_p5: {count_p3_p4_p5}")
-                self.check_p3_p4_p5_level_features(total_topk_idx, total_topk_iou)
-                csv_save_path = os.path.join("./", f"img_bboxes_{i}_{gt_idx}.csv")
-                csv_file = open(csv_save_path, mode='w', newline='')
-                csv_writer = csv.writer(csv_file)
-                csv_writer.writerow(['level', 'bbox', 'iou'])
-                for iou, idx in zip(total_topk_iou, total_topk_idx):
-                    csv_bbox = detections[idx, :4].int().tolist()
-                    if idx >= 0 and idx < 6400:
-                        level = 'p3'
-                    elif idx >=6400 and idx < 8000:
-                        level = 'p4'
-                    else:
-                        level = 'p5'
-                    csv_bbox = [max(0, csv_bbox[0]), max(0, csv_bbox[1]), max(0, csv_bbox[2]), max(0, csv_bbox[3])]
-                    csv_writer.writerow([level, f"[ {csv_bbox[0]}, {csv_bbox[1]}, {csv_bbox[2]}, {csv_bbox[3]}]", f"{iou:.6f}"])
-                    logger.info(f"csv_bbox: {csv_bbox}")
-                csv_file.close()
-            exit(0)
-            output[i] = detections[topk_idx, :]
-            output_index[i] = topk_idx
-
-
-        return output, output_index
 
     def postpro_orig_woclass(self, prediction, num_classes,  topK=1000):
         # find topK predictions, play the same role as RPN

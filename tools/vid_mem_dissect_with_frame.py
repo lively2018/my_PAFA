@@ -6,6 +6,7 @@ import argparse
 import csv
 import os
 import pickle
+import sys
 import time
 from xml.dom import minidom
 from loguru import logger
@@ -38,19 +39,22 @@ def make_parser():
                         help='path where to save, empty for no saving')
     parser.add_argument('--input_dir', default='',
                         help='path where to read input result')
-    parser.add_argument('--save_result', default=True)
-    parser.add_argument('--draw_input_feat_info', default=True)
-    parser.add_argument('--draw_mem_feat_info', default=True)
-    parser.add_argument('--draw_sampled_mem_feat_info', default=True)
-    parser.add_argument('--draw_updated_feat_info', default=True)
-    parser.add_argument('--draw_result_info', default=True)
+    parser.add_argument('--save_result', default=True, type=lambda x: x.lower() == 'true')
+    parser.add_argument('--draw_input_feat_info', default=True, type=lambda x: x.lower() == 'true')
+    parser.add_argument('--draw_mem_feat_info', default=True, type=lambda x: x.lower() == 'true')
+    parser.add_argument('--draw_sampled_mem_feat_info', default=True, type=lambda x: x.lower() == 'true')
+    parser.add_argument('--draw_updated_feat_info', default=True, type=lambda x: x.lower() == 'true')
+    parser.add_argument('--draw_result_feat_info', default=True, type=lambda x: x.lower() == 'true')
+    parser.add_argument('--draw_outputs_feat_info', default=True, type=lambda x: x.lower() == 'true')
+    parser.add_argument('--draw_agg_feat_info', default=True, type=lambda x: x.lower() == 'true')
     parser.add_argument('--gframe', default=0, help='global frame num')
     parser.add_argument('--lframe', default=16, help='local frame num')
     parser.add_argument('--test_conf', type=float, default=0.01, help='test confidence threshold')
     parser.add_argument('--tsize', default=640, type=int, help='test image size')
     parser.add_argument('--input_frame_name', default='000000.JPEG', help='input frame name to check')
     parser.add_argument('--input_image_path', default='/home/kssong/ILSVRC2015/Data/VID/val/ILSVRC2015_val_00118007', help='input frame name to check')
-    parser.add_argument('--save_result_with_gt', default=False)
+    parser.add_argument('--save_result_with_gt', default=False, type=lambda x: x.lower() == 'true')
+    parser.add_argument('--save_csv_result', default=True, type=lambda x: x.lower() == 'true')
     return parser
 
 def find_batch_set_and_item_for_input_frame(ref_frame_batch_set, input_frame_name):
@@ -71,12 +75,12 @@ def read_ref_frame_list(args, n_frames):
     ref_frame_list = np.load(ref_frame_list_path, allow_pickle=True)
     ref_frame_batch_set = []
     ref_frame_batch = []
-    #logger.info(f"len(ref_frame_list): {len(ref_frame_list)}")
-    #logger.info(f"n_frames: {n_frames}")
+    logger.info(f"len(ref_frame_list): {len(ref_frame_list)}")
+    logger.info(f"n_frames: {n_frames}")
     for i, ref_frame in enumerate(ref_frame_list):
         ref_frame_batch.append(ref_frame)
         if (i + 1) % n_frames == 0:
-            #logger.info(f"Ref frame {i}: {ref_frame}")
+            logger.info(f"Ref frame {i}: {ref_frame}")
             ref_frame_batch_set.append(ref_frame_batch)
             ref_frame_batch = []
     return ref_frame_batch_set
@@ -529,20 +533,26 @@ def visualize_mem_info_on_frame(args, type_name, feat_info_list, frame_save_path
     p3_mem_info = feat_info_list['p3']
     p4_mem_info = feat_info_list['p4']
     p5_mem_info = feat_info_list['p5']
-
-    csv_save_path = os.path.join(frame_save_path, f"{type_name}_features.csv")
-    csv_file = open(csv_save_path, mode='w', newline='')
-    csv_writer = csv.writer(csv_file)
-    csv_writer.writerow(['batch_set', 'batch_item', 'image_name', 'feature_level', 'bbox', 'obj_score', 'cls_score', 'conf_score', 'class_label', 'class_label_name', 'feat_num'])
+    draw_img_flag = False
+    if args.draw_mem_info_on_frame and type_name == "Memory":
+        draw_img_flag = True
+    elif args.draw_sampled_mem_info_on_frame and type_name == "Sampled_Memory":
+        draw_img_flag = True
+    if args.save_csv_result:
+        csv_save_path = os.path.join(frame_save_path, f"{type_name}_features.csv")
+        csv_file = open(csv_save_path, mode='w', newline='')
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow(['batch_set', 'batch_item', 'image_name', 'feature_level', 'bbox', 'obj_score', 'cls_score', 'conf_score', 'class_label', 'class_label_name', 'feat_num'])
 
     for i, p3 in enumerate(p3_mem_info):
          if torch.all(p3[2] == 0):
              continue
          input_frame_path = ref_frame_batch_set[p3[0]][p3[1]]
          input_frame_name = os.path.basename(input_frame_path)
-         logger.info(f"Visualizing feature info for p3 - {i}th batch_set: {p3[0]}, batch_item: {p3[1]}")
-         logger.info(f"Input frame path: {input_frame_path}")
-         logger.info(f"Visualizing feature info on frame: {input_frame_path}")
+         if draw_img_flag:
+            logger.info(f"Visualizing feature info for p3 - {i}th batch_set: {p3[0]}, batch_item: {p3[1]}")
+            logger.info(f"Input frame path: {input_frame_path}")
+            logger.info(f"Visualizing feature info on frame: {input_frame_path}")
          frame = cv2.imread(input_frame_path)
          height, width = frame.shape[:2]
          if exp is not None:
@@ -567,14 +577,17 @@ def visualize_mem_info_on_frame(args, type_name, feat_info_list, frame_save_path
                     class_label: {class_label}, \
                     class_label_name: {class_label_name}, \
                     feat_num: {feat_num}")
-         cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
-         cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-         file_name = input_frame_name + f'_{type_name}_P3_{i}.JPEG'
-         cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
-         logger.info(f"Saved visualized frame with p3 feature info: {os.path.join(frame_save_path, file_name)}")
-         logger.info(f"Finished visualizing p3 feature info for {input_frame_path}")
-         csv_writer.writerow([p3[0], p3[1], input_frame_name, 'P3', f"[{int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}]", f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.6f}", \
-                               f"{class_label}", f"{class_label_name}", f"{feat_num}"])
+         if draw_img_flag:
+            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
+            cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            file_name = input_frame_name + f'_{type_name}_P3_{i}.JPEG'
+            cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
+            logger.info(f"Saved visualized frame with p3 feature info: {os.path.join(frame_save_path, file_name)}")
+            logger.info(f"Finished visualizing p3 feature info for {input_frame_path}")
+
+         if args.save_csv_result:
+             csv_writer.writerow([p3[0], p3[1], input_frame_name, 'P3', f"[{int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}]", f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.6f}", \
+                                   f"{class_label}", f"{class_label_name}", f"{feat_num}"])
     for i, p4 in enumerate(p4_mem_info):
          if torch.all(p4[2] == 0):
              continue
@@ -606,12 +619,14 @@ def visualize_mem_info_on_frame(args, type_name, feat_info_list, frame_save_path
                     class_label: {class_label}, \
                     class_label_name: {class_label_name}, \
                     feat_num: {feat_num}")
-         cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
-         cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+         if draw_img_flag:
+             cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
+             cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
          file_name = input_frame_name + f'_{type_name}_P4_{i}.JPEG'
          cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
-         csv_writer.writerow([p4[0], p4[1], input_frame_name, 'P4', f"[{int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}]", f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.6f}", \
-                               f"{class_label}", f"{class_label_name}", f"{feat_num}"])
+         if args.save_csv_result:
+             csv_writer.writerow([p4[0], p4[1], input_frame_name, 'P4', f"[{int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}]", f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.6f}", \
+                                     f"{class_label}", f"{class_label_name}", f"{feat_num}"])
 
     for i, p5 in enumerate(p5_mem_info):
          if torch.all(p5[2] == 0):
@@ -644,15 +659,27 @@ def visualize_mem_info_on_frame(args, type_name, feat_info_list, frame_save_path
                     class_label: {class_label}, \
                     class_label_name: {class_label_name}, \
                     feat_num: {feat_num}")
-         cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
-         cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-         file_name = input_frame_name + f'_{type_name}_P5_{i}.JPEG'
-         cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
-         csv_writer.writerow([p5[0], p5[1], input_frame_name, 'P5', f"[{int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}]", f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.6f}", \
-                               f"{class_label}", f"{class_label_name}", f"{feat_num}"])
-    csv_file.close()
-    logger.info(f"Finished visualizing mem feature info and saved to: {frame_save_path}")
+         if draw_img_flag:
+             cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
+             cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+             file_name = input_frame_name + f'_{type_name}_P5_{i}.JPEG'
+             cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
+         if args.save_csv_result:
+             csv_writer.writerow([p5[0], p5[1], input_frame_name, 'P5', f"[{int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}]", f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.6f}", \
+                                   f"{class_label}", f"{class_label_name}", f"{feat_num}"])
+    if args.save_csv_result:
+        csv_file.close()
+        logger.info(f"Finished visualizing mem feature info and saved to: {frame_save_path}")
 def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_path,exp=None):
+
+    draw_image_flag = False
+    if args.draw_input_feat_info and type_name == "Input":
+        draw_image_flag = True
+    elif args.draw_updated_feat_info and type_name == "Updated":
+        draw_image_flag = True
+    elif args.draw_agg_feat_info and type_name == "Agg":
+        draw_image_flag = True
+
     input_frame_path = os.path.join(args.input_image_path, args.input_frame_name)
     logger.info(f"Visualizing feature info on frame: {input_frame_path}")
     _frame = cv2.imread(input_frame_path)
@@ -661,18 +688,19 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
         ratio = min(exp.test_size[0] / height, exp.test_size[1] / width)
     else:
         ratio = 1.0
-    csv_save_path = os.path.join(frame_save_path, f"{type_name}_features.csv")
-
-    csv_file = open(csv_save_path, "w", newline="")
-    csv_writer = csv.writer(csv_file)
-    csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_pred", "class_label", "class_label_name", "feat_num"])
+    if args.save_csv_result:
+        csv_save_path = os.path.join(frame_save_path, f"{type_name}_features.csv")
+        csv_file = open(csv_save_path, "w", newline="")
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_pred", "class_label", "class_label_name", "feat_num"])
 
     for feat_info in feat_info_list:
             p3_list, p4_list, p5_list = feat_info
             for i, p3 in enumerate(p3_list):
                  if np.all(p3 == 0):
                      continue
-                 frame = cv2.imread(input_frame_path)
+                 if draw_image_flag:
+                    frame = cv2.imread(input_frame_path)
                  bbox = p3[:4] / ratio
                  bbox[[0, 2]] = np.clip(bbox[[0, 2]], a_min=0, a_max=None)  # clip x1, x2
                  bbox[[1, 3]] = np.clip(bbox[[1, 3]], a_min=0, a_max=None)  # clip y1, y2
@@ -691,18 +719,21 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
                             class_label: {class_label}, \
                             class_label_name: {class_label_name},\
                             feat_num: {feat_num}")
-                 cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
-                 cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                 file_name = args.input_frame_name + f'_{type_name}_P3_{i}.JPEG'
-                 cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
-                 csv_writer.writerow(["P3", f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
-                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.6f}",\
-                                          f"{np.array2string(class_pred, precision=6, floatmode='fixed', suppress_small=True)}", f"{class_label}", f"{class_label_name}", f"{feat_num}"])
+                 if draw_image_flag:
+                    cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
+                    cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                    file_name = args.input_frame_name + f'_{type_name}_P3_{i}.JPEG'
+                    cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
+                 if args.save_csv_result:
+                    csv_writer.writerow(["P3", f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
+                                        f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.6f}",\
+                                            f"{np.array2string(class_pred, precision=6, floatmode='fixed', suppress_small=True)}", f"{class_label}", f"{class_label_name}", f"{feat_num}"])
 
             for i, p4 in enumerate(p4_list):
                  if np.all(p4 == 0):
                      continue
-                 frame = cv2.imread(input_frame_path)
+                 if draw_image_flag:
+                    frame = cv2.imread(input_frame_path)
                  bbox = p4[:4] / ratio
                  bbox[[0, 2]] = np.clip(bbox[[0, 2]], a_min=0, a_max=None)  # clip x1, x2
                  bbox[[1, 3]] = np.clip(bbox[[1, 3]], a_min=0, a_max=None)  # clip y1, y2
@@ -714,10 +745,11 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
                  conf_score = cls_score * obj_score
                  class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
                  label_text = f"{class_label_name} {conf_score:.3f}"
-                 cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
-                 cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                 file_name = args.input_frame_name + f'_{type_name}_P4_{i}.JPEG'
-                 cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
+                 if draw_image_flag:
+                    cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
+                    cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                    file_name = args.input_frame_name + f'_{type_name}_P4_{i}.JPEG'
+                    cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
                  logger.info(f"    p4 -{i}th  bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                             obj_score: {obj_score:.3f}, \
                             cls_score: {cls_score:.3f}, \
@@ -725,14 +757,16 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
                             class_label: {class_label}, \
                             class_label_name: {class_label_name},\
                             feat_num: {feat_num}")
-                 csv_writer.writerow(["P4", f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
-                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.6f}",\
-                                          f"{np.array2string(class_pred, precision=6, floatmode='fixed', suppress_small=True)}", f"{class_label}", f"{class_label_name}", f"{feat_num}"])
+                 if args.save_csv_result:
+                     csv_writer.writerow(["P4", f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
+                                          f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.6f}",\
+                                              f"{np.array2string(class_pred, precision=6, floatmode='fixed', suppress_small=True)}", f"{class_label}", f"{class_label_name}", f"{feat_num}"])
 
             for i, p5 in enumerate(p5_list):
                  if np.all(p5 == 0):
                      continue
-                 frame = cv2.imread(input_frame_path)
+                 if draw_image_flag:
+                    frame = cv2.imread(input_frame_path)
                  bbox = p5[:4] / ratio
                  bbox[[0, 2]] = np.clip(bbox[[0, 2]], a_min=0, a_max=None)  # clip x1, x2
                  bbox[[1, 3]] = np.clip(bbox[[1, 3]], a_min=0, a_max=None)  # clip y1, y2
@@ -744,10 +778,11 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
                  conf_score = cls_score * obj_score
                  class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
                  label_text = f"{class_label_name} {conf_score:.3f}"
-                 cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
-                 cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-                 file_name = args.input_frame_name + f'_{type_name}_P5_{i}.JPEG'
-                 cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
+                 if draw_image_flag:
+                    cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
+                    cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                    file_name = args.input_frame_name + f'_{type_name}_P5_{i}.JPEG'
+                    cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
                  logger.info(f"    p5 -{i}th bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                                 obj_score: {obj_score:.3f}, \
                                 cls_score: {cls_score:.3f}, \
@@ -755,11 +790,13 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
                                 class_label: {class_label}, \
                                 class_label_name: {class_label_name},\
                                 feat_num: {feat_num}")
-                 csv_writer.writerow(["P5", f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
-                                      f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.6f}",\
-                                          f"{np.array2string(class_pred, precision=6, floatmode='fixed', suppress_small=True)}", f"{class_label}", f"{class_label_name}", f"{feat_num}"])
-    csv_file.close()
-    logger.info(f"Saved input feature info to CSV: {csv_save_path}")
+                 if args.save_csv_result:
+                     csv_writer.writerow(["P5", f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
+                                          f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.6f}",\
+                                              f"{np.array2string(class_pred, precision=6, floatmode='fixed', suppress_small=True)}", f"{class_label}", f"{class_label_name}", f"{feat_num}"])
+    if args.save_csv_result:
+        csv_file.close()
+        logger.info(f"Saved input feature info to CSV: {csv_save_path}")
 
 def visualize_result_info_on_frame(args, result_info, frame_save_path):
     input_frame_path = os.path.join(args.input_image_path, args.input_frame_name)
@@ -806,10 +843,11 @@ def visualize_outputs_info_on_frame(args, outputs_info, frame_save_path, exp=Non
     input_frame_path = os.path.join(args.input_image_path, args.input_frame_name)
     logger.info(f"Visualizing outputs info on frame: {input_frame_path}")
     frame = cv2.imread(input_frame_path)
-    csv_save_path = os.path.join(frame_save_path, "outputs_features.csv")
-    csv_file = open(csv_save_path, "w", newline="")
-    csv_writer = csv.writer(csv_file)
-    csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_label", "class_label_name", "feat_num"])
+    if args.save_csv_result:
+        csv_save_path = os.path.join(frame_save_path, "outputs_features.csv")
+        csv_file = open(csv_save_path, "w", newline="")
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_label", "class_label_name", "feat_num"])
     height, width = frame.shape[:2]
     if exp is not None:
         ratio = min(exp.test_size[0] / height, exp.test_size[1] / width)
@@ -817,7 +855,8 @@ def visualize_outputs_info_on_frame(args, outputs_info, frame_save_path, exp=Non
         ratio = 1.0
     logger.info(f"height: {height}, width: {width}, ratio: {ratio}")
     for i, output_info in enumerate(outputs_info):
-        frame = cv2.imread(input_frame_path)
+        if args.draw_outputs_feat_info:
+            frame = cv2.imread(input_frame_path)
 
         logger.info(f"    output_info -{i}th - len: {len(output_info)}")
         logger.info(f"    output_info -{i}th - content: {output_info}")
@@ -836,10 +875,11 @@ def visualize_outputs_info_on_frame(args, outputs_info, frame_save_path, exp=Non
         conf_score = cls_score * obj_score
         class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
         label_text = f"{class_label_name} {conf_score:.3f}"
-        cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
-        cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-        file_name = args.input_frame_name + f'_Output_Info_{i}.JPEG'
-        cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
+        if args.draw_outputs_feat_info:
+            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
+            cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            file_name = args.input_frame_name + f'_Output_Info_{i}.JPEG'
+            cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
         logger.info(f"    output_info -{i}th - batch_set: {batch_set_output}, batch_item: {batch_item_output}, bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                     obj_score: {obj_score:.3f}, \
                     cls_score: {cls_score:.3f}, \
@@ -853,13 +893,17 @@ def visualize_outputs_info_on_frame(args, outputs_info, frame_save_path, exp=Non
             level = "P4"
         else:
             level = "P5"
-        csv_writer.writerow([level, f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
+        if args.save_csv_result:
+            csv_writer.writerow([level, f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
                                          f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.6f}", class_label, class_label_name, feat_num])
-    csv_file.close()
-    logger.info(f"Saved outputs feature info to CSV: {csv_save_path}")
+    if args.save_csv_result:
+        csv_file.close()
+        logger.info(f"Saved outputs feature info to CSV: {csv_save_path}")
 
 def main(exp, args):
 
+    logger.remove()  # Remove default logger to avoid duplicate logs
+    logger.add(sys.stderr, level="WARNING")  # Add logger to print to console
     current_time = time.localtime()
     file_name = os.path.join(args.output_dir, exp.exp_name)
     os.makedirs(file_name, exist_ok=True)
@@ -887,25 +931,34 @@ def main(exp, args):
     batch_set, batch_item = find_batch_set_and_item_for_input_frame(ref_frame_batch_set, args.input_frame_name)
     input_feat_info_item = read_input_feature_info_list(args, batch_set, batch_item, save_folder)
 
+
+
     visualize_feature_info_on_frame(args, "Input", [input_feat_info_item], save_folder, exp)
 
     if batch_set == 0:
         logger.info(f"Batch set for input frame is 0, which may not have memory features.")
     else:
         mem_feat_info = read_mem_feature_info_list(args, (batch_set-1),save_folder)
+
         visualize_mem_info_on_frame(args, "Memory", mem_feat_info, save_folder, exp, ref_frame_batch_set)
         sampled_mem_feat_info = read_sampled_mem_feature_info_list(args, (batch_set-1),save_folder)
+
         visualize_mem_info_on_frame(args, "Sampled_Memory", sampled_mem_feat_info, save_folder, exp, ref_frame_batch_set)
 
     updated_feat_info = read_updated_feature_info_list(args, batch_set, batch_item, save_folder)
+
     visualize_feature_info_on_frame(args, "Updated", [updated_feat_info], save_folder, exp)
     agg_feat_info = read_agg_feature_info_list(args, batch_set, batch_item, save_folder)
+
     visualize_feature_info_on_frame(args, "Agg", [agg_feat_info], save_folder, exp)
 
     result_info = read_result_info_list(args)
-    visualize_result_info_on_frame(args,  [result_info], save_folder)
+    if args.draw_result_feat_info:
+        visualize_result_info_on_frame(args,  [result_info], save_folder)
 
     outputs_info = read_outputs_info_list(args, batch_set, batch_item, save_folder)
+
+
     visualize_outputs_info_on_frame(args,  outputs_info, save_folder, exp, batch_set, batch_item)
 
 
