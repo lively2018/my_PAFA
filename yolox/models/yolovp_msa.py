@@ -428,7 +428,6 @@ class YOLOXHead(nn.Module):
                                     self.aggregator_p5.reset_memory_bank()
                                     self.aggregator_p5.init_memory_bank(ref_feats)
                                     agg_feat = reg_one + self.aggregator_p5(reg_one, None)
-                                #logger.info("after aggreagtaion")
                                     agg_feat = self.inplace_false_relu(agg_feat)
                                     agg_feat = agg_feat.reshape(channel, height, width)
                                 else:
@@ -438,19 +437,26 @@ class YOLOXHead(nn.Module):
                     else:
                         if not first:
                             #logger.info(f"reg_one.shape: {reg_one.shape}")
-
                             if k == 1:
                                 channel, height, width = reg_one.shape
                                 reg_one = reg_one.reshape(-1, channel)
-                                agg_feat = reg_one + self.aggregator_p4(reg_one, None)
-                                agg_feat = self.inplace_false_relu(agg_feat)
+                                agg_result = self.aggregator_p4(reg_one, None)
+                                if agg_result is not None:
+                                    agg_feat = reg_one + agg_result
+                                    agg_feat = self.inplace_false_relu(agg_feat)
+                                else:
+                                    agg_feat = reg_one
                                 agg_feat = agg_feat.reshape(channel, height, width)
 
                             elif k == 2:
                                 channel, height, width = reg_one.shape
                                 reg_one = reg_one.reshape(-1, channel)
-                                agg_feat = reg_one + self.aggregator_p5(reg_one, None)
-                                agg_feat = self.inplace_false_relu(agg_feat)
+                                agg_result = self.aggregator_p5(reg_one, None)
+                                if agg_result is not None:
+                                    agg_feat = reg_one + agg_result
+                                    agg_feat = self.inplace_false_relu(agg_feat)
+                                else:
+                                    agg_feat = reg_one
                                 agg_feat = agg_feat.reshape(channel, height, width)
                             else:
                                 agg_feat = reg_one
