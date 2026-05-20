@@ -434,12 +434,27 @@ class YOLOXHead(nn.Module):
                             reg_one = reg_one.reshape(-1, channel)
                             #logger.info(f"reg_one.shape: {reg_one.shape}")
                             if k == 0:
-                                agg_feat = reg_one + self.aggregator_p3(reg_one, None)
+                                agg_result = self.aggregator_p3(reg_one, None)
+                                if agg_result is not None:
+                                    agg_feat = reg_one + agg_result
+                                    agg_feat = self.inplace_false_relu(agg_feat)
+                                else:
+                                    agg_feat = reg_one
                             elif k == 1:
-                                agg_feat = reg_one + self.aggregator_p4(reg_one, None)
+                                agg_result = self.aggregator_p4(reg_one, None)
+                                if agg_result is not None:
+                                    agg_feat = reg_one + agg_result
+                                    agg_feat = self.inplace_false_relu(agg_feat)
+                                else:
+                                    agg_feat = reg_one
+
                             else:
-                                agg_feat = reg_one + self.aggregator_p5(reg_one, None)
-                            agg_feat = self.inplace_false_relu(agg_feat)
+                                agg_result = self.aggregator_p5(reg_one, None)
+                                if agg_result is not None:
+                                    agg_feat = reg_one + agg_result
+                                    agg_feat = self.inplace_false_relu(agg_feat)
+                                else:
+                                    agg_feat = reg_one
                             #logger.info(f"agg_feat.shape: {agg_feat.shape}")
                             agg_feat = agg_feat.reshape(channel, height, width)
                         else:
