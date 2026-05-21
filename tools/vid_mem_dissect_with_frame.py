@@ -723,6 +723,26 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
                     cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
                     cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                     file_name = args.input_frame_name + f'_{type_name}_P3_{i}.JPEG'
+
+                    if args.save_result_with_gt:
+                        xml_path = input_frame_path.replace("Data", "Annotations").replace(".JPEG", ".xml").replace(".jpeg", ".xml").replace(".jpg", ".xml")
+                        if os.path.exists(xml_path):
+                            xml_doc = minidom.parse(xml_path)
+                            root = xml_doc.documentElement
+                            for obj in root.getElementsByTagName("object"):
+                                synset = obj.getElementsByTagName("name")[0].firstChild.data
+                                xmin = int(obj.getElementsByTagName("xmin")[0].firstChild.data)
+                                ymin = int(obj.getElementsByTagName("ymin")[0].firstChild.data)
+                                xmax = int(obj.getElementsByTagName("xmax")[0].firstChild.data)
+                                ymax = int(obj.getElementsByTagName("ymax")[0].firstChild.data)
+                                cls_idx = _VID_SYNSET_TO_IDX.get(synset, -1)
+                                label = VID_classes[cls_idx] if cls_idx >= 0 else synset
+                                cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (0, 0, 255), 2)
+                                cv2.putText(frame, 'GT:' + label, (xmax-10, max(ymin - 4, 10)),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+                                logger.info(f"    GT bbox: ({xmin}, {ymin}, {xmax}, {ymax}), label: {label}")
+                        else:
+                            logger.warning("GT xml not found: {}".format(xml_path))
                     cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
                  if args.save_csv_result:
                     csv_writer.writerow(["P3", f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
@@ -749,6 +769,26 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
                     cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
                     cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                     file_name = args.input_frame_name + f'_{type_name}_P4_{i}.JPEG'
+
+                    if args.save_result_with_gt:
+                        xml_path = input_frame_path.replace("Data", "Annotations").replace(".JPEG", ".xml").replace(".jpeg", ".xml").replace(".jpg", ".xml")
+                        if os.path.exists(xml_path):
+                            xml_doc = minidom.parse(xml_path)
+                            root = xml_doc.documentElement
+                            for obj in root.getElementsByTagName("object"):
+                                synset = obj.getElementsByTagName("name")[0].firstChild.data
+                                xmin = int(obj.getElementsByTagName("xmin")[0].firstChild.data)
+                                ymin = int(obj.getElementsByTagName("ymin")[0].firstChild.data)
+                                xmax = int(obj.getElementsByTagName("xmax")[0].firstChild.data)
+                                ymax = int(obj.getElementsByTagName("ymax")[0].firstChild.data)
+                                cls_idx = _VID_SYNSET_TO_IDX.get(synset, -1)
+                                label = VID_classes[cls_idx] if cls_idx >= 0 else synset
+                                cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (0, 0, 255), 2)
+                                cv2.putText(frame, 'GT:' + label, (xmax-10, max(ymin - 4, 10)),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+                                logger.info(f"    GT bbox: ({xmin}, {ymin}, {xmax}, {ymax}), label: {label}")
+                        else:
+                            logger.warning("GT xml not found: {}".format(xml_path))
                     cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
                  logger.info(f"    p4 -{i}th  bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                             obj_score: {obj_score:.3f}, \
@@ -782,6 +822,26 @@ def visualize_feature_info_on_frame(args, type_name, feat_info_list, frame_save_
                     cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
                     cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
                     file_name = args.input_frame_name + f'_{type_name}_P5_{i}.JPEG'
+
+                    if args.save_result_with_gt:
+                        xml_path = input_frame_path.replace("Data", "Annotations").replace(".JPEG", ".xml").replace(".jpeg", ".xml").replace(".jpg", ".xml")
+                        if os.path.exists(xml_path):
+                            xml_doc = minidom.parse(xml_path)
+                            root = xml_doc.documentElement
+                            for obj in root.getElementsByTagName("object"):
+                                synset = obj.getElementsByTagName("name")[0].firstChild.data
+                                xmin = int(obj.getElementsByTagName("xmin")[0].firstChild.data)
+                                ymin = int(obj.getElementsByTagName("ymin")[0].firstChild.data)
+                                xmax = int(obj.getElementsByTagName("xmax")[0].firstChild.data)
+                                ymax = int(obj.getElementsByTagName("ymax")[0].firstChild.data)
+                                cls_idx = _VID_SYNSET_TO_IDX.get(synset, -1)
+                                label = VID_classes[cls_idx] if cls_idx >= 0 else synset
+                                cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (0, 0, 255), 2)
+                                cv2.putText(frame, 'GT:' + label, (xmax-10, max(ymin - 4, 10)),
+                                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+                                logger.info(f"    GT bbox: ({xmin}, {ymin}, {xmax}, {ymax}), label: {label}")
+                        else:
+                            logger.warning("GT xml not found: {}".format(xml_path))
                     cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
                  logger.info(f"    p5 -{i}th bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                                 obj_score: {obj_score:.3f}, \
