@@ -294,7 +294,7 @@ class Exp(BaseExp):
                          use_score=self.use_score, defualt_p=self.defualt_p, sim_thresh=self.sim_thresh,
                          pre_nms=self.pre_nms, ave=self.ave, defulat_pre=self.defualt_pre, test_conf=self.test_conf,
                          use_mask=self.use_mask,gmode=self.gmode,lmode=self.lmode,both_mode=self.both_mode,
-                         localBlocks = self.localBlocks,m_conf=self.m_conf, test_size=self.test_size, **more_args)
+                         localBlocks = self.localBlocks,m_conf=self.m_conf, **more_args)
 
         for layer in head.stems.parameters():
             layer.requires_grad = False  # set stem fixed

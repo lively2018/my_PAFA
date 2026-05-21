@@ -516,9 +516,6 @@ class VIDEvaluator:
                 progress_bar(self.dataloader)
         ):
             #logger.info("path: {}".format(path))
-            for img_info in info_imgs:
-                logger.info("img_info: {}".format(img_info))
-
             if label is None:
                 raise ValueError("Ground truth labels are missing in the dataloader. Please ensure that the dataloader is properly configured to provide labels for evaluation.")
             video_path = os.path.basename(os.path.dirname(path[0]))
@@ -534,7 +531,7 @@ class VIDEvaluator:
                 if is_time_record:
                     start = time.time()
                 #kssong
-                outputs, ori_res = model(imgs, first_frame, targets=label, info_imgs=info_imgs, nms_thresh=self.nmsthre,
+                outputs, ori_res = model(imgs, first_frame, targets=label, nms_thresh=self.nmsthre,
                                          lframe=self.lframe,
                                          gframe = self.gframe)
 

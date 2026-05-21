@@ -53,7 +53,6 @@ class YOLOXHead(nn.Module):
             both_mode=False,
             localBlocks=1,
             m_conf=0,
-            test_size = (640,640),
             **kwargs
     ):
         """
@@ -221,7 +220,6 @@ class YOLOXHead(nn.Module):
         #kssong
         self.inplace_false_relu = nn.ReLU(inplace=False)
         self.m_conf = m_conf
-        self.test_size = test_size
 
 
     def initialize_biases(self, prior_prob):
@@ -413,7 +411,7 @@ class YOLOXHead(nn.Module):
                             channel, height, width = reg_one.shape
                             reg_one = reg_one.reshape(-1, channel)
                             #logger.info(f"reg_one.shape: {reg_one.shape}")
-                            weighted_feat, _sampled_mem_feat_info = self.aggregator(reg_one, None, k)
+                            weighted_feat = self.aggregator(reg_one, None, k)
                             if weighted_feat is None:
                                 logger.warning(f"Aggregator returned None for level {k} in this batch.")
                                 agg_feat = reg_one
@@ -555,17 +553,17 @@ class YOLOXHead(nn.Module):
             flat_p3 = [feat for batch_feats in high_iou_feat_p3 for feat in batch_feats]
             if flat_p3:
                 high_iou_feat_p3 = torch.stack(flat_p3, dim=0)
-                logger.info(f"high_iou_feat_p3 shape: {high_iou_feat_p3.shape}")
+                #logger.info(f"high_iou_feat_p3 shape: {high_iou_feat_p3.shape}")
                 self.aggregator.init_memory_bank(high_iou_feat_p3, 0)
             flat_p4 = [feat for batch_feats in high_iou_feat_p4 for feat in batch_feats]
             if flat_p4:
                 high_iou_feat_p4 = torch.stack(flat_p4, dim=0)
-                logger.info(f"high_iou_feat_p4 shape: {high_iou_feat_p4.shape}")
+                #logger.info(f"high_iou_feat_p4 shape: {high_iou_feat_p4.shape}")
                 self.aggregator.init_memory_bank(high_iou_feat_p4, 1)
             flat_p5 = [feat for batch_feats in high_iou_feat_p5 for feat in batch_feats]
             if flat_p5:
                 high_iou_feat_p5 = torch.stack(flat_p5, dim=0)
-                logger.info(f"high_iou_feat_p5 shape: {high_iou_feat_p5.shape}")
+                #logger.info(f"high_iou_feat_p5 shape: {high_iou_feat_p5.shape}")
                 self.aggregator.init_memory_bank(high_iou_feat_p5, 2)
         else:
             #Generate key features from 16 batch files
@@ -578,17 +576,17 @@ class YOLOXHead(nn.Module):
             flat_p3 = [feat for batch_feats in high_iou_feat_p3 for feat in batch_feats]
             if flat_p3:
                 high_iou_feat_p3 = torch.stack(flat_p3, dim=0)
-                logger.info(f"high_iou_feat_p3 shape: {high_iou_feat_p3.shape}")
+                #logger.info(f"high_iou_feat_p3 shape: {high_iou_feat_p3.shape}")
                 self.aggregator.update_memory_bank(high_iou_feat_p3, 0)
             flat_p4 = [feat for batch_feats in high_iou_feat_p4 for feat in batch_feats]
             if flat_p4:
                 high_iou_feat_p4 = torch.stack(flat_p4, dim=0)
-                logger.info(f"high_iou_feat_p4 shape: {high_iou_feat_p4.shape}")
+                #logger.info(f"high_iou_feat_p4 shape: {high_iou_feat_p4.shape}")
                 self.aggregator.update_memory_bank(high_iou_feat_p4, 1)
             flat_p5 = [feat for batch_feats in high_iou_feat_p5 for feat in batch_feats]
             if flat_p5:
                 high_iou_feat_p5 = torch.stack(flat_p5, dim=0)
-                logger.info(f"high_iou_feat_p5 shape: {high_iou_feat_p5.shape}")
+                #logger.info(f"high_iou_feat_p5 shape: {high_iou_feat_p5.shape}")
                 self.aggregator.update_memory_bank(high_iou_feat_p5, 2)
 
         (features_cls, features_reg, cls_scores,
