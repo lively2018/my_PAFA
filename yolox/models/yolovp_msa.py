@@ -240,7 +240,7 @@ class YOLOXHead(nn.Module):
         new_xin = xin + self.aggreator(xin, ref_xin)
         return new_xin
     # kssong
-    def forward(self, xin, first, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32):
+    def forward(self, xin, first, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32, img_path=None):
     #def forward(self, xin, ref_xin, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32):
         #kssong
         #if len(ref_xin) > 0:
@@ -261,12 +261,13 @@ class YOLOXHead(nn.Module):
         expanded_strides = []
         before_nms_features = []
         before_nms_regf = []
-
+        need_aggregation = False
         batch_size = len(imgs)
-        if batch_size == 16 or batch_size == 32:
-            need_aggregation = True
-        else:
+        if not self.training and imgs.shape[0] == 1:
             need_aggregation = False
+        else:
+            need_aggregation = True
+
         #kssong
         #reg_output_list = []
 
@@ -371,7 +372,7 @@ class YOLOXHead(nn.Module):
             x = self.stems[k](x)
             reg_feat = reg_conv(x)
             cls_feat = cls_conv(x)
-            cls_feat2 = cls_conv2(x)            
+            cls_feat2 = cls_conv2(x)
             reg_feat_list.append(reg_feat)
             cls_feat_list.append(cls_feat)
             cls_feat2_list.append(cls_feat2)
@@ -388,7 +389,7 @@ class YOLOXHead(nn.Module):
                             candidates = [j for j in range(batch_size) if j != i]
                             ref_idx = random.choice(candidates)
                             ref_feat1 = ref_feature_reg[ref_idx][k]
-                            ref_feat2 = ref_feature_reg[i][k]                   
+                            ref_feat2 = ref_feature_reg[i][k]
                             if len(ref_feat1) != 0 and len(ref_feat2) != 0:
                                 ref_feats = torch.cat((ref_feat1 + ref_feat2), dim=0)
                                 channel, height, width = reg_one.shape
@@ -410,8 +411,13 @@ class YOLOXHead(nn.Module):
                             channel, height, width = reg_one.shape
                             reg_one = reg_one.reshape(-1, channel)
                             #logger.info(f"reg_one.shape: {reg_one.shape}")
-                            agg_feat = reg_one + self.aggregator(reg_one, None, k)
-                            agg_feat = self.inplace_false_relu(agg_feat)
+                            weighted_feat, _sampled_mem_feat_info = self.aggregator(reg_one, None, k)
+                            if weighted_feat is None:
+                                logger.warning(f"Aggregator returned None for level {k} in this batch.")
+                                agg_feat = reg_one
+                            else:
+                                agg_feat = reg_one + weighted_feat
+                                agg_feat = self.inplace_false_relu(agg_feat)
                             #logger.info(f"agg_feat.shape: {agg_feat.shape}")
                             agg_feat = agg_feat.reshape(channel, height, width)
                         else:
@@ -496,6 +502,10 @@ class YOLOXHead(nn.Module):
         else:
             ota_idxs = None
 
+        if not self.training and need_aggregation:
+            decode_res_orig = decode_res.clone()
+            iou_pred_result, iou_pred_idx = self.postpro_orig_woclass(decode_res_orig, num_classes=self.num_classes,
+                                                        topK=1000)
         pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
                                                      nms_thre=self.nms_thresh,
                                                      topK=self.Afternum,
@@ -523,27 +533,62 @@ class YOLOXHead(nn.Module):
         #reg_feat_flatten_file.close()
 
         if not self.training and need_aggregation:
-            #half = len(pred_idx[1]) // 2
-            #new_idx = [p[:half] for p in pred_idx]
-            if first:
-                # reset all level memory banks
-                self.aggregator.reset_memory_bank(0)
-                self.aggregator.reset_memory_bank(1)
-                self.aggregator.reset_memory_bank(2)
-                #Generate reference features from 16 batch files
-                ref_feature_p3, ref_feature_p4, ref_feature_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
-                # Initialize all level memory banks
-                self.aggregator.init_memory_bank(ref_feature_p3, 0)
-                self.aggregator.init_memory_bank(ref_feature_p4, 1)
-                self.aggregator.init_memory_bank(ref_feature_p5, 2)
-            else:
-                #Generate key features from 16 batch files
-                key_features_p3, key_features_p4, key_features_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
-                # Update all level memory banks
-                self.aggregator.update_memory_bank(key_features_p3, 0)
-                self.aggregator.update_memory_bank(key_features_p4, 1)
-                self.aggregator.update_memory_bank(key_features_p5, 2)
-        
+
+            aggregated_selected_feat, aggregated_selected_feat_info = \
+                self.select_agg_feature_in_reg_feature_with_test_conf(reg_feat_flatten, iou_pred_idx, iou_pred_result, test_conf=0.0)
+
+        if first:
+            # reset all level memory banks
+            self.aggregator.reset_memory_bank(0)
+            self.aggregator.reset_memory_bank(1)
+            self.aggregator.reset_memory_bank(2)
+            #Generate reference features from 16 batch files
+            high_iou_ref_feat =\
+                self.select_high_iou_feature_in_aggregated_feature(aggregated_selected_feat,\
+                    aggregated_selected_feat_info, labels)
+
+            high_iou_feat_p3, high_iou_feat_p4, high_iou_feat_p5 = high_iou_ref_feat
+
+
+            flat_p3 = [feat for batch_feats in high_iou_feat_p3 for feat in batch_feats]
+            if flat_p3:
+                high_iou_feat_p3 = torch.stack(flat_p3, dim=0)
+                logger.info(f"high_iou_feat_p3 shape: {high_iou_feat_p3.shape}")
+                self.aggregator.init_memory_bank(high_iou_feat_p3, 0)
+            flat_p4 = [feat for batch_feats in high_iou_feat_p4 for feat in batch_feats]
+            if flat_p4:
+                high_iou_feat_p4 = torch.stack(flat_p4, dim=0)
+                logger.info(f"high_iou_feat_p4 shape: {high_iou_feat_p4.shape}")
+                self.aggregator.init_memory_bank(high_iou_feat_p4, 1)
+            flat_p5 = [feat for batch_feats in high_iou_feat_p5 for feat in batch_feats]
+            if flat_p5:
+                high_iou_feat_p5 = torch.stack(flat_p5, dim=0)
+                logger.info(f"high_iou_feat_p5 shape: {high_iou_feat_p5.shape}")
+                self.aggregator.init_memory_bank(high_iou_feat_p5, 2)
+        else:
+            #Generate key features from 16 batch files
+            high_iou_ref_feat =\
+                self.select_high_iou_feature_in_aggregated_feature(aggregated_selected_feat,\
+                    aggregated_selected_feat_info, labels)                # Save bboxes/obj_score/cls_score for each level's key features
+
+            high_iou_feat_p3, high_iou_feat_p4, high_iou_feat_p5 = high_iou_ref_feat
+
+            flat_p3 = [feat for batch_feats in high_iou_feat_p3 for feat in batch_feats]
+            if flat_p3:
+                high_iou_feat_p3 = torch.stack(flat_p3, dim=0)
+                logger.info(f"high_iou_feat_p3 shape: {high_iou_feat_p3.shape}")
+                self.aggregator.update_memory_bank(high_iou_feat_p3, 0)
+            flat_p4 = [feat for batch_feats in high_iou_feat_p4 for feat in batch_feats]
+            if flat_p4:
+                high_iou_feat_p4 = torch.stack(flat_p4, dim=0)
+                logger.info(f"high_iou_feat_p4 shape: {high_iou_feat_p4.shape}")
+                self.aggregator.update_memory_bank(high_iou_feat_p4, 1)
+            flat_p5 = [feat for batch_feats in high_iou_feat_p5 for feat in batch_feats]
+            if flat_p5:
+                high_iou_feat_p5 = torch.stack(flat_p5, dim=0)
+                logger.info(f"high_iou_feat_p5 shape: {high_iou_feat_p5.shape}")
+                self.aggregator.update_memory_bank(high_iou_feat_p5, 2)
+
         (features_cls, features_reg, cls_scores,
          fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
                                                                 pred_idx,
@@ -559,7 +604,7 @@ class YOLOXHead(nn.Module):
 
         features_reg = features_reg.unsqueeze(0)
         features_cls = features_cls.unsqueeze(0)  # [1,features,channels]
-        
+
         if not self.training:
             cls_scores = cls_scores.to(cls_feat_flatten.dtype)
             fg_scores = fg_scores.to(cls_feat_flatten.dtype)
@@ -667,7 +712,50 @@ class YOLOXHead(nn.Module):
         outputs[..., :2] = (outputs[..., :2] + grids) * strides
         outputs[..., 2:4] = torch.exp(outputs[..., 2:4]) * strides
         return outputs
+    def postpro_orig_woclass(self, prediction, num_classes,  topK=1000):
+        # find topK predictions, play the same role as RPN
+        '''
 
+        Args:
+            prediction: [batch,feature_num,5+clsnum]
+            num_classes:
+            conf_thre:
+            conf_thre_high:
+            nms_thre:
+
+        Returns:
+            [batch,topK,5+clsnum]
+        '''
+
+        box_corner = prediction.new(prediction.shape)
+        box_corner[:, :, 0] = prediction[:, :, 0] - prediction[:, :, 2] / 2
+        box_corner[:, :, 1] = prediction[:, :, 1] - prediction[:, :, 3] / 2
+        box_corner[:, :, 2] = prediction[:, :, 0] + prediction[:, :, 2] / 2
+        box_corner[:, :, 3] = prediction[:, :, 1] + prediction[:, :, 3] / 2
+        prediction[:, :, :4] = box_corner[:, :, :4]
+
+        output = [None for _ in range(len(prediction))]
+        output_index = [None for _ in range(len(prediction))]
+
+        for i, image_pred in enumerate(prediction):
+            #take ota idxs as output in training mode
+
+            if not image_pred.size(0):
+                continue
+            # Get score and class with highest confidence
+            class_conf, class_pred = torch.max(image_pred[:, 5: 5 + num_classes], 1, keepdim=True)
+
+            # Detections ordered as (x1, y1, x2, y2, obj_conf, class_conf, class_pred)
+            detections = torch.cat(
+                (image_pred[:, :5], class_conf, class_pred.float(), image_pred[:, 5: 5 + num_classes]), 1)
+
+            conf_score = image_pred[:, 4]
+            top_pre = torch.topk(conf_score, k=topK)
+            sort_idx = top_pre.indices
+            output[i] = detections[sort_idx, :]
+            output_index[i] = sort_idx
+
+        return output, output_index
     def find_feature_score(self, features, idxs, reg_features, imgs=None, predictions=None, roi_features=None):
         features_cls = []
         features_reg = []
@@ -675,12 +763,33 @@ class YOLOXHead(nn.Module):
         fg_scores = []
         locs = []
         for i, feature in enumerate(features):
-            features_cls.append(feature[idxs[i][:self.simN]])
-            features_reg.append(reg_features[i, idxs[i][:self.simN]])
-            cls_scores.append(predictions[i][:self.simN, 5])
-            fg_scores.append(predictions[i][:self.simN, 4])
-            locs.append(predictions[i][:self.simN, :4])
-            all_scores.append(predictions[i][:self.simN, -self.num_classes:])
+            sel = idxs[i][:self.simN]
+            n = len(sel)
+
+            fc = feature[sel]
+            fr = reg_features[i, sel]
+            cs = predictions[i][:n, 5]
+            fg = predictions[i][:n, 4]
+            lc = predictions[i][:n, :4]
+            as_ = predictions[i][:n, -self.num_classes:]
+
+            # Pad to simN so the downstream reshape [-1, Afternum, ...] stays valid
+            # when iou_min suppresses boxes below topK.
+            if n < self.simN:
+                pad = self.simN - n
+                fc  = torch.cat([fc,  fc[-1:].expand(pad, -1)], dim=0)
+                fr  = torch.cat([fr,  fr[-1:].expand(pad, -1)], dim=0)
+                cs  = torch.cat([cs,  cs[-1:].expand(pad)], dim=0)
+                fg  = torch.cat([fg,  fg[-1:].expand(pad)], dim=0)
+                lc  = torch.cat([lc,  lc[-1:].expand(pad, -1)], dim=0)
+                as_ = torch.cat([as_, as_[-1:].expand(pad, -1)], dim=0)
+
+            features_cls.append(fc)
+            features_reg.append(fr)
+            cls_scores.append(cs)
+            fg_scores.append(fg)
+            locs.append(lc)
+            all_scores.append(as_)
         features_cls = torch.cat(features_cls)
         features_reg = torch.cat(features_reg)
         cls_scores = torch.cat(cls_scores)
@@ -691,7 +800,7 @@ class YOLOXHead(nn.Module):
 
     def select_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results):
         key_features_list = []
-        
+
         for i in range(reg_features.shape[0]):
             reg_feature = reg_features[i]
             if reg_features is None:
@@ -712,24 +821,138 @@ class YOLOXHead(nn.Module):
             key_features_p4 = []
             key_features_p5 = []
             for idx in mask_idx_list:
-                
+
                 if idx >= 0 and idx < 6400:
                     key_features_p3.append(reg_feature[idx].unsqueeze(0))
                 elif idx >= 6400 and idx < 8000:
                     key_features_p4.append(reg_feature[idx].unsqueeze(0))
                 else:
-                    key_features_p5.append(reg_feature[idx].unsqueeze(0))            
- 
+                    key_features_p5.append(reg_feature[idx].unsqueeze(0))
+
             if len(key_features_p3) == 0:
                 "key_feature_p3 is empty"
             if len(key_features_p4) == 0:
                 "key_feature_p4 is empty"
             if len(key_features_p5) ==0:
                 "key_feature_p5 is empty"
-            
+
             key_features =[key_features_p3, key_features_p4, key_features_p5]
             key_features_list.append(key_features)
         return key_features_list
+
+    def select_high_iou_feature_in_aggregated_feature(self, aggregated_feat,  aggregated_feature_info, labels):
+        high_iou_features_p3_list = []
+        high_iou_features_p4_list = []
+        high_iou_features_p5_list = []
+
+        for i in range(len(aggregated_feature_info)):
+            batch_info = aggregated_feature_info[i]
+            batch_feat = aggregated_feat[i]
+
+            p3_info, p4_info, p5_info = batch_info
+            p3_feat, p4_feat, p5_feat = batch_feat
+            label = labels[i]
+            #logger.info(f"{i} th batch - label: {label.tolist()}")
+            img_bboxes = []
+            gt_bboxes = label[:, :4]
+            high_iou_features_p3 = []
+            high_iou_features_p4 = []
+            high_iou_features_p5 = []
+            #logger.info(f"{i} th batch - gt_bboxes: {gt_bboxes}")
+            for p3_item in p3_info:
+                img_bboxes.append(p3_item[:4])
+            for p4_item in p4_info:
+                img_bboxes.append(p4_item[:4])
+            for p5_item in p5_info:
+                img_bboxes.append(p5_item[:4])
+            img_bboxes = torch.stack(img_bboxes, dim=0)
+            iou_list = []
+            for gt_bbox in gt_bboxes:
+                ious = self.calculate_iou_gt_img(gt_bbox, img_bboxes)
+                iou_list.append(ious)
+            actual_idx_list = []
+            for iou in iou_list:
+                topk_iou = sorted(iou, reverse=True)[:30]
+                topk_iou_idx = sorted(range(len(iou)), key=lambda idx: iou[idx], reverse=True)[:30]
+
+                #logger.info(f"topk_iou: {topk_iou}")
+                #logger.info(f"topk_iou_idx: {topk_iou_idx}")
+                nms_iou_threshold = 0.5
+                device = img_bboxes.device
+                nms_iou_idx = torchvision.ops.batched_nms(
+                    img_bboxes.clone().detach()[topk_iou_idx].float(),
+                    torch.tensor(topk_iou, dtype=torch.float32, device=device),
+                    torch.zeros(len(topk_iou_idx), dtype=torch.long, device=device),
+                    nms_iou_threshold,
+                )
+                #logger.info(f"nms_iou_idx: {nms_iou_idx}")
+                nms_iou_idx = nms_iou_idx.clone().detach().cpu().numpy()
+
+                for idx in nms_iou_idx:
+                    actual_idx = topk_iou_idx[idx]
+                    actual_idx_list.append(actual_idx)
+            #logger.info(f"actual_idx_list: {actual_idx_list}")
+            for idx in actual_idx_list:
+                #logger.info(f"idx:{idx}")
+                if idx < len(p3_feat):
+                    high_iou_features_p3.append(p3_feat[idx])
+                elif idx < len(p3_feat) + len(p4_feat):
+                    high_iou_features_p4.append(p4_feat[idx - len(p3_feat)])
+                    info = p4_info[idx - len(p3_feat)]
+                else:
+                    p5_idx = idx - len(p3_feat) - len(p4_feat)
+                    high_iou_features_p5.append(p5_feat[p5_idx])
+
+            high_iou_features_p4_list.append(high_iou_features_p4)
+            high_iou_features_p5_list.append(high_iou_features_p5)
+
+
+        return (high_iou_features_p3_list, high_iou_features_p4_list, high_iou_features_p5_list)
+
+    def select_agg_feature_in_reg_feature_with_test_conf(self, reg_features, pred_idx, pred_results, test_conf):
+        agg_features  = []
+
+        #logger.info(f"reg_features.shape: {reg_features.shape} pred_idx length: {len(pred_idx)} pred_results length: {len(pred_results)}")
+        for i in range(reg_features.shape[0]):
+            #logger.info(f"Processing batch {i} for select_level_key_feature_in_reg_feature")
+            reg_feature = reg_features[i]
+            idx_list = pred_idx[i]
+            pred_result = pred_results[i]
+            conf_score_list = pred_result[:, 4] * pred_result[:, 5]
+            mask_idx = torch.nonzero(conf_score_list > test_conf, as_tuple=False).squeeze()
+            if mask_idx.ndim == 0:
+                mask_idx = mask_idx.unsqueeze(0)
+            #logger.info("conf_score_list masked > 0.01: {}".format(mask_idx))
+            mask_idx_list = idx_list[mask_idx]
+            #logger.info(" masked_idx_list: {}".format(mask_idx_list))
+            #logger.info(" idx_list: {}".format(idx_list))
+            p3_items = []
+            p4_items = []
+            p5_items = []
+            agg_features_p3 = []
+            agg_features_p4 = []
+            agg_features_p5 = []
+            for j, idx in enumerate(mask_idx_list):
+                det = pred_result[mask_idx[j]]
+                info = torch.cat([det[[0, 1, 2, 3, 4, 5]], det[7: 7 + self.num_classes], idx.unsqueeze(0)])  # x1, y1, x2, y2, obj_score, cls_score, class_pred[num_classes], idx
+                if idx >= 0 and idx < 6400:
+                    agg_features_p3.append(reg_feature[idx])
+                    p3_items.append(info)
+                elif idx >= 6400 and idx < 8000:
+                    agg_features_p4.append(reg_feature[idx])
+                    p4_items.append(info)
+                else:
+                    agg_features_p5.append(reg_feature[idx])
+                    p5_items.append(info)
+            if len(p3_items) == 0:
+                p3_items.append(torch.zeros(7 + self.num_classes))
+            if len(p4_items) == 0:
+                p4_items.append(torch.zeros(7 + self.num_classes))
+            if len(p5_items) == 0:
+                p5_items.append(torch.zeros(7 + self.num_classes))
+
+            agg_features.append([agg_features_p3, agg_features_p4, agg_features_p5])
+        return agg_features
 
     def select_level_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results):
         key_features_p3 = []
@@ -737,7 +960,7 @@ class YOLOXHead(nn.Module):
         key_features_p5 = []
         for i in range(reg_features.shape[0]):
             reg_feature = reg_features[i]
-            idx_list = pred_idx[i]         
+            idx_list = pred_idx[i]
             pred_result = pred_results[i]
             conf_score_list = pred_result[:, 4] * pred_result[:, 5]
             mask_idx = torch.nonzero(conf_score_list > self.m_conf, as_tuple=False).squeeze()
@@ -1426,4 +1649,3 @@ class YOLOXHead(nn.Module):
 
 
         return fg_ids,reg_targets
-

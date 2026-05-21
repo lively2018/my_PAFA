@@ -529,7 +529,7 @@ class VIDEvaluator:
                 if is_time_record:
                     start = time.time()
                 #kssong
-                outputs, ori_res = model(imgs, first_frame, nms_thresh=self.nmsthre,
+                outputs, ori_res = model(imgs, first_frame, labels=label, nms_thresh=self.nmsthre,
                                          lframe=self.lframe,
                                          gframe = self.gframe)
 
