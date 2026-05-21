@@ -1275,6 +1275,79 @@ def calculate_meanIoU(args, outputs_info, save_folder):
     return mean_iou
 
 
+def calculate_localization_accuracy(args, outputs_info, save_folder, iou_thresholds=None):
+    if iou_thresholds is None:
+        iou_thresholds = [0.5, 0.75]
+
+    input_frame_path = os.path.join(args.input_image_path, args.input_frame_name)
+    frame = cv2.imread(input_frame_path)
+    if frame is None:
+        logger.warning(f"calculate_localization_accuracy: cannot read image {input_frame_path}")
+        return
+    height, width = frame.shape[:2]
+    tsize = getattr(args, 'tsize', 640)
+    ratio = min(tsize / height, tsize / width)
+
+    pred_boxes = [[v / ratio for v in output_info[2:6]] for output_info in outputs_info]
+
+    xml_path = (input_frame_path
+                .replace("Data", "Annotations")
+                .replace(".JPEG", ".xml")
+                .replace(".jpeg", ".xml")
+                .replace(".jpg", ".xml"))
+    gt_boxes = []
+    if os.path.exists(xml_path):
+        xml_doc = minidom.parse(xml_path)
+        root = xml_doc.documentElement
+        for obj in root.getElementsByTagName("object"):
+            xmin = int(obj.getElementsByTagName("xmin")[0].firstChild.data)
+            ymin = int(obj.getElementsByTagName("ymin")[0].firstChild.data)
+            xmax = int(obj.getElementsByTagName("xmax")[0].firstChild.data)
+            ymax = int(obj.getElementsByTagName("ymax")[0].firstChild.data)
+            gt_boxes.append((xmin, ymin, xmax, ymax))
+    else:
+        logger.warning(f"calculate_localization_accuracy: GT xml not found: {xml_path}")
+        return
+
+    if not gt_boxes or not pred_boxes:
+        logger.warning("calculate_localization_accuracy: empty GT or predictions")
+        return
+
+    # --- Mean Best IoU ---
+    # For each GT box, find the prediction with the highest IoU
+    best_ious = []
+    for gi, (gx1, gy1, gx2, gy2) in enumerate(gt_boxes):
+        best_iou = max(
+            calculate_iou_gt_img((gx1, gy1, gx2, gy2), p) for p in pred_boxes
+        )
+        best_ious.append(best_iou)
+        logger.info(f"  GT[{gi}] bbox=({gx1},{gy1},{gx2},{gy2})  best_IoU={best_iou:.4f}")
+
+    mean_best_iou = float(np.mean(best_ious))
+    logger.info(f"Mean Best IoU: {mean_best_iou:.4f}  (n_gt={len(gt_boxes)}, n_pred={len(pred_boxes)})")
+
+    # --- Recall @ each IoU threshold ---
+    recalls = {}
+    for thr in iou_thresholds:
+        n_detected = sum(1 for iou in best_ious if iou >= thr)
+        recall = n_detected / len(gt_boxes)
+        recalls[thr] = recall
+        logger.info(f"Recall@{thr}: {recall:.4f}  ({n_detected}/{len(gt_boxes)} GT matched)")
+
+    save_path = os.path.join(save_folder, "localization_accuracy.txt")
+    with open(save_path, "w") as f:
+        f.write(f"n_gt={len(gt_boxes)}  n_pred={len(pred_boxes)}\n\n")
+        f.write(f"Mean Best IoU: {mean_best_iou:.4f}\n")
+        for thr, recall in recalls.items():
+            n_detected = sum(1 for iou in best_ious if iou >= thr)
+            f.write(f"Recall@{thr}: {recall:.4f}  ({n_detected}/{len(gt_boxes)} GT matched)\n")
+        f.write("\nPer-GT best IoU:\n")
+        for (gx1, gy1, gx2, gy2), iou in zip(gt_boxes, best_ious):
+            f.write(f"  GT ({gx1},{gy1},{gx2},{gy2})  best_IoU={iou:.4f}\n")
+    logger.info(f"Saved localization accuracy to {save_path}")
+    return mean_best_iou, recalls
+
+
 def main(exp, args):
 
     logger.remove()  # Remove default logger to avoid duplicate logs
@@ -1339,6 +1412,7 @@ def main(exp, args):
     calculate_mAP(args, outputs_info, save_folder, iou_threshold=0.5)
     calculate_AverageIou(args, outputs_info, save_folder)
     calculate_meanIoU(args, outputs_info, save_folder)
+    calculate_localization_accuracy(args, outputs_info, save_folder, iou_thresholds=[0.5, 0.75])
 if __name__ == "__main__":
     args = make_parser().parse_args()
     exp = get_exp(args.exp_file, args.name)
