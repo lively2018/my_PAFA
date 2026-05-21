@@ -56,6 +56,18 @@ def make_parser():
     parser.add_argument('--save_result_with_gt', default=False, type=lambda x: x.lower() == 'true')
     parser.add_argument('--save_csv_result', default=True, type=lambda x: x.lower() == 'true')
     return parser
+def calculate_iou_gt_img(gt_bbox, img_bbox):
+    x1 = max(gt_bbox[0], img_bbox[0])
+    y1 = max(gt_bbox[1], img_bbox[1])
+    x2 = min(gt_bbox[2], img_bbox[2])
+    y2 = min(gt_bbox[3], img_bbox[3])
+
+    inter = max(x2 - x1, 0) * max(y2 - y1, 0)
+    area_gt  = (gt_bbox[2]  - gt_bbox[0])  * (gt_bbox[3]  - gt_bbox[1])
+    area_img = (img_bbox[2] - img_bbox[0]) * (img_bbox[3] - img_bbox[1])
+    union = area_gt + area_img - inter
+    iou = inter / (union + 1e-12)
+    return iou
 
 def find_batch_set_and_item_for_input_frame(ref_frame_batch_set, input_frame_name):
     #logger.info(f"Finding batch set and item for input frame: {input_frame_name}")
@@ -907,7 +919,7 @@ def visualize_outputs_info_on_frame(args, outputs_info, frame_save_path, exp=Non
         csv_save_path = os.path.join(frame_save_path, "outputs_features.csv")
         csv_file = open(csv_save_path, "w", newline="")
         csv_writer = csv.writer(csv_file)
-        csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_label", "class_label_name", "feat_num"])
+        csv_writer.writerow(["level", "bbox", "obj_score", "cls_score", "conf_score", "class_label", "class_label_name", "feat_num", "IoU"])
     height, width = frame.shape[:2]
     if exp is not None:
         ratio = min(exp.test_size[0] / height, exp.test_size[1] / width)
@@ -935,11 +947,6 @@ def visualize_outputs_info_on_frame(args, outputs_info, frame_save_path, exp=Non
         conf_score = cls_score * obj_score
         class_label_name = VID_classes[class_label] if class_label < len(VID_classes) else "Unknown"
         label_text = f"{class_label_name} {conf_score:.3f}"
-        if args.draw_outputs_feat_info:
-            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
-            cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-            file_name = args.input_frame_name + f'_Output_Info_{i}.JPEG'
-            cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
         logger.info(f"    output_info -{i}th - batch_set: {batch_set_output}, batch_item: {batch_item_output}, bbox: ({int(bbox[0])}, {int(bbox[1])}, {int(bbox[2])}, {int(bbox[3])}), \
                     obj_score: {obj_score:.3f}, \
                     cls_score: {cls_score:.3f}, \
@@ -947,6 +954,38 @@ def visualize_outputs_info_on_frame(args, outputs_info, frame_save_path, exp=Non
                     class_label: {class_label}, \
                     class_label_name: {class_label_name}, \
                     feat_num: {feat_num}")
+
+        if args.draw_outputs_feat_info:
+            cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])), (0, 255, 0), 2)
+            cv2.putText(frame, label_text, (int(bbox[0]), int(bbox[1]) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            file_name = args.input_frame_name + f'_Output_Info_{i}.JPEG'
+
+
+            if args.save_result_with_gt:
+                xml_path = input_frame_path.replace("Data", "Annotations").replace(".JPEG", ".xml").replace(".jpeg", ".xml").replace(".jpg", ".xml")
+                if os.path.exists(xml_path):
+                    xml_doc = minidom.parse(xml_path)
+                    iou_max = 0.0
+                    root = xml_doc.documentElement
+                    for obj in root.getElementsByTagName("object"):
+                        synset = obj.getElementsByTagName("name")[0].firstChild.data
+                        xmin = int(obj.getElementsByTagName("xmin")[0].firstChild.data)
+                        ymin = int(obj.getElementsByTagName("ymin")[0].firstChild.data)
+                        xmax = int(obj.getElementsByTagName("xmax")[0].firstChild.data)
+                        ymax = int(obj.getElementsByTagName("ymax")[0].firstChild.data)
+                        cls_idx = _VID_SYNSET_TO_IDX.get(synset, -1)
+                        label = VID_classes[cls_idx] if cls_idx >= 0 else synset
+                        cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (0, 0, 255), 2)
+                        cv2.putText(frame, 'GT:' + label, (xmax-10, max(ymin - 4, 10)),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+                        logger.info(f"    GT bbox: ({xmin}, {ymin}, {xmax}, {ymax}), label: {label}")
+                        iou = calculate_iou_gt_img((xmin, ymin, xmax, ymax), (int(bbox[0]), int(bbox[1]), int(bbox[2]), int(bbox[3])))
+                        iou_max = max(iou_max, iou)
+                else:
+                    logger.warning("GT xml not found: {}".format(xml_path))
+
+            cv2.imwrite(os.path.join(frame_save_path, file_name), frame)
+
         if feat_num >= 0 and feat_num < 6400:  # Assuming feat_num corresponds to P3, P4, P5 respectively
             level = "P3"
         elif feat_num >= 6400 and feat_num < 6400 + 1600:
@@ -954,8 +993,13 @@ def visualize_outputs_info_on_frame(args, outputs_info, frame_save_path, exp=Non
         else:
             level = "P5"
         if args.save_csv_result:
-            csv_writer.writerow([level, f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
+            if args.draw_outputs_feat_info:
+                csv_writer.writerow([level, f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
+                                         f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.6f}", class_label, class_label_name, feat_num, f"{iou_max:.3f}"])
+            else:
+                csv_writer.writerow([level, f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
                                          f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.6f}", class_label, class_label_name, feat_num])
+
     if args.save_csv_result:
         csv_file.close()
         logger.info(f"Saved outputs feature info to CSV: {csv_save_path}")
@@ -963,7 +1007,7 @@ def visualize_outputs_info_on_frame(args, outputs_info, frame_save_path, exp=Non
 def main(exp, args):
 
     logger.remove()  # Remove default logger to avoid duplicate logs
-    logger.add(sys.stderr, level="WARNING")  # Add logger to print to console
+    logger.add(sys.stderr, level="INFO")  # Add logger to print to console
     current_time = time.localtime()
     file_name = os.path.join(args.output_dir, exp.exp_name)
     os.makedirs(file_name, exist_ok=True)
