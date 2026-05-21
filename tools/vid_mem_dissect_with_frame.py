@@ -1076,6 +1076,7 @@ def calculate_mAP(args, outputs_info, save_folder, iou_threshold=0.5):
                     best_iou = iou
                     best_gi = gi
             if best_iou >= iou_threshold and not matched[best_gi]:
+                logger.info(f"  TP: pred box ({px1:.1f}, {py1:.1f}, {px2:.1f}, {py2:.1f}), conf: {conf:.3f}, matched GT box ({gt_boxes[best_gi][0]}, {gt_boxes[best_gi][1]}, {gt_boxes[best_gi][2]}, {gt_boxes[best_gi][3]}), IoU: {best_iou:.3f}")
                 tp[pi] = 1
                 matched[best_gi] = True
             else:
@@ -1108,6 +1109,243 @@ def calculate_mAP(args, outputs_info, save_folder, iou_threshold=0.5):
             f.write(f"  AP[{cls_name}]: {ap:.4f}\n")
     logger.info(f"Saved mAP result to {mAP_save_path}")
     return mAP
+
+
+def calculate_AverageIou(args, outputs_info, save_folder):
+    input_frame_path = os.path.join(args.input_image_path, args.input_frame_name)
+    frame = cv2.imread(input_frame_path)
+    if frame is None:
+        logger.warning(f"calculate_AverageIou: cannot read image {input_frame_path}")
+        return
+    height, width = frame.shape[:2]
+    tsize = getattr(args, 'tsize', 640)
+    ratio = min(tsize / height, tsize / width)
+
+    # --- Build predictions: [(conf, cls, x1, y1, x2, y2), ...] ---
+    predictions = []
+    for output_info in outputs_info:
+        bbox = [v / ratio for v in output_info[2:6]]
+        obj_score   = float(output_info[6])
+        cls_score   = float(output_info[7])
+        class_label = int(output_info[8])
+        conf = obj_score * cls_score
+        predictions.append((conf, class_label, bbox[0], bbox[1], bbox[2], bbox[3]))
+
+    # --- Load GT from XML ---
+    xml_path = (input_frame_path
+                .replace("Data", "Annotations")
+                .replace(".JPEG", ".xml")
+                .replace(".jpeg", ".xml")
+                .replace(".jpg", ".xml"))
+    gt_boxes = []  # [(cls, x1, y1, x2, y2), ...]
+    if os.path.exists(xml_path):
+        xml_doc = minidom.parse(xml_path)
+        root = xml_doc.documentElement
+        for obj in root.getElementsByTagName("object"):
+            synset = obj.getElementsByTagName("name")[0].firstChild.data
+            xmin = int(obj.getElementsByTagName("xmin")[0].firstChild.data)
+            ymin = int(obj.getElementsByTagName("ymin")[0].firstChild.data)
+            xmax = int(obj.getElementsByTagName("xmax")[0].firstChild.data)
+            ymax = int(obj.getElementsByTagName("ymax")[0].firstChild.data)
+            cls_idx = _VID_SYNSET_TO_IDX.get(synset, -1)
+            if cls_idx >= 0:
+                gt_boxes.append((cls_idx, xmin, ymin, xmax, ymax))
+    else:
+        logger.warning(f"calculate_AverageIou: GT xml not found: {xml_path}")
+        return
+
+    if not gt_boxes:
+        logger.warning("calculate_AverageIou: no GT boxes found")
+        return
+
+    # --- For each prediction, best-matching GT IoU ---
+    pred_max_ious = []     # max IoU over all GT for each prediction
+    pred_cls_ious = {}     # per-class: list of max IoUs
+
+    for conf, cls, px1, py1, px2, py2 in predictions:
+        best_iou = 0.0
+        for gt_cls, gx1, gy1, gx2, gy2 in gt_boxes:
+            iou = calculate_iou_gt_img((gx1, gy1, gx2, gy2), (px1, py1, px2, py2))
+            if iou > best_iou:
+                best_iou = iou
+        pred_max_ious.append(best_iou)
+        pred_cls_ious.setdefault(cls, []).append(best_iou)
+        cls_name = VID_classes[cls] if cls < len(VID_classes) else str(cls)
+        logger.info(f"  pred cls={cls_name} conf={conf:.4f} bbox=({int(px1)},{int(py1)},{int(px2)},{int(py2)}) best_IoU={best_iou:.4f}")
+
+    # --- For each GT, best-matching prediction IoU ---
+    gt_max_ious = []
+    gt_cls_ious = {}
+
+    for gt_cls, gx1, gy1, gx2, gy2 in gt_boxes:
+        best_iou = 0.0
+        for conf, cls, px1, py1, px2, py2 in predictions:
+            iou = calculate_iou_gt_img((gx1, gy1, gx2, gy2), (px1, py1, px2, py2))
+            if iou > best_iou:
+                best_iou = iou
+        gt_max_ious.append(best_iou)
+        gt_cls_ious.setdefault(gt_cls, []).append(best_iou)
+        cls_name = VID_classes[gt_cls] if gt_cls < len(VID_classes) else str(gt_cls)
+        logger.info(f"  GT   cls={cls_name} bbox=({gx1},{gy1},{gx2},{gy2}) best_IoU={best_iou:.4f}")
+
+    avg_iou_pred = float(np.mean(pred_max_ious)) if pred_max_ious else 0.0
+    avg_iou_gt   = float(np.mean(gt_max_ious))   if gt_max_ious   else 0.0
+
+    logger.info(f"Average IoU (pred→GT): {avg_iou_pred:.4f}  (n_pred={len(predictions)})")
+    logger.info(f"Average IoU (GT→pred): {avg_iou_gt:.4f}  (n_gt={len(gt_boxes)})")
+
+    for cls in sorted(set(pred_cls_ious) | set(gt_cls_ious)):
+        cls_name = VID_classes[cls] if cls < len(VID_classes) else str(cls)
+        p_ious = pred_cls_ious.get(cls, [])
+        g_ious = gt_cls_ious.get(cls, [])
+        logger.info(f"  [{cls_name}] avg pred→GT IoU={np.mean(p_ious):.4f} (n={len(p_ious)})  "
+                    f"avg GT→pred IoU={np.mean(g_ious):.4f} (n={len(g_ious)})")
+
+    save_path = os.path.join(save_folder, "average_iou_result.txt")
+    with open(save_path, "w") as f:
+        f.write(f"Average IoU (pred->GT): {avg_iou_pred:.4f}  n_pred={len(predictions)}\n")
+        f.write(f"Average IoU (GT->pred): {avg_iou_gt:.4f}  n_gt={len(gt_boxes)}\n\n")
+        f.write("Per-class:\n")
+        for cls in sorted(set(pred_cls_ious) | set(gt_cls_ious)):
+            cls_name = VID_classes[cls] if cls < len(VID_classes) else str(cls)
+            p_ious = pred_cls_ious.get(cls, [])
+            g_ious = gt_cls_ious.get(cls, [])
+            f.write(f"  [{cls_name}] pred->GT={np.mean(p_ious):.4f} (n={len(p_ious)})  "
+                    f"GT->pred={np.mean(g_ious):.4f} (n={len(g_ious)})\n")
+    logger.info(f"Saved average IoU result to {save_path}")
+    return avg_iou_pred, avg_iou_gt
+
+
+def calculate_meanIoU(args, outputs_info, save_folder):
+    input_frame_path = os.path.join(args.input_image_path, args.input_frame_name)
+    frame = cv2.imread(input_frame_path)
+    if frame is None:
+        logger.warning(f"calculate_meanIoU: cannot read image {input_frame_path}")
+        return
+    height, width = frame.shape[:2]
+    tsize = getattr(args, 'tsize', 640)
+    ratio = min(tsize / height, tsize / width)
+
+    pred_boxes = [[v / ratio for v in output_info[2:6]] for output_info in outputs_info]
+
+    xml_path = (input_frame_path
+                .replace("Data", "Annotations")
+                .replace(".JPEG", ".xml")
+                .replace(".jpeg", ".xml")
+                .replace(".jpg", ".xml"))
+    gt_boxes = []
+    if os.path.exists(xml_path):
+        xml_doc = minidom.parse(xml_path)
+        root = xml_doc.documentElement
+        for obj in root.getElementsByTagName("object"):
+            xmin = int(obj.getElementsByTagName("xmin")[0].firstChild.data)
+            ymin = int(obj.getElementsByTagName("ymin")[0].firstChild.data)
+            xmax = int(obj.getElementsByTagName("xmax")[0].firstChild.data)
+            ymax = int(obj.getElementsByTagName("ymax")[0].firstChild.data)
+            gt_boxes.append((xmin, ymin, xmax, ymax))
+    else:
+        logger.warning(f"calculate_meanIoU: GT xml not found: {xml_path}")
+        return
+
+    if not gt_boxes:
+        logger.warning("calculate_meanIoU: no GT boxes found")
+        return
+    if not pred_boxes:
+        logger.warning("calculate_meanIoU: no predictions found")
+        return
+
+    # Compute IoU between every (pred, GT) pair and sum all values
+    total_iou = 0.0
+    for pi, (px1, py1, px2, py2) in enumerate(pred_boxes):
+        for gj, (gx1, gy1, gx2, gy2) in enumerate(gt_boxes):
+            iou = calculate_iou_gt_img((gx1, gy1, gx2, gy2), (px1, py1, px2, py2))
+            logger.info(f"  pred[{pi}] bbox=({int(px1)},{int(py1)},{int(px2)},{int(py2)})  "
+                        f"GT[{gj}] bbox=({gx1},{gy1},{gx2},{gy2})  IoU={iou:.4f}")
+            total_iou += iou
+
+    mean_iou = total_iou / len(pred_boxes)
+    logger.info(f"meanIoU: {total_iou:.4f} / {len(pred_boxes)} preds = {mean_iou:.4f}  "
+                f"(n_gt={len(gt_boxes)}, n_pred={len(pred_boxes)})")
+
+    save_path = os.path.join(save_folder, "mean_iou_result.txt")
+    with open(save_path, "w") as f:
+        f.write(f"total_iou={total_iou:.4f}  n_pred={len(pred_boxes)}  n_gt={len(gt_boxes)}\n")
+        f.write(f"meanIoU (total_iou / n_pred): {mean_iou:.4f}\n")
+    logger.info(f"Saved meanIoU result to {save_path}")
+    return mean_iou
+
+
+def calculate_localization_accuracy(args, outputs_info, save_folder, iou_thresholds=None):
+    if iou_thresholds is None:
+        iou_thresholds = [0.5, 0.75]
+
+    input_frame_path = os.path.join(args.input_image_path, args.input_frame_name)
+    frame = cv2.imread(input_frame_path)
+    if frame is None:
+        logger.warning(f"calculate_localization_accuracy: cannot read image {input_frame_path}")
+        return
+    height, width = frame.shape[:2]
+    tsize = getattr(args, 'tsize', 640)
+    ratio = min(tsize / height, tsize / width)
+
+    pred_boxes = [[v / ratio for v in output_info[2:6]] for output_info in outputs_info]
+
+    xml_path = (input_frame_path
+                .replace("Data", "Annotations")
+                .replace(".JPEG", ".xml")
+                .replace(".jpeg", ".xml")
+                .replace(".jpg", ".xml"))
+    gt_boxes = []
+    if os.path.exists(xml_path):
+        xml_doc = minidom.parse(xml_path)
+        root = xml_doc.documentElement
+        for obj in root.getElementsByTagName("object"):
+            xmin = int(obj.getElementsByTagName("xmin")[0].firstChild.data)
+            ymin = int(obj.getElementsByTagName("ymin")[0].firstChild.data)
+            xmax = int(obj.getElementsByTagName("xmax")[0].firstChild.data)
+            ymax = int(obj.getElementsByTagName("ymax")[0].firstChild.data)
+            gt_boxes.append((xmin, ymin, xmax, ymax))
+    else:
+        logger.warning(f"calculate_localization_accuracy: GT xml not found: {xml_path}")
+        return
+
+    if not gt_boxes or not pred_boxes:
+        logger.warning("calculate_localization_accuracy: empty GT or predictions")
+        return
+
+    # --- Mean Best IoU ---
+    # For each GT box, find the prediction with the highest IoU
+    best_ious = []
+    for gi, (gx1, gy1, gx2, gy2) in enumerate(gt_boxes):
+        best_iou = max(
+            calculate_iou_gt_img((gx1, gy1, gx2, gy2), p) for p in pred_boxes
+        )
+        best_ious.append(best_iou)
+        logger.info(f"  GT[{gi}] bbox=({gx1},{gy1},{gx2},{gy2})  best_IoU={best_iou:.4f}")
+
+    mean_best_iou = float(np.mean(best_ious))
+    logger.info(f"Mean Best IoU: {mean_best_iou:.4f}  (n_gt={len(gt_boxes)}, n_pred={len(pred_boxes)})")
+
+    # --- Recall @ each IoU threshold ---
+    recalls = {}
+    for thr in iou_thresholds:
+        n_detected = sum(1 for iou in best_ious if iou >= thr)
+        recall = n_detected / len(gt_boxes)
+        recalls[thr] = recall
+        logger.info(f"Recall@{thr}: {recall:.4f}  ({n_detected}/{len(gt_boxes)} GT matched)")
+
+    save_path = os.path.join(save_folder, "localization_accuracy.txt")
+    with open(save_path, "w") as f:
+        f.write(f"n_gt={len(gt_boxes)}  n_pred={len(pred_boxes)}\n\n")
+        f.write(f"Mean Best IoU: {mean_best_iou:.4f}\n")
+        for thr, recall in recalls.items():
+            n_detected = sum(1 for iou in best_ious if iou >= thr)
+            f.write(f"Recall@{thr}: {recall:.4f}  ({n_detected}/{len(gt_boxes)} GT matched)\n")
+        f.write("\nPer-GT best IoU:\n")
+        for (gx1, gy1, gx2, gy2), iou in zip(gt_boxes, best_ious):
+            f.write(f"  GT ({gx1},{gy1},{gx2},{gy2})  best_IoU={iou:.4f}\n")
+    logger.info(f"Saved localization accuracy to {save_path}")
+    return mean_best_iou, recalls
 
 
 def main(exp, args):
@@ -1172,7 +1410,9 @@ def main(exp, args):
     visualize_outputs_info_on_frame(args,  outputs_info, save_folder, exp, batch_set, batch_item)
 
     calculate_mAP(args, outputs_info, save_folder, iou_threshold=0.5)
-
+    calculate_AverageIou(args, outputs_info, save_folder)
+    calculate_meanIoU(args, outputs_info, save_folder)
+    calculate_localization_accuracy(args, outputs_info, save_folder, iou_thresholds=[0.5, 0.75])
 if __name__ == "__main__":
     args = make_parser().parse_args()
     exp = get_exp(args.exp_file, args.name)
