@@ -993,8 +993,13 @@ def visualize_outputs_info_on_frame(args, outputs_info, frame_save_path, exp=Non
         else:
             level = "P5"
         if args.save_csv_result:
-            csv_writer.writerow([level, f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
+            if args.draw_outputs_feat_info:
+                csv_writer.writerow([level, f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
                                          f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.6f}", class_label, class_label_name, feat_num, f"{iou_max:.3f}"])
+            else:
+                csv_writer.writerow([level, f"[{int(bbox[0])},{int(bbox[1])},{int(bbox[2])},{int(bbox[3])}]",
+                                         f"{obj_score:.3f}", f"{cls_score:.3f}", f"{conf_score:.6f}", class_label, class_label_name, feat_num])
+
     if args.save_csv_result:
         csv_file.close()
         logger.info(f"Saved outputs feature info to CSV: {csv_save_path}")
