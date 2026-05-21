@@ -576,7 +576,7 @@ class YOLOXHead(nn.Module):
             #            logger.info(f"{i}th target: {target.tolist()}")
             #logger.info(f"first img_path: {img_path[0]}")
 
-        if not self.training and need_aggregation and first:
+        if not self.training and need_aggregation:
             decode_res_orig = decode_res.clone()
             iou_pred_result, iou_pred_idx = self.postpro_orig_woclass(decode_res_orig, num_classes=self.num_classes,
                                                         topK=1000)
@@ -631,13 +631,10 @@ class YOLOXHead(nn.Module):
                 self.select_level_key_feature_in_reg_feature_with_test_conf(original_reg_feat_flatten, pred_idx_original, pred_result_original, test_conf=0.0)
 
             self._original_ref_pred_info = original_ref_pred_info
-            if first:
-                aggregated_selected_feat, aggregated_selected_feat_info = \
-                    self.select_agg_feature_in_reg_feature_with_test_conf(reg_feat_flatten, iou_pred_idx, iou_pred_result, test_conf=0.0)
 
-            else:
-                _,_,_, aggregated_selected_feat_info = \
-                    self.select_level_key_feature_in_reg_feature_with_test_conf(reg_feat_flatten, pred_idx, pred_result, test_conf=0.0001)
+            aggregated_selected_feat, aggregated_selected_feat_info = \
+                self.select_agg_feature_in_reg_feature_with_test_conf(reg_feat_flatten, iou_pred_idx, iou_pred_result, test_conf=0.0)
+
             self._aggregated_selected_feat_info = aggregated_selected_feat_info
             #if first:
             #    for bi, (orig_pli, agg_pli) in enumerate(zip(original_ref_pred_info, aggregated_selected_feat_info)):
@@ -715,11 +712,11 @@ class YOLOXHead(nn.Module):
                 logger.info(f"batch {self.batch_set} memory len(p5_mem_info): {len(p5_mem_info)}, ")
             else:
                 #Generate key features from 16 batch files
-                key_features_p3, key_features_p4, key_features_p5,  key_pred_info = \
-                    self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
-                # Save bboxes/obj_score/cls_score for each level's key features
+                high_iou_ref_feat, high_iou_ref_feat_info =\
+                    self.select_high_iou_feature_in_aggregated_feature(aggregated_selected_feat,\
+                        aggregated_selected_feat_info, labels)                # Save bboxes/obj_score/cls_score for each level's key features
                 # Shape: [N, 6+num_classes] — columns: [x1, y1, x2, y2, obj_score, cls_score, class_pred x num_classes]
-                self._ref_pred_info = key_pred_info
+                self._ref_pred_info = high_iou_ref_feat_info
                 #logger.info(f"len(key_pred_info): {len(key_pred_info)}")
                 #for i, level_info in enumerate(key_pred_info):
                 #    level_info_p3, level_info_p4, level_info_p5 = level_info
@@ -727,7 +724,7 @@ class YOLOXHead(nn.Module):
                 #                len(level_info_p4): {len(level_info_p4)}, \
                 #                    len(level_info_p5): {len(level_info_p5)}")
                 # Update all level memory banks
-                for i, level_info in enumerate(key_pred_info):
+                for i, level_info in enumerate(high_iou_ref_feat_info):
                     level_info_p3, level_info_p4, level_info_p5 = level_info
                     #logger.info(f"batch_item {i} - len(level_info_p3): {len(level_info_p3)}, \
                     #            len(level_info_p4): {len(level_info_p4)}, \
@@ -737,10 +734,31 @@ class YOLOXHead(nn.Module):
                     self.aggregator.update_memory_features_info(level_info_p4, 1, batch_set, i)
                     self.aggregator.update_memory_features_info(level_info_p5, 2, batch_set, i)
 
-                self.aggregator.update_memory_bank(key_features_p3, 0)
-                self.aggregator.update_memory_bank(key_features_p4, 1)
-                self.aggregator.update_memory_bank(key_features_p5, 2)
+                #self.aggregator.update_memory_bank(high_iou_ref_feat[0], 0)
+                #self.aggregator.update_memory_bank(high_iou_ref_feat[1], 1)
+                #self.aggregator.update_memory_bank(high_iou_ref_feat[2], 2)
+                high_iou_feat_p3, high_iou_feat_p4, high_iou_feat_p5 = high_iou_ref_feat
 
+               # logger.info(f"batch_set: {self.batch_set}, "\
+               #             f"high_iou_feat_p3 length: {len(high_iou_feat_p3)}, "\
+               #             f"high_iou_feat_p4 length: {len(high_iou_feat_p4)}, "\
+               #             f"high_iou_feat_p5 length: {len(high_iou_feat_p5)}")
+
+                flat_p3 = [feat for batch_feats in high_iou_feat_p3 for feat in batch_feats]
+                if flat_p3:
+                    high_iou_feat_p3 = torch.stack(flat_p3, dim=0)
+                    logger.info(f"high_iou_feat_p3 shape: {high_iou_feat_p3.shape}")
+                    self.aggregator.update_memory_bank(high_iou_feat_p3, 0)
+                flat_p4 = [feat for batch_feats in high_iou_feat_p4 for feat in batch_feats]
+                if flat_p4:
+                    high_iou_feat_p4 = torch.stack(flat_p4, dim=0)
+                    logger.info(f"high_iou_feat_p4 shape: {high_iou_feat_p4.shape}")
+                    self.aggregator.update_memory_bank(high_iou_feat_p4, 1)
+                flat_p5 = [feat for batch_feats in high_iou_feat_p5 for feat in batch_feats]
+                if flat_p5:
+                    high_iou_feat_p5 = torch.stack(flat_p5, dim=0)
+                    logger.info(f"high_iou_feat_p5 shape: {high_iou_feat_p5.shape}")
+                    self.aggregator.update_memory_bank(high_iou_feat_p5, 2)
                 self._mem_info = self.aggregator.get_memory_feature_info()
                 p3_mem_info = self._mem_info['p3']
                 logger.info(f"batch {self.batch_set} memory len(p3_mem_info): {len(p3_mem_info)}, ")

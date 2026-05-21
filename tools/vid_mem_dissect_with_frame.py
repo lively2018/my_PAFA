@@ -1056,6 +1056,7 @@ def calculate_mAP(args, outputs_info, save_folder, iou_threshold=0.5):
     # --- Compute AP per class ---
     all_classes = set(preds_by_class.keys()) | set(gts_by_class.keys())
     ap_list = []
+    tp_iou_all = []  # IoU of every true positive across all classes
     for cls in sorted(all_classes):
         gt_boxes = gts_by_class.get(cls, [])
         pred_list = sorted(preds_by_class.get(cls, []), key=lambda x: -x[0])  # sort by conf desc
@@ -1066,6 +1067,7 @@ def calculate_mAP(args, outputs_info, save_folder, iou_threshold=0.5):
         matched = [False] * n_gt
         tp = np.zeros(len(pred_list))
         fp = np.zeros(len(pred_list))
+        tp_ious = []
 
         for pi, (conf, px1, py1, px2, py2) in enumerate(pred_list):
             best_iou = 0.0
@@ -1076,9 +1078,11 @@ def calculate_mAP(args, outputs_info, save_folder, iou_threshold=0.5):
                     best_iou = iou
                     best_gi = gi
             if best_iou >= iou_threshold and not matched[best_gi]:
-                logger.info(f"  TP: pred box ({px1:.1f}, {py1:.1f}, {px2:.1f}, {py2:.1f}), conf: {conf:.3f}, matched GT box ({gt_boxes[best_gi][0]}, {gt_boxes[best_gi][1]}, {gt_boxes[best_gi][2]}, {gt_boxes[best_gi][3]}), IoU: {best_iou:.3f}")
                 tp[pi] = 1
                 matched[best_gi] = True
+                tp_ious.append(best_iou)
+                logger.info(f"  TP: pred ({px1:.1f},{py1:.1f},{px2:.1f},{py2:.1f}) "
+                            f"conf={conf:.3f} GT=({gt_boxes[best_gi]}) IoU={best_iou:.4f}")
             else:
                 fp[pi] = 1
 
@@ -1094,21 +1098,27 @@ def calculate_mAP(args, outputs_info, save_folder, iou_threshold=0.5):
             ap += (np.max(prec_at_rec) if len(prec_at_rec) > 0 else 0.0)
         ap /= 11.0
 
+        cls_avg_tp_iou = float(np.mean(tp_ious)) if tp_ious else 0.0
         cls_name = VID_classes[cls] if cls < len(VID_classes) else str(cls)
-        logger.info(f"  AP[{cls_name}]: {ap:.4f}  (n_gt={n_gt}, n_pred={len(pred_list)})")
+        logger.info(f"  AP[{cls_name}]: {ap:.4f}  avg_TP_IoU={cls_avg_tp_iou:.4f}  "
+                    f"(n_gt={n_gt}, n_pred={len(pred_list)}, n_tp={len(tp_ious)})")
         ap_list.append(ap)
+        tp_iou_all.extend(tp_ious)
 
     mAP = float(np.mean(ap_list)) if ap_list else 0.0
+    avg_tp_iou = float(np.mean(tp_iou_all)) if tp_iou_all else 0.0
     logger.info(f"mAP@{iou_threshold}: {mAP:.4f}  (over {len(ap_list)} classes)")
+    logger.info(f"Avg TP IoU: {avg_tp_iou:.4f}  (n_tp={len(tp_iou_all)})")
 
     mAP_save_path = os.path.join(save_folder, "mAP_result.txt")
     with open(mAP_save_path, "w") as f:
         f.write(f"mAP@{iou_threshold}: {mAP:.4f}\n")
+        f.write(f"Avg TP IoU: {avg_tp_iou:.4f}  (n_tp={len(tp_iou_all)})\n")
         for cls, ap in zip(sorted(all_classes & set(gts_by_class.keys())), ap_list):
             cls_name = VID_classes[cls] if cls < len(VID_classes) else str(cls)
             f.write(f"  AP[{cls_name}]: {ap:.4f}\n")
     logger.info(f"Saved mAP result to {mAP_save_path}")
-    return mAP
+    return mAP, avg_tp_iou
 
 
 def calculate_AverageIou(args, outputs_info, save_folder):
@@ -1313,8 +1323,9 @@ def calculate_localization_accuracy(args, outputs_info, save_folder, iou_thresho
         logger.warning("calculate_localization_accuracy: empty GT or predictions")
         return
 
-    # --- Mean Best IoU ---
-    # For each GT box, find the prediction with the highest IoU
+    # --- Mean Best IoU (GT-anchored) ---
+    # For each GT box, find the prediction with the highest IoU.
+    # Invariant to n_pred: extra predictions do not affect this score.
     best_ious = []
     for gi, (gx1, gy1, gx2, gy2) in enumerate(gt_boxes):
         best_iou = max(
@@ -1324,7 +1335,34 @@ def calculate_localization_accuracy(args, outputs_info, save_folder, iou_thresho
         logger.info(f"  GT[{gi}] bbox=({gx1},{gy1},{gx2},{gy2})  best_IoU={best_iou:.4f}")
 
     mean_best_iou = float(np.mean(best_ious))
-    logger.info(f"Mean Best IoU: {mean_best_iou:.4f}  (n_gt={len(gt_boxes)}, n_pred={len(pred_boxes)})")
+    logger.info(f"Mean Best IoU (GT-anchored): {mean_best_iou:.4f}  "
+                f"(n_gt={len(gt_boxes)}, n_pred={len(pred_boxes)})")
+
+    # --- Matched IoU (prediction-anchored, robust to n_pred) ---
+    # Build all (pred, GT) IoU pairs, sort descending.
+    # Greedily assign each prediction to its best unmatched GT (each GT matched once).
+    # Average IoUs of matched pairs only — unmatched predictions are ignored,
+    # so adding extra low-quality predictions does NOT lower this score.
+    iou_pairs = []
+    for pi, (px1, py1, px2, py2) in enumerate(pred_boxes):
+        for gi, (gx1, gy1, gx2, gy2) in enumerate(gt_boxes):
+            iou = calculate_iou_gt_img((gx1, gy1, gx2, gy2), (px1, py1, px2, py2))
+            iou_pairs.append((iou, pi, gi))
+    iou_pairs.sort(key=lambda x: -x[0])
+
+    matched_pred = set()
+    matched_gt   = set()
+    matched_ious = []
+    for iou, pi, gi in iou_pairs:
+        if pi not in matched_pred and gi not in matched_gt:
+            matched_pred.add(pi)
+            matched_gt.add(gi)
+            matched_ious.append(iou)
+            logger.info(f"  Matched pred[{pi}] GT[{gi}]  IoU={iou:.4f}")
+
+    matched_iou = float(np.mean(matched_ious)) if matched_ious else 0.0
+    logger.info(f"Matched IoU (pred-anchored): {matched_iou:.4f}  "
+                f"(n_matched={len(matched_ious)}/{min(len(gt_boxes), len(pred_boxes))})")
 
     # --- Recall @ each IoU threshold ---
     recalls = {}
@@ -1337,7 +1375,9 @@ def calculate_localization_accuracy(args, outputs_info, save_folder, iou_thresho
     save_path = os.path.join(save_folder, "localization_accuracy.txt")
     with open(save_path, "w") as f:
         f.write(f"n_gt={len(gt_boxes)}  n_pred={len(pred_boxes)}\n\n")
-        f.write(f"Mean Best IoU: {mean_best_iou:.4f}\n")
+        f.write(f"Mean Best IoU (GT-anchored):    {mean_best_iou:.4f}\n")
+        f.write(f"Matched IoU   (pred-anchored):  {matched_iou:.4f}  "
+                f"(n_matched={len(matched_ious)})\n")
         for thr, recall in recalls.items():
             n_detected = sum(1 for iou in best_ious if iou >= thr)
             f.write(f"Recall@{thr}: {recall:.4f}  ({n_detected}/{len(gt_boxes)} GT matched)\n")
@@ -1345,7 +1385,7 @@ def calculate_localization_accuracy(args, outputs_info, save_folder, iou_thresho
         for (gx1, gy1, gx2, gy2), iou in zip(gt_boxes, best_ious):
             f.write(f"  GT ({gx1},{gy1},{gx2},{gy2})  best_IoU={iou:.4f}\n")
     logger.info(f"Saved localization accuracy to {save_path}")
-    return mean_best_iou, recalls
+    return mean_best_iou, matched_iou, recalls
 
 
 def main(exp, args):
@@ -1409,7 +1449,7 @@ def main(exp, args):
 
     visualize_outputs_info_on_frame(args,  outputs_info, save_folder, exp, batch_set, batch_item)
 
-    calculate_mAP(args, outputs_info, save_folder, iou_threshold=0.5)
+    calculate_mAP(args, outputs_info, save_folder, iou_threshold=0)
     calculate_AverageIou(args, outputs_info, save_folder)
     calculate_meanIoU(args, outputs_info, save_folder)
     calculate_localization_accuracy(args, outputs_info, save_folder, iou_thresholds=[0.5, 0.75])
