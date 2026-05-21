@@ -160,29 +160,29 @@ class VIDEvaluator:
     def calculate_mean_iou(self, predictions, ground_truths):
         """
         Calcuate the mean IoU for all matched prediction/GP pairs.
-        
+
         :param self: Description
         :param predictions: Description
         :param ground_truths: Description
         """
         if not predictions or not ground_truths:
             return 0.0
-        
+
         def compute_iou(boxA, boxB):
             xA = max(boxA[0], boxB[0])
             yA = max(boxA[1], boxB[1])
             xB = min(boxA[0] + boxA[2], boxB[0] + boxB[2])
             yB = min(boxA[1] + boxA[3], boxB[1] + boxB[3])
             #logger.info(f"xA: {xA} yA: {yA} xB: {xB} yB: {yB}")
-            interArea = max(0, xB-xA) * max(0, yB - yA) 
+            interArea = max(0, xB-xA) * max(0, yB - yA)
             boxAArea = boxA[2] * boxA[3]
             boxBArea = boxB[2] * boxB[3]
             #logger.info(f"interArea: {interArea}, boxAArea: {boxAArea}, boxBArea: {boxBArea}")
             iou = interArea/float(boxAArea + boxBArea - interArea + 1e-6)
             #logger.info(f"iou: {iou}")
             return iou
-        
-        
+
+
         gt_dict = {}
         for gt in ground_truths:
             img_id = gt['image_id']
@@ -190,7 +190,7 @@ class VIDEvaluator:
             if img_id not in gt_dict:
                 gt_dict[img_id] = []
             gt_dict[img_id].append(gt)
-        
+
         total_iou = 0.0
         match_count = 0
         for pred in predictions:
@@ -199,16 +199,16 @@ class VIDEvaluator:
             if img_id in gt_dict:
                 best_iou = 0
                 #logger.info(f"best_iou: {best_iou}")
-                for gt in gt_dict[img_id]:                    
+                for gt in gt_dict[img_id]:
                     if pred['category_id'] == gt['category_id']:
                         #logger.info(f"pred['category_id']: {pred['category_id']}")
                         #logger.info(f"gt['category_id']: {gt['category_id']}")
                         #logger.info(f"pred['bbox']: {pred['bbox']}")
-                        #logger.info(f"gt['bbox']: {gt['bbox']}")                        
+                        #logger.info(f"gt['bbox']: {gt['bbox']}")
                         iou = compute_iou(pred['bbox'], gt['bbox'])
-                        #logger.info(f"iou: {iou}, best_iou: {best_iou}")                        
+                        #logger.info(f"iou: {iou}, best_iou: {best_iou}")
                         best_iou = max(best_iou, iou)
-                if best_iou > 0:                    
+                if best_iou > 0:
                     total_iou += best_iou
                     match_count += 1
                     #logger.info(f"total_iou: {total_iou}")
@@ -217,29 +217,29 @@ class VIDEvaluator:
     def calculate_all_prediction_iou(self, predictions, ground_truths):
         """
         Calcuate the mean IoU for all matched prediction/GP pairs.
-        
+
         :param self: Description
         :param predictions: Description
         :param ground_truths: Description
         """
         if not predictions or not ground_truths:
             return 0.0
-        
+
         def compute_iou(boxA, boxB):
             xA = max(boxA[0], boxB[0])
             yA = max(boxA[1], boxB[1])
             xB = min(boxA[0] + boxA[2], boxB[0] + boxB[2])
             yB = min(boxA[1] + boxA[3], boxB[1] + boxB[3])
             #logger.info(f"xA: {xA} yA: {yA} xB: {xB} yB: {yB}")
-            interArea = max(0, xB-xA) * max(0, yB - yA) 
+            interArea = max(0, xB-xA) * max(0, yB - yA)
             boxAArea = boxA[2] * boxA[3]
             boxBArea = boxB[2] * boxB[3]
             #logger.info(f"interArea: {interArea}, boxAArea: {boxAArea}, boxBArea: {boxBArea}")
             iou = interArea/float(boxAArea + boxBArea - interArea + 1e-6)
             #logger.info(f"iou: {iou}")
             return iou
-        
-        
+
+
         gt_dict = {}
         gt_hit_status = {}
         for i, gt in enumerate(ground_truths):
@@ -249,7 +249,7 @@ class VIDEvaluator:
                 gt_dict[img_id] = []
             gt_dict[img_id].append((i, gt))
             gt_hit_status[i] = False
-        
+
         total_all_iou = 0.0
         all_pair_count = 0
         total_correct_iou = 0.0
@@ -263,7 +263,7 @@ class VIDEvaluator:
             img_id = pred['image_id']
             has_any_overlap = False
             #logger.info(f"img_id: {img_id}")
-            if img_id in gt_dict:                
+            if img_id in gt_dict:
                 for gt_idx, gt in gt_dict[img_id]:
                     #logger.info(f"pred['category_id']: {pred['category_id']}")
                     #logger.info(f"gt['category_id']: {gt['category_id']}")
@@ -282,7 +282,7 @@ class VIDEvaluator:
 
                     if pred['category_id'] == gt['category_id']:
                         correct_iou = all_iou
-                        #logger.info(f"iou: {iou}, best_iou: {best_iou}")                        
+                        #logger.info(f"iou: {iou}, best_iou: {best_iou}")
                         if correct_iou > 0:
                             total_correct_iou += correct_iou
                             correct_pair_count += 1
@@ -326,37 +326,37 @@ class VIDEvaluator:
         else:
             avg_total_high_score_iou = 0.0
         logger.info(f"avg_total_incorrect_iou: {avg_total_high_score_iou:.4f}")
-            
+
         logger.info(f"background_fp_count(Ghost Detections, False Positive): {background_fp_count}")
         logger.info(f"false_negative_count(Missing objects, False Negative): {false_negative_count}")
-        return 
+        return
 
     def calculate_high_score_iou(self, predictions, ground_truths, score_threshold=0.25):
         """
         Calcuate the mean IoU for all matched prediction/GP pairs.
-        
+
         :param self: Description
         :param predictions: Description
         :param ground_truths: Description
         """
         if not predictions or not ground_truths:
             return 0.0
-        
+
         def compute_iou(boxA, boxB):
             xA = max(boxA[0], boxB[0])
             yA = max(boxA[1], boxB[1])
             xB = min(boxA[0] + boxA[2], boxB[0] + boxB[2])
             yB = min(boxA[1] + boxA[3], boxB[1] + boxB[3])
             #logger.info(f"xA: {xA} yA: {yA} xB: {xB} yB: {yB}")
-            interArea = max(0, xB-xA) * max(0, yB - yA) 
+            interArea = max(0, xB-xA) * max(0, yB - yA)
             boxAArea = boxA[2] * boxA[3]
             boxBArea = boxB[2] * boxB[3]
             #logger.info(f"interArea: {interArea}, boxAArea: {boxAArea}, boxBArea: {boxBArea}")
             iou = interArea/float(boxAArea + boxBArea - interArea + 1e-6)
             #logger.info(f"iou: {iou}")
             return iou
-        
-        
+
+
         gt_dict = {}
         for gt in ground_truths:
             img_id = gt['image_id']
@@ -364,7 +364,7 @@ class VIDEvaluator:
             if img_id not in gt_dict:
                 gt_dict[img_id] = []
             gt_dict[img_id].append(gt)
-        
+
         total_iou = 0.0
         match_count = 0
         for pred in predictions:
@@ -375,16 +375,16 @@ class VIDEvaluator:
             if img_id in gt_dict:
                 best_iou = 0
                 #logger.info(f"best_iou: {best_iou}")
-                for gt in gt_dict[img_id]:                    
+                for gt in gt_dict[img_id]:
                     if pred['category_id'] == gt['category_id']:
                         #logger.info(f"pred['category_id']: {pred['category_id']}")
                         #logger.info(f"gt['category_id']: {gt['category_id']}")
                         #logger.info(f"pred['bbox']: {pred['bbox']}")
-                        #logger.info(f"gt['bbox']: {gt['bbox']}")                        
+                        #logger.info(f"gt['bbox']: {gt['bbox']}")
                         iou = compute_iou(pred['bbox'], gt['bbox'])
-                        #logger.info(f"iou: {iou}, best_iou: {best_iou}")                        
+                        #logger.info(f"iou: {iou}, best_iou: {best_iou}")
                         best_iou = max(best_iou, iou)
-                if best_iou > 0:                    
+                if best_iou > 0:
                     total_iou += best_iou
                     match_count += 1
                     #logger.info(f"total_iou: {total_iou}")
@@ -402,7 +402,7 @@ class VIDEvaluator:
         """
         # 행렬 크기: (num_classes + 1) x (num_classes + 1) -> 마지막 인덱스는 'Background'
         matrix = np.zeros((num_classes + 1, num_classes + 1))
-        
+
         # 1. 이미지별로 데이터 그룹화
         from collections import defaultdict
         img_preds = defaultdict(list)
@@ -422,22 +422,22 @@ class VIDEvaluator:
         for img_id in img_gts.keys():
             current_gts = img_gts[img_id]
             current_preds = img_preds.get(img_id, [])
-            
+
             matched_preds = set()
             for gt in current_gts:
                 best_iou = -1
                 best_pred_idx = -1
-                
+
                 for j, pred in enumerate(current_preds):
                     if j in matched_preds: continue
                     iou = compute_iou(gt['bbox'], pred['bbox'])
                     if iou > best_iou:
                         best_iou = iou
                         best_pred_idx = j
-                
+
                 # 클래스 인덱스 (0 ~ num_classes-1 가정, 배경은 num_classes)
                 gt_cls = gt['category_id']
-                
+
                 if best_iou >= iou_thresh:
                     pred_cls = current_preds[best_pred_idx]['category_id']
                     matrix[gt_cls, pred_cls] += 1
@@ -445,7 +445,7 @@ class VIDEvaluator:
                 else:
                     # False Negative: 물체가 있는데 못 찾음 (배경으로 예측됨)
                     matrix[gt_cls, num_classes] += 1
-            
+
             # False Positives: 정답이 없는데 억지로 찾아낸 박스들
             for j, pred in enumerate(current_preds):
                 if j not in matched_preds:
@@ -516,6 +516,11 @@ class VIDEvaluator:
                 progress_bar(self.dataloader)
         ):
             #logger.info("path: {}".format(path))
+            for img_info in info_imgs:
+                logger.info("img_info: {}".format(img_info))
+
+            if label is None:
+                raise ValueError("Ground truth labels are missing in the dataloader. Please ensure that the dataloader is properly configured to provide labels for evaluation.")
             video_path = os.path.basename(os.path.dirname(path[0]))
             if prev_video_path == video_path:
                 first_frame = False
@@ -529,7 +534,7 @@ class VIDEvaluator:
                 if is_time_record:
                     start = time.time()
                 #kssong
-                outputs, ori_res = model(imgs, first_frame, labels=label, nms_thresh=self.nmsthre,
+                outputs, ori_res = model(imgs, first_frame, targets=label, info_imgs=info_imgs, nms_thresh=self.nmsthre,
                                          lframe=self.lframe,
                                          gframe = self.gframe)
 

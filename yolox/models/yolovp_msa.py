@@ -4,7 +4,7 @@
 import copy
 import time
 
-
+import numpy as np
 import math
 import torch
 import torch.nn as nn
@@ -53,6 +53,7 @@ class YOLOXHead(nn.Module):
             both_mode=False,
             localBlocks=1,
             m_conf=0,
+            test_size = (640,640),
             **kwargs
     ):
         """
@@ -220,6 +221,7 @@ class YOLOXHead(nn.Module):
         #kssong
         self.inplace_false_relu = nn.ReLU(inplace=False)
         self.m_conf = m_conf
+        self.test_size = test_size
 
 
     def initialize_biases(self, prior_prob):
@@ -240,7 +242,7 @@ class YOLOXHead(nn.Module):
         new_xin = xin + self.aggreator(xin, ref_xin)
         return new_xin
     # kssong
-    def forward(self, xin, first, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32, img_path=None):
+    def forward(self, xin, first, labels=None, imgs=None, info_imgs=None, nms_thresh=0.5, lframe=0, gframe=32, img_path=None):
     #def forward(self, xin, ref_xin, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32):
         #kssong
         #if len(ref_xin) > 0:
@@ -712,6 +714,28 @@ class YOLOXHead(nn.Module):
         outputs[..., :2] = (outputs[..., :2] + grids) * strides
         outputs[..., 2:4] = torch.exp(outputs[..., 2:4]) * strides
         return outputs
+    def calculate_iou_gt_img(self, gt_bbox, img_bbox):
+        if isinstance(gt_bbox, torch.Tensor):
+            gt_bbox = gt_bbox.detach().cpu().numpy().astype(np.float32)
+        else:
+            gt_bbox = np.array(gt_bbox, dtype=np.float32)
+        if isinstance(img_bbox, torch.Tensor):
+            img_bbox = img_bbox.detach().cpu().numpy().astype(np.float32)
+        else:
+            img_bbox = np.array(img_bbox, dtype=np.float32)
+        if img_bbox.ndim == 1:
+            img_bbox = img_bbox[np.newaxis, :]
+        x1 = np.maximum(gt_bbox[0], img_bbox[:, 0])
+        y1 = np.maximum(gt_bbox[1], img_bbox[:, 1])
+        x2 = np.minimum(gt_bbox[2], img_bbox[:, 2])
+        y2 = np.minimum(gt_bbox[3], img_bbox[:, 3])
+        inter = np.maximum(x2 - x1, 0) * np.maximum(y2 - y1, 0)
+        area_gt  = (gt_bbox[2]  - gt_bbox[0])  * (gt_bbox[3]  - gt_bbox[1])
+        area_img = (img_bbox[:, 2] - img_bbox[:, 0]) * (img_bbox[:, 3] - img_bbox[:, 1])
+        union = area_gt + area_img - inter
+        iou = inter / (union + 1e-12)
+        return iou
+
     def postpro_orig_woclass(self, prediction, num_classes,  topK=1000):
         # find topK predictions, play the same role as RPN
         '''

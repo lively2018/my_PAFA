@@ -27,7 +27,7 @@ class YOLOX(nn.Module):
 
     #kssong
     #def forward(self, x, targets=None,nms_thresh=0.5,lframe=0,gframe=32):
-    def forward(self, x, first, targets=None, labels=None, nms_thresh=0.5,lframe=0,gframe=32):
+    def forward(self, x, first, targets=None, info_imgs=None, nms_thresh=0.5,lframe=0,gframe=32):
         #print(f"Before YOLOX forward: {gpu_mem_usage():.0f}")
         # fpn output content features of [dark3, dark4, dark5]
         fpn_outs = self.backbone(x)
@@ -39,7 +39,7 @@ class YOLOX(nn.Module):
             #    fpn_outs, targets, x, lframe=lframe,gframe=gframe
             #)
             loss, iou_loss, conf_loss, cls_loss, l1_loss, rconf_loss,num_fg = self.head(
-                fpn_outs, first, targets, x, nms_thresh=nms_thresh,lframe=lframe,gframe=gframe
+                fpn_outs, first, targets, x, info_imgs, nms_thresh=nms_thresh,lframe=lframe,gframe=gframe
             )
             outputs = {
                 "total_loss": loss,
@@ -53,6 +53,6 @@ class YOLOX(nn.Module):
         else:
             #kssong
             #outputs = self.head(fpn_outs,targets,x,nms_thresh=nms_thresh, lframe=lframe,gframe=gframe)
-            outputs = self.head(fpn_outs,first,labels,x,nms_thresh=nms_thresh, lframe=lframe,gframe=gframe)
+            outputs = self.head(fpn_outs,first,targets,x,info_imgs, nms_thresh=nms_thresh, lframe=lframe,gframe=gframe)
         #print(f"After YOLOX forward: {gpu_mem_usage():.0f}")
         return outputs
