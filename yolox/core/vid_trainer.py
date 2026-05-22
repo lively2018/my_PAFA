@@ -152,12 +152,12 @@ class Trainer:
 
         iter_start_time = time.time()
 
-        #kssong        
+        #kssong
         #inps, targets,_ = self.prefetcher.next()
         inps, targets, _, _, paths, _ = self.prefetcher.next()
         inps = inps.to(self.data_type)
         targets = targets.to(self.data_type)
-        targets.requires_grad = False        
+        targets.requires_grad = False
         inps, targets = self.exp.preprocess(inps, targets, self.input_size,)
         video_path = os.path.basename(os.path.dirname(paths[0]))
         prev_video_path = self.prev_video_path
@@ -174,7 +174,7 @@ class Trainer:
             #kssong
             #outputs = self.model(inps, targets, lframe = self.exp.lframe,gframe = self.exp.gframe)
             #logger.info("before model")
-            outputs = self.model(inps, first_frame, targets, nms_thresh=self.exp.nmsthre, lframe = self.exp.lframe,gframe = self.exp.gframe)
+            outputs = self.model(inps, first_frame, targets, nms_thresh=self.exp.nmsthre, lframe = self.exp.lframe,gframe = self.exp.gframe, img_path=paths)
             #logger.info("after model")
 
         loss = outputs["total_loss"]
@@ -351,14 +351,14 @@ class Trainer:
                 )
                 + (", size: {:d}, {}".format(self.input_size[0], eta_str))
             )
-            self.meter.clear_meters()            
+            self.meter.clear_meters()
 
         # random resizing
-        if (self.progress_in_iter + 1) % 10 == 0:            
+        if (self.progress_in_iter + 1) % 10 == 0:
             self.input_size = self.exp.random_resize(
                 None, self.epoch, self.rank, self.is_distributed
             )
-        if self.iter % 2000 ==0:            
+        if self.iter % 2000 ==0:
             self.save_ckpt(ckpt_name='latest')
 
     @property
