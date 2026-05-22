@@ -533,7 +533,7 @@ class VIDEvaluator:
                 #kssong
                 outputs, ori_res = model(imgs, first_frame, targets=label, nms_thresh=self.nmsthre,
                                          lframe=self.lframe,
-                                         gframe = self.gframe)
+                                         gframe = self.gframe, img_path=path)
 
                 if is_time_record:
                     infer_end = time_synchronized()
