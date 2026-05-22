@@ -342,7 +342,7 @@ class YOLOXHead(nn.Module):
             else:
                 ota_idxs = None
 
-            pred_result, pred_idx = self.postpro_woclass(decode_res, num_classes=self.num_classes,
+            iou_pred_result, iou_pred_idx = self.postpro_orig_woclass(decode_res, num_classes=self.num_classes,
                                                         nms_thre=self.nms_thresh,
                                                         topK=self.Afternum,
                                                         ota_idxs=ota_idxs,
@@ -352,7 +352,11 @@ class YOLOXHead(nn.Module):
                 [x.flatten(start_dim=2) for x in before_nms_regf], dim=2
                 ).permute(0, 2, 1)
             #Generate reference features from 16 batch files
-            ref_feature_reg = self.select_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+            #ref_feature_reg = self.select_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+            aggregated_selected_feat, aggregated_selected_feat_info = \
+                self.select_agg_feature_in_reg_feature_with_test_conf(reg_feat_flatten, iou_pred_idx, iou_pred_result, test_conf=0.0)
+            high_iou_feat_p3, high_iou_feat_p4, high_iou_feat_p5 = self.select_high_iou_feature_in_aggregated_feature(aggregated_selected_feat,\
+                    aggregated_selected_feat_info, labels)
         del outputs, outputs_decode, origin_preds, x_shifts, y_shifts, expanded_strides, before_nms_features, before_nms_regf
         outputs = []
         outputs_decode = []
