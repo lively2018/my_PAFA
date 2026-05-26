@@ -216,7 +216,7 @@ class Exp(BaseExp):
         self.m_conf = [0, 0, 0]  # [P3, P4, P5]
         self.memory_length = [4800, 4800, 4800] # [P3, P4, P5]
         self.key_length = [480, 480, 480] # [P3, P4, P5]
-
+        self.updating_policy = "random"
     def get_model(self):
         # rewrite get model func from yolox
         if self.backbone_name == 'MCSP':
@@ -296,7 +296,8 @@ class Exp(BaseExp):
                          use_score=self.use_score, defualt_p=self.defualt_p, sim_thresh=self.sim_thresh,
                          pre_nms=self.pre_nms, ave=self.ave, defulat_pre=self.defualt_pre, test_conf=self.test_conf,
                          use_mask=self.use_mask,gmode=self.gmode,lmode=self.lmode,both_mode=self.both_mode,
-                         localBlocks = self.localBlocks,m_conf=self.m_conf, memory_length=self.memory_length, key_length=self.key_length, **more_args)
+                         localBlocks = self.localBlocks,m_conf=self.m_conf, memory_length=self.memory_length,\
+                         key_length=self.key_length, updating_policy=self.updating_policy, **more_args)
 
         for layer in head.stems.parameters():
             layer.requires_grad = False  # set stem fixed

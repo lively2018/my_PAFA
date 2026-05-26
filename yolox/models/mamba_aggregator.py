@@ -25,7 +25,7 @@ class MambaAggregator(nn.Module):
             Defaults to None.
     """
 
-    def __init__(self, in_channels, num_attention_blocks=16, memory_length=4800, key_length=480, **memory_cfg):
+    def __init__(self, in_channels, num_attention_blocks=16, memory_length=4800, key_length=480, updating_policy="random", **memory_cfg):
         super(MambaAggregator, self).__init__()
         self.fc_embed = nn.Linear(in_channels, in_channels)
         self.ref_fc_embed = nn.Linear(in_channels, in_channels)
@@ -33,7 +33,7 @@ class MambaAggregator(nn.Module):
         self.ref_fc = nn.Linear(in_channels, in_channels)
         self.num_attention_blocks = num_attention_blocks
         # instance-level memory bank
-        self.memory_bank = MemoryBank(max_length=memory_length, key_length=key_length, **memory_cfg)
+        self.memory_bank = MemoryBank(max_length=memory_length, key_length=key_length, updating_policy=updating_policy, **memory_cfg)
 
 
     def forward(self, x, ref_x):
@@ -54,14 +54,20 @@ class MambaAggregator(nn.Module):
         #logger.info("reset_memory_bank")
         self.memory_bank.reset()
 
-    def update_memory_bank(self, x):
+    def update_memory_bank(self, x, x_info):
         #logger.info("update_memory_bank")
-        self.memory_bank.update(x)
+        self.memory_bank.update(x, x_info)
 
-    def init_memory_bank(self, x):
+    def init_memory_bank(self, x, x_info):
         #logger.info("init_memory_bank")
         #logger.info("x.shape: {}".format(x.shape))
-        self.memory_bank.init_memory(x)
+        self.memory_bank.init_memory(x, x_info)
+
+    def post_init_memory_bank(self, result):
+        self.memory_bank.post_init_memory(result)
+
+    def post_update_memory_bank(self, result):
+        self.memory_bank.post_update_memory(result)
 
     def forward_with_ref_x(self, x, ref_x):
         """Aggregate the features `ref_x` of reference proposals.
