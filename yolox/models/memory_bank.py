@@ -52,8 +52,6 @@ class MemoryBank(nn.Module):
         #self.feat_num, self.feat_dim, self.feat_channel  = feat.shape
         # reshape [ n*m, c]
         #reshaped_feat = feat.view(-1, self.feat_channel)
-
-
         #self.feat = reshaped_feat
         if len(feat) >= self.max_length:
             self.feat = feat[:self.max_length].detach().clone().to('cuda')
