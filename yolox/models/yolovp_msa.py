@@ -55,7 +55,7 @@ class YOLOXHead(nn.Module):
             m_conf=None,
             memory_length=None,
             key_length=None,
-            updating_policy=None,
+            updating_policy="random",
             **kwargs
     ):
         """
@@ -422,7 +422,7 @@ class YOLOXHead(nn.Module):
                                     channel, height, width = reg_one.shape
                                     reg_one = reg_one.reshape(-1, channel)
                                     self.aggregator_p4.reset_memory_bank()
-                                    self.aggregator_p4.init_memory_bank(ref_feats)
+                                    self.aggregator_p4.init_memory_bank(ref_feats, None)
                                     agg_feat = reg_one + self.aggregator_p4(reg_one, None)
                                     agg_feat = self.inplace_false_relu(agg_feat)
                                     agg_feat = agg_feat.reshape(channel, height, width)
@@ -431,7 +431,7 @@ class YOLOXHead(nn.Module):
                                     channel, height, width = reg_one.shape
                                     reg_one = reg_one.reshape(-1, channel)
                                     self.aggregator_p5.reset_memory_bank()
-                                    self.aggregator_p5.init_memory_bank(ref_feats)
+                                    self.aggregator_p5.init_memory_bank(ref_feats, None)
                                     agg_feat = reg_one + self.aggregator_p5(reg_one, None)
                                     agg_feat = self.inplace_false_relu(agg_feat)
                                     agg_feat = agg_feat.reshape(channel, height, width)
@@ -582,17 +582,19 @@ class YOLOXHead(nn.Module):
                 self.aggregator_p4.reset_memory_bank()
                 self.aggregator_p5.reset_memory_bank()
                 #Generate reference features from 16 batch files
-                ref_feature_p4, ref_feature_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+                ref_feature_p4, ref_feature_p5,\
+                     ref_feature_p4_info, ref_feature_p5_info = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
                 # Initialize all level memory banks
 
-                self.aggregator_p4.init_memory_bank(ref_feature_p4)
-                self.aggregator_p5.init_memory_bank(ref_feature_p5)
+                self.aggregator_p4.init_memory_bank(ref_feature_p4, ref_feature_p4_info)
+                self.aggregator_p5.init_memory_bank(ref_feature_p5, ref_feature_p5_info)
             else:
                 #Generate key features from 16 batch files
-                key_features_p4, key_features_p5 = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+                key_features_p4, key_features_p5,\
+                    key_feature_p4_info, key_feature_p5_info = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
                 # Update all level memory banks
-                self.aggregator_p4.update_memory_bank(key_features_p4)
-                self.aggregator_p5.update_memory_bank(key_features_p5)
+                self.aggregator_p4.update_memory_bank(key_features_p4, key_feature_p4_info)
+                self.aggregator_p5.update_memory_bank(key_features_p5, key_feature_p5_info)
 
         (features_cls, features_reg, cls_scores,
          fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
@@ -679,6 +681,12 @@ class YOLOXHead(nn.Module):
                                              conf_output = conf_output,
                                              nms_thre=nms_thresh,
                                              )
+            if first:
+                self.aggregator_p4.post_init_memory_bank(result)
+                self.aggregator_p5.post_init_memory_bank(result)
+            else:
+                self.aggregator_p4.post_update_memory_bank(result)
+                self.aggregator_p5.post_update_memory_bank(result)
             return result, result_ori  # result
 
     def get_output_and_grid(self, output, k, stride, dtype):
@@ -774,23 +782,32 @@ class YOLOXHead(nn.Module):
     def select_level_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results):
         key_features_p4 = []
         key_features_p5 = []
+        key_features_p4_info = []
+        key_features_p5_info = []
         for i in range(reg_features.shape[0]):
             reg_feature = reg_features[i]
             idx_list = pred_idx[i]
             pred_result = pred_results[i]
             conf_score_list = pred_result[:, 4] * pred_result[:, 5]
+            bboxes_list = pred_result[:, :4]
             for j, idx in enumerate(idx_list):
                 conf = conf_score_list[j].item()
-
+                bbox = bboxes_list[j]
                 if idx >= 6400 and idx < 8000:
                     if conf > self.m_conf_p4:
                         key_features_p4.append(reg_feature[idx])
+                        key_features_p4_info.append({'idx': idx,
+                                                     'bbox': bbox,
+                                                     'conf': conf})
                 elif idx >= 8000:
                     if conf > self.m_conf_p5:
                         key_features_p5.append(reg_feature[idx])
+                        key_features_p5_info.append({'idx': idx,
+                                                     'bbox': bbox,
+                                                     'conf': conf})
         key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128)
         key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128)
-        return key_features_p4, key_features_p5
+        return  key_features_p4, key_features_p5,  key_features_p4_info, key_features_p5_info
 
     def get_losses(
             self,
