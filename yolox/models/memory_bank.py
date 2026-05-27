@@ -157,7 +157,7 @@ class MemoryBank(nn.Module):
                     new_feat_info_combined = self.feat_info + new_feat_info
                     update_length = len(new_feat)
                 elif self.updating_policy == "cls_score":
-                    print(f"self.updating_policy: {self.updating_policy}")
+                    #print(f"self.updating_policy: {self.updating_policy}")
                     new_feat_combined = torch.cat([self.feat, new_feat], dim=0).detach().clone()
                     new_feat_info_combined = self.feat_info + new_feat_info
                     update_length = len(new_feat)
