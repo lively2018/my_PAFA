@@ -794,19 +794,20 @@ class YOLOXHead(nn.Module):
             for j, idx in enumerate(idx_list):
                 conf = conf_score_list[j].item()
                 bbox = bboxes_list[j]
+                cls_score = cls_score_list[j]
                 if idx >= 6400 and idx < 8000:
                     if conf > self.m_conf_p4:
                         key_features_p4.append(reg_feature[idx])
                         key_features_p4_info.append({'idx': idx,
                                                      'bbox': bbox,
-                                                     'conf': conf},
+                                                     'conf': conf,
                                                      'cls_score': cls_score})
                 elif idx >= 8000:
                     if conf > self.m_conf_p5:
                         key_features_p5.append(reg_feature[idx])
                         key_features_p5_info.append({'idx': idx,
                                                      'bbox': bbox,
-                                                     'conf': conf},
+                                                     'conf': conf,
                                                      'cls_score': cls_score})
         key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128)
         key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128)
