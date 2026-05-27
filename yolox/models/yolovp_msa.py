@@ -799,28 +799,33 @@ class YOLOXHead(nn.Module):
             idx_list = pred_idx[i]
             pred_result = pred_results[i]
             conf_score_list = pred_result[:, 4] * pred_result[:, 5]
+            cls_score_list = pred_result[:, 5]
             bboxes_list = pred_result[:, :4]
             for j, idx in enumerate(idx_list):
                 conf = conf_score_list[j]
                 bbox = bboxes_list[j]
+                cls_score = cls_score_list[j]
                 if idx >= 0 and idx < 6400:
                     if conf > self.m_conf_p3:
                         key_features_p3.append(reg_feature[idx])
                         key_features_p3_info.append({'idx': idx,
                                              'bbox': bbox,
-                                             'conf': conf})
+                                             'conf': conf,
+                                             'cls_score': cls_score})
                 elif idx >= 6400 and idx < 8000:
                     if conf > self.m_conf_p4:
                         key_features_p4.append(reg_feature[idx])
                         key_features_p4_info.append({'idx': idx,
                                                      'bbox': bbox,
-                                                     'conf': conf})
+                                                     'conf': conf,
+                                                     'cls_score': cls_score})
                 else:
                     if conf > self.m_conf_p5:
                         key_features_p5.append(reg_feature[idx])
                         key_features_p5_info.append({'idx': idx,
                                                      'bbox': bbox,
-                                                     'conf': conf})
+                                                     'conf': conf,
+                                                     'cls_score': cls_score})
         key_features_p3 = torch.stack(key_features_p3, dim=0) if key_features_p3 else torch.empty(0, 128)
         key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128)
         key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128)
