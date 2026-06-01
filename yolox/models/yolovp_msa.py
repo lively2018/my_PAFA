@@ -605,7 +605,7 @@ class YOLOXHead(nn.Module):
                 self.aggregator_p5.reset_memory_bank()
                 #Generate reference features from 16 batch files
                 ref_feature_p3, ref_feature_p4, ref_feature_p5,\
-                     ref_feature_p3_info, ref_feature_p4_info, ref_feature_p5_info = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result, iou_outputs_flat=iou_outputs_flat)
+                     ref_feature_p3_info, ref_feature_p4_info, ref_feature_p5_info = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
                 # Initialize all level memory banks
                 self.aggregator_p3.init_memory_bank(ref_feature_p3, ref_feature_p3_info)
                 self.aggregator_p4.init_memory_bank(ref_feature_p4, ref_feature_p4_info)
@@ -613,7 +613,7 @@ class YOLOXHead(nn.Module):
             else:
                 #Generate key features from 16 batch files
                 key_features_p3, key_features_p4, key_features_p5,\
-                     key_feature_p3_info, key_feature_p4_info, key_feature_p5_info = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result, iou_outputs_flat=iou_outputs_flat)
+                     key_feature_p3_info, key_feature_p4_info, key_feature_p5_info = self.select_level_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
                 # Update all level memory banks
                 self.aggregator_p3.update_memory_bank(key_features_p3, key_feature_p3_info)
                 self.aggregator_p4.update_memory_bank(key_features_p4, key_feature_p4_info)
@@ -787,22 +787,22 @@ class YOLOXHead(nn.Module):
             if idx_list is None:
                 raise ValueError("idx_list is None")
             pred_result = pred_results[i]
-            iou_obj_score_list = pred_result[:, 4]
+            iou_obj_list = pred_result[:, 4]
             key_features_p3 = []
             key_features_p4 = []
             key_features_p5 = []
+            iou_obj_list = pred_result[:, 4]
             for j, idx in enumerate(idx_list):
-                conf = iou_obj_score_list[j].item()
+                iou_obj = iou_obj_list[j]
                 if idx >= 0 and idx < 6400:
-                    if conf > self.m_conf_p3:
+                    if iou_obj > self.m_conf_p3:
                         key_features_p3.append(reg_feature[idx].unsqueeze(0))
                 elif idx >= 6400 and idx < 8000:
-                    if conf > self.m_conf_p4:
+                    if iou_obj > self.m_conf_p4:
                         key_features_p4.append(reg_feature[idx].unsqueeze(0))
                 else:
-                    if conf > self.m_conf_p5:
+                    if iou_obj > self.m_conf_p5:
                         key_features_p5.append(reg_feature[idx].unsqueeze(0))
-
             if len(key_features_p3) == 0:
                 "key_feature_p3 is empty"
             if len(key_features_p4) == 0:
@@ -814,7 +814,7 @@ class YOLOXHead(nn.Module):
             key_features_list.append(key_features)
         return key_features_list
 
-    def select_level_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results, iou_outputs_flat=None):
+    def select_level_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results):
         key_features_p3 = []
         key_features_p4 = []
         key_features_p5 = []
@@ -825,19 +825,15 @@ class YOLOXHead(nn.Module):
             reg_feature = reg_features[i]
             idx_list = pred_idx[i]
             pred_result = pred_results[i]
-            iou_obj_score_list = pred_result[:, 4]
             conf_list = pred_result[:, 4] * pred_result[:, 5]
+            iou_obj_list = pred_result[:, 4]
             cls_score_list = pred_result[:, 5]
             bboxes_list = pred_result[:, :4]
             for j, idx in enumerate(idx_list):
-                iou_obj = iou_obj_score_list[j]
                 bbox = bboxes_list[j]
                 cls_score = cls_score_list[j]
                 conf = conf_list[j]
-                if iou_outputs_flat is not None:
-                    iou_score = iou_outputs_flat[i, idx, 0].sigmoid().item()
-                else:
-                    iou_score = iou_obj.item()
+                iou_obj = iou_obj_list[j]
                 if idx >= 0 and idx < 6400:
                     if iou_obj > self.m_conf_p3:
                         key_features_p3.append(reg_feature[idx])
@@ -845,26 +841,23 @@ class YOLOXHead(nn.Module):
                                              'bbox': bbox,
                                              'conf': conf,
                                              'cls_score': cls_score,
-                                             'iou_obj': iou_obj,
-                                             'iou_score': iou_score})
+                                             'iou_obj': iou_obj})
                 elif idx >= 6400 and idx < 8000:
                     if iou_obj > self.m_conf_p4:
                         key_features_p4.append(reg_feature[idx])
                         key_features_p4_info.append({'idx': idx,
                                                      'bbox': bbox,
-                                                     'conf': iou_obj,
+                                                     'conf': conf,
                                                      'cls_score': cls_score,
-                                                     'iou_obj': iou_obj,
-                                                     'iou_score': iou_score})
+                                                     'iou_obj': iou_obj})
                 else:
                     if iou_obj > self.m_conf_p5:
                         key_features_p5.append(reg_feature[idx])
                         key_features_p5_info.append({'idx': idx,
                                                      'bbox': bbox,
-                                                     'conf': iou_obj,
+                                                     'conf': conf,
                                                      'cls_score': cls_score,
-                                                     'iou_obj': iou_obj,
-                                                     'iou_score': iou_score})
+                                                     'iou_obj': iou_obj})
         key_features_p3 = torch.stack(key_features_p3, dim=0) if key_features_p3 else torch.empty(0, 128)
         key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128)
         key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128)
