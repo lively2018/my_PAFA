@@ -161,6 +161,10 @@ class MemoryBank(nn.Module):
                     new_feat_combined = torch.cat([self.feat, new_feat], dim=0).detach().clone()
                     new_feat_info_combined = self.feat_info + new_feat_info
                     update_length = len(new_feat)
+                elif self.updating_policy == "iou_score":
+                    new_feat_combined = torch.cat([self.feat, new_feat], dim=0).detach().clone()
+                    new_feat_info_combined = self.feat_info + new_feat_info
+                    update_length = len(new_feat)
                 else:
                     NotImplementedError("Only random updating policy is implemented")
             else:
@@ -208,6 +212,7 @@ class MemoryBank(nn.Module):
                 bboxes = result_item[:, :4]
                 conf_scores = result_item[:, 4] * result_item[:, 5]
                 cls_scores = result_item[:, 5]
+                iou_objs = result_item[:, 4]
                 for i, bbox in enumerate(bboxes):
                     for j, info in enumerate(self.feat_info):
                         info_bbox = info['bbox']
@@ -220,6 +225,7 @@ class MemoryBank(nn.Module):
                             #print(f"before conf_score: {self.feat_info[j]['conf']}")
                             self.feat_info[j]['conf'] = conf_scores[i].item()
                             self.feat_info[j]['cls_score'] = cls_scores[i].item()
+                            self.feat_info[j]['iou_obj'] = iou_objs[i].item()
                             #print(f"after conf_score: {self.feat_info[j]['conf']}")
             if self.updating_policy == 'conf':
                 if len(self.feat) >= self.max_length:
@@ -251,7 +257,34 @@ class MemoryBank(nn.Module):
                     self.feat = new_feat_combined
                     del self.feat_info
                     self.feat_info = new_feat_info_combined
-
+            elif self.updating_policy == 'iou_obj':
+                if len(self.feat) >= self.max_length:
+                    #print(f"updating_policy: {self.updating_policy}")
+                    #print(f"self.feat length {len(self.feat)} is larger than max_length {self.max_length}")
+                    sorted_indices = sorted(range(len(self.feat_info)),
+                                        key=lambda j: self.feat_info[j].get('iou_obj', 0.0),
+                                        reverse=True)
+                    self.feat_info = [self.feat_info[j] for j in sorted_indices]
+                    self.feat = self.feat[sorted_indices]
+                    new_feat_combined = self.feat[:self.max_length].detach().clone()
+                    new_feat_info_combined = self.feat_info[:self.max_length]
+                    del self.feat
+                    self.feat = new_feat_combined
+                    del self.feat_info
+                    self.feat_info = new_feat_info_combined
+            elif self.updating_policy == 'iou_score':
+                if len(self.feat) >= self.max_length:
+                    sorted_indices = sorted(range(len(self.feat_info)),
+                                        key=lambda j: self.feat_info[j].get('iou_score', 0.0),
+                                        reverse=True)
+                    self.feat_info = [self.feat_info[j] for j in sorted_indices]
+                    self.feat = self.feat[sorted_indices]
+                    new_feat_combined = self.feat[:self.max_length].detach().clone()
+                    new_feat_info_combined = self.feat_info[:self.max_length]
+                    del self.feat
+                    self.feat = new_feat_combined
+                    del self.feat_info
+                    self.feat_info = new_feat_info_combined
 
     def post_update_memory(self, result):
         if self.feat is not None and self.feat_info is not None:
@@ -261,6 +294,8 @@ class MemoryBank(nn.Module):
                     continue
                 bboxes = result_item[:, :4]
                 conf_scores = result_item[:, 4] * result_item[:, 5]
+                iou_objs = result_item[:, 4]
+                cls_scores = result_item[:, 5]
                 old_end = len(self.feat_info) - self.update_length if self.update_length > 0 else len(self.feat_info)
                 for i, bbox in enumerate(bboxes):
                     for info in self.feat_info[old_end:]:
@@ -272,6 +307,8 @@ class MemoryBank(nn.Module):
                         if torch.allclose(info_bbox, bbox, atol=1.0):
                             #print(f"before confidence {info['conf']}")
                             info['conf'] = conf_scores[i].item()
+                            info['iou_obj'] = iou_objs[i].item()
+                            info['cls_score'] = cls_scores[i].item()
                             #print(f"after confidence {info['conf']}")
             if self.updating_policy == 'conf':
                 if len(self.feat) >= self.max_length:
@@ -303,7 +340,34 @@ class MemoryBank(nn.Module):
                     self.feat = new_feat_combined
                     del self.feat_info
                     self.feat_info = new_feat_info_combined
-    def __len__(self):
+            elif self.updating_policy == 'iou_obj':
+                if len(self.feat) >= self.max_length:
+                    #print(f"updating_policy: {self.updating_policy}")
+                    #print(f"self.feat length {len(self.feat)} is larger than max_length {self.max_length}")
+                    sorted_indices = sorted(range(len(self.feat_info)),
+                                        key=lambda j: self.feat_info[j].get('iou_obj', 0.0),
+                                        reverse=True)
+                    self.feat_info = [self.feat_info[j] for j in sorted_indices]
+                    self.feat = self.feat[sorted_indices]
+                    new_feat_combined = self.feat[:self.max_length].detach().clone()
+                    new_feat_info_combined = self.feat_info[:self.max_length]
+                    del self.feat
+                    self.feat = new_feat_combined
+                    del self.feat_info
+                    self.feat_info = new_feat_info_combined
+            elif self.updating_policy == 'iou_score':
+                if len(self.feat) >= self.max_length:
+                    sorted_indices = sorted(range(len(self.feat_info)),
+                                        key=lambda j: self.feat_info[j].get('iou_score', 0.0),
+                                        reverse=True)
+                    self.feat_info = [self.feat_info[j] for j in sorted_indices]
+                    self.feat = self.feat[sorted_indices]
+                    new_feat_combined = self.feat[:self.max_length].detach().clone()
+                    new_feat_info_combined = self.feat_info[:self.max_length]
+                    del self.feat
+                    self.feat = new_feat_combined
+                    del self.feat_info
+                    self.feat_info = new_feat_info_combined
         if self.feat is None:
             return 0
         return len(self.feat)
