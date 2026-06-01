@@ -38,7 +38,7 @@ class YOLOX(nn.Module):
             #loss, iou_loss, conf_loss, cls_loss, l1_loss, rconf_loss,num_fg = self.head(
             #    fpn_outs, targets, x, lframe=lframe,gframe=gframe
             #)
-            loss, iou_loss, conf_loss, cls_loss, l1_loss, rconf_loss,num_fg = self.head(
+            loss, iou_loss, conf_loss, iou_pred_loss, cls_loss, l1_loss, rconf_loss,num_fg = self.head(
                 fpn_outs, first, targets, x, nms_thresh=nms_thresh,lframe=lframe,gframe=gframe
             )
             outputs = {
@@ -46,6 +46,7 @@ class YOLOX(nn.Module):
                 "iou_loss": iou_loss,
                 "l1_loss": l1_loss,
                 "conf_loss": conf_loss,
+                "iou_pred_loss": iou_pred_loss,
                 "cls_loss": cls_loss,
                 "rconf_loss":rconf_loss,
                 "num_fg": num_fg,

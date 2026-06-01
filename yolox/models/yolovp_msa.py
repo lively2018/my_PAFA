@@ -82,6 +82,7 @@ class YOLOXHead(nn.Module):
         self.cls_preds = nn.ModuleList()
         self.reg_preds = nn.ModuleList()
         self.obj_preds = nn.ModuleList()
+        self.iou_preds = nn.ModuleList()
         self.cls_convs2 = nn.ModuleList()
 
         self.width = int(256 * width)
@@ -208,6 +209,15 @@ class YOLOXHead(nn.Module):
                     padding=0,
                 )
             )
+            self.iou_preds.append(
+                nn.Conv2d(
+                    in_channels=int(256 * width),
+                    out_channels=self.n_anchors * 1,
+                    kernel_size=1,
+                    stride=1,
+                    padding=0,
+                )
+            )
 
         self.use_l1 = False
         self.l1_loss = nn.L1Loss(reduction="none")
@@ -257,6 +267,12 @@ class YOLOXHead(nn.Module):
             b = conv.bias.view(self.n_anchors, -1)
             b.data.fill_(-math.log((1 - prior_prob) / prior_prob))
             conv.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
+
+        for conv in self.iou_preds:
+            b = conv.bias.view(self.n_anchors, -1)
+            b.data.fill_(-math.log((1 - prior_prob) / prior_prob))
+            conv.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
+
     #kssong
     def first_frame_preprocess(self, xin, ref_xin):
         # initialize memory bank
@@ -286,7 +302,7 @@ class YOLOXHead(nn.Module):
         expanded_strides = []
         before_nms_features = []
         before_nms_regf = []
-
+        iou_outputs = []
         batch_size = len(imgs)
         if not self.training and imgs.shape[0] == 1:
             need_aggregation = False
@@ -386,9 +402,7 @@ class YOLOXHead(nn.Module):
         expanded_strides = []
         before_nms_features = []
         before_nms_regf = []
-        reg_feat_list = []
-        cls_feat_list = []
-        cls_feat2_list = []
+        iou_outputs = []
 
         for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
                 zip(self.cls_convs, self.cls_convs2, self.reg_convs, self.strides, xin)
@@ -397,10 +411,6 @@ class YOLOXHead(nn.Module):
             reg_feat = reg_conv(x)
             cls_feat = cls_conv(x)
             cls_feat2 = cls_conv2(x)
-            reg_feat_list.append(reg_feat)
-            cls_feat_list.append(cls_feat)
-            cls_feat2_list.append(cls_feat2)
-
 
             if need_aggregation:
                 agg_feats = []
@@ -475,13 +485,14 @@ class YOLOXHead(nn.Module):
 
             # this part should be the same as the original model
             obj_output = self.obj_preds[k](reg_feat)
+            iou_output = self.iou_preds[k](reg_feat)
             reg_output = self.reg_preds[k](reg_feat)
             cls_output = self.cls_preds[k](cls_feat)
-
+            iou_outputs.append(iou_output)
             if self.training:
                 output = torch.cat([reg_output, obj_output, cls_output], 1)
                 output_decode = torch.cat(
-                    [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
+                    [reg_output, obj_output.sigmoid(), cls_output.sigmoid(), iou_output.sigmoid()], 1
                 )
 
                 output, grid = self.get_output_and_grid(
@@ -510,7 +521,7 @@ class YOLOXHead(nn.Module):
                 before_nms_regf.append(reg_feat)
             else:
                 output_decode = torch.cat(
-                    [reg_output, obj_output.sigmoid(), cls_output.sigmoid()], 1
+                    [reg_output, obj_output.sigmoid(), cls_output.sigmoid(), iou_output.sigmoid()], 1
                 )
 
                 # which features to choose
@@ -536,7 +547,10 @@ class YOLOXHead(nn.Module):
         #outputs_decode_file.close()
 
         decode_res = self.decode_outputs(outputs_decode, dtype=xin[0].type())
-
+        # [B, n_anchors_all, 1], raw logits. The loss applies sigmoid.
+        iou_outputs_flat = torch.cat(
+            [x.flatten(start_dim=2) for x in iou_outputs], dim=2
+        ).permute(0, 2, 1)
         if self.kwargs.get('ota_mode',False) and self.training:
             ota_idxs,reg_targets = self.get_fg_idx( imgs,
                 x_shifts,
@@ -645,6 +659,9 @@ class YOLOXHead(nn.Module):
                                           ave=self.ave, use_mask=self.use_mask, **kwargs)
             if self.both_mode:
                 outputs = [o[:lframe] for o in outputs]
+                iou_outputs_flat = iou_outputs_flat[:lframe]
+                if self.use_l1:
+                    origin_preds = [o[:lframe] for o in origin_preds]
                 pred_idx = pred_idx[:lframe]
                 pred_result = pred_result[:lframe]
 
@@ -672,7 +689,8 @@ class YOLOXHead(nn.Module):
                 refined_cls = fc_output,
                 idx=pred_idx,
                 pred_res = pred_result,
-                conf_output = conf_output
+                conf_output = conf_output,
+                iou_output = iou_outputs_flat,
             )
         else:
             result, result_ori = postprocess(copy.deepcopy(pred_result),
@@ -827,6 +845,7 @@ class YOLOXHead(nn.Module):
             idx,
             pred_res,
             conf_output=None,
+            iou_output=None,
     ):
         bbox_preds = outputs[:, :, :4]  # [batch, n_anchors_all, 4]
         obj_preds = outputs[:, :, 4].unsqueeze(-1)  # [batch, n_anchors_all, 1]
@@ -851,6 +870,7 @@ class YOLOXHead(nn.Module):
         reg_targets = []
         l1_targets = []
         obj_targets = []
+        iou_targets = []
         fg_masks = []
         ref_targets = []
         num_fg = 0.0
@@ -865,6 +885,7 @@ class YOLOXHead(nn.Module):
                 reg_target = outputs.new_zeros((0, 4))
                 l1_target = outputs.new_zeros((0, 4))
                 obj_target = outputs.new_zeros((total_num_anchors, 1))
+                iou_target = outputs.new_zeros((total_num_anchors, 1))
                 fg_mask = outputs.new_zeros(total_num_anchors).bool()
                 ref_target = outputs.new_zeros((idx[batch_idx].shape[0], self.num_classes + 1))
                 conf_target = outputs.new_zeros((idx[batch_idx].shape[0], 1))
@@ -940,6 +961,13 @@ class YOLOXHead(nn.Module):
 
                 obj_target = fg_mask.unsqueeze(-1)
                 reg_target = gt_bboxes_per_image[matched_gt_inds]
+                # IoU target: actual IoU between predicted fg boxes and matched GT boxes
+                iou_target = outputs.new_zeros((total_num_anchors, 1))
+                bbox_preds_fg = bbox_preds[batch_idx][fg_mask]  # [n_fg, 4] cxcywh
+                iou_vals = torch.diag(
+                    bboxes_iou(bbox_preds_fg.detach(), reg_target, xyxy=False)
+                ).clamp(0.0, 1.0)
+                iou_target[fg_mask] = iou_vals.unsqueeze(-1).to(dtype=iou_target.dtype)
                 if self.use_l1:
                     l1_target = self.get_l1_target(
                         outputs.new_zeros((num_fg_img, 4)),
@@ -979,6 +1007,7 @@ class YOLOXHead(nn.Module):
             cls_targets.append(cls_target)
             reg_targets.append(reg_target)
             obj_targets.append(obj_target.to(dtype))
+            iou_targets.append(iou_target.to(dtype))
             fg_masks.append(fg_mask)
             ref_targets.append(ref_target[:, :self.num_classes])
             ref_masks.append(ref_target[:, -1] == 0)
@@ -989,6 +1018,7 @@ class YOLOXHead(nn.Module):
         cls_targets = torch.cat(cls_targets, 0)
         reg_targets = torch.cat(reg_targets, 0)
         obj_targets = torch.cat(obj_targets, 0)
+        iou_targets = torch.cat(iou_targets, 0)
         ref_targets = torch.cat(ref_targets, 0)
         conf_targets = torch.cat(conf_targets, 0)
 
@@ -1034,12 +1064,22 @@ class YOLOXHead(nn.Module):
         else:
             loss_rconf = 0.0
 
-        loss = reg_weight * loss_iou + loss_obj + 2 * loss_ref + loss_l1 + loss_cls + loss_rconf
+        if iou_output is not None:
+            # iou_output: raw logits [B, n_anchors_all, 1].
+            # iou_targets: actual IoU in [0,1] for fg anchors, 0 for bg
+            loss_iou_pred = (
+                self.bcewithlog_loss(iou_output.view(-1, 1), iou_targets)
+            ).sum() / num_fg
+        else:
+            loss_iou_pred = 0.0
+
+        loss = reg_weight * loss_iou + loss_obj + loss_iou_pred + 2 * loss_ref + loss_l1 + loss_cls + loss_rconf
 
         return (
             loss,
             reg_weight * loss_iou,
             loss_obj,
+            loss_iou_pred,
             2 * loss_ref,
             loss_l1,
             loss_rconf,
@@ -1329,13 +1369,33 @@ class YOLOXHead(nn.Module):
             # Get score and class with highest confidence
             class_conf, class_pred = torch.max(image_pred[:, 5: 5 + num_classes], 1, keepdim=True)
 
-            # Detections ordered as (x1, y1, x2, y2, obj_conf, class_conf, class_pred)
+            if image_pred.shape[1] > 5 + num_classes:
+                iou_pred = image_pred[:, 5 + num_classes]
+            else:
+                iou_pred = image_pred.new_ones(image_pred.shape[0])
+
+            # Detections ordered as (x1, y1, x2, y2, obj_conf, class_conf, class_pred, cls...)
             detections = torch.cat(
                 (image_pred[:, :5], class_conf, class_pred.float(), image_pred[:, 5: 5 + num_classes]), 1)
 
-            conf_score = image_pred[:, 4]
-            top_pre = torch.topk(conf_score, k=self.Prenum)
-            sort_idx = top_pre.indices[:self.Prenum]
+            # Fold predicted IoU into objectness so downstream code keeps using col4 * col5.
+            detections[:, 4] = image_pred[:, 4] * iou_pred
+
+            #take ota idxs as output in training mode
+            if ota_idxs is not None and ota_idxs[i] is not None and len(ota_idxs[i]) > 0:
+                topk_idx = ota_idxs[i]
+                if not torch.is_tensor(topk_idx):
+                    topk_idx = torch.tensor(topk_idx, device=image_pred.device)
+                topk_idx = topk_idx.to(device=image_pred.device, dtype=torch.long)
+                output[i] = detections[topk_idx, :]
+                output_index[i] = topk_idx
+                continue
+
+            # Use the fused score for pre-NMS topK ranking
+            conf_score = detections[:, 4]
+            pre_n = min(self.Prenum, conf_score.shape[0])
+            top_pre = torch.topk(conf_score, k=pre_n)
+            sort_idx = top_pre.indices[:pre_n]
             detections_temp = detections[sort_idx, :]
             nms_out_index = torchvision.ops.batched_nms(
                 detections_temp[:, :4],
