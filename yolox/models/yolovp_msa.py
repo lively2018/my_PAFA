@@ -303,14 +303,11 @@ class YOLOXHead(nn.Module):
         expanded_strides = []
         before_nms_features = []
         before_nms_regf = []
-        ref_iou_outputs = []
         batch_size = len(imgs)
         if not self.training and imgs.shape[0] == 1:
             need_aggregation = False
         else:
             need_aggregation = True
-        #kssong
-        #reg_output_list = []
 
         if self.training:
             for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
@@ -326,10 +323,9 @@ class YOLOXHead(nn.Module):
                 reg_output = self.reg_preds[k](reg_feat)
                 cls_output = self.cls_preds[k](cls_feat)
                 iou_output = self.iou_preds[k](reg_feat)
-                ref_iou_outputs.append(iou_output)
 
                 if self.training:
-                    output = torch.cat([reg_output, obj_output, cls_output], 1)
+                    output = torch.cat([reg_output, obj_output, cls_output, iou_output], 1)
                     output_decode = torch.cat(
                         [reg_output, obj_output.sigmoid(), cls_output.sigmoid(), iou_output.sigmoid()], 1
                     )
@@ -497,7 +493,7 @@ class YOLOXHead(nn.Module):
             iou_output = self.iou_preds[k](reg_feat)
             iou_outputs.append(iou_output)
             if self.training:
-                output = torch.cat([reg_output, obj_output, cls_output], 1)
+                output = torch.cat([reg_output, obj_output, cls_output, iou_output], 1)
                 output_decode = torch.cat(
                     [reg_output, obj_output.sigmoid(), cls_output.sigmoid(), iou_output.sigmoid()], 1
                 )
@@ -554,10 +550,6 @@ class YOLOXHead(nn.Module):
         #outputs_decode_file.close()
 
         decode_res = self.decode_outputs(outputs_decode, dtype=xin[0].type())
-        # [B, n_anchors_all, 1], raw logits. The loss applies sigmoid.
-        iou_outputs_flat = torch.cat(
-            [x.flatten(start_dim=2) for x in iou_outputs], dim=2
-        ).permute(0, 2, 1)
 
         if self.kwargs.get('ota_mode',False) and self.training:
             ota_idxs,reg_targets = self.get_fg_idx( imgs,
@@ -722,7 +714,7 @@ class YOLOXHead(nn.Module):
         grid = self.grids[k]
 
         batch_size = output.shape[0]
-        n_ch = 5 + self.num_classes
+        n_ch = 5 + self.num_classes + 1
         hsize, wsize = output.shape[-2:]
         if grid.shape[2:4] != output.shape[2:4]:
             yv, xv = torch.meshgrid([torch.arange(hsize), torch.arange(wsize)])
@@ -787,21 +779,21 @@ class YOLOXHead(nn.Module):
             if idx_list is None:
                 raise ValueError("idx_list is None")
             pred_result = pred_results[i]
-            iou_obj_list = pred_result[:, 4]
+            iou_list = pred_result[:, 7]
             key_features_p3 = []
             key_features_p4 = []
             key_features_p5 = []
-            iou_obj_list = pred_result[:, 4]
+            iou_list = pred_result[:, 7]
             for j, idx in enumerate(idx_list):
-                iou_obj = iou_obj_list[j]
+                iou_score = iou_list[j]
                 if idx >= 0 and idx < 6400:
-                    if iou_obj > self.m_conf_p3:
+                    if iou_score > self.m_conf_p3:
                         key_features_p3.append(reg_feature[idx].unsqueeze(0))
                 elif idx >= 6400 and idx < 8000:
-                    if iou_obj > self.m_conf_p4:
+                    if iou_score > self.m_conf_p4:
                         key_features_p4.append(reg_feature[idx].unsqueeze(0))
                 else:
-                    if iou_obj > self.m_conf_p5:
+                    if iou_score > self.m_conf_p5:
                         key_features_p5.append(reg_feature[idx].unsqueeze(0))
             if len(key_features_p3) == 0:
                 "key_feature_p3 is empty"
@@ -826,38 +818,43 @@ class YOLOXHead(nn.Module):
             idx_list = pred_idx[i]
             pred_result = pred_results[i]
             conf_list = pred_result[:, 4] * pred_result[:, 5]
-            iou_obj_list = pred_result[:, 4]
+            iou_scorelist = pred_result[:, 7]
             cls_score_list = pred_result[:, 5]
+            obj_score_list = pred_result[:, 4]
             bboxes_list = pred_result[:, :4]
             for j, idx in enumerate(idx_list):
                 bbox = bboxes_list[j]
                 cls_score = cls_score_list[j]
                 conf = conf_list[j]
-                iou_obj = iou_obj_list[j]
+                iou_score = iou_scorelist[j]
+                obj_score = obj_score_list[j]
                 if idx >= 0 and idx < 6400:
-                    if iou_obj > self.m_conf_p3:
+                    if iou_score  > self.m_conf_p3:
                         key_features_p3.append(reg_feature[idx])
                         key_features_p3_info.append({'idx': idx,
                                              'bbox': bbox,
                                              'conf': conf,
                                              'cls_score': cls_score,
-                                             'iou_obj': iou_obj})
+                                             'iou_score': iou_score,
+                                             'obj_score': obj_score,})
                 elif idx >= 6400 and idx < 8000:
-                    if iou_obj > self.m_conf_p4:
+                    if iou_score > self.m_conf_p4:
                         key_features_p4.append(reg_feature[idx])
                         key_features_p4_info.append({'idx': idx,
                                                      'bbox': bbox,
                                                      'conf': conf,
                                                      'cls_score': cls_score,
-                                                     'iou_obj': iou_obj})
+                                                     'iou_score': iou_score,
+                                                     'obj_score': obj_score})
                 else:
-                    if iou_obj > self.m_conf_p5:
+                    if iou_score > self.m_conf_p5:
                         key_features_p5.append(reg_feature[idx])
                         key_features_p5_info.append({'idx': idx,
                                                      'bbox': bbox,
                                                      'conf': conf,
                                                      'cls_score': cls_score,
-                                                     'iou_obj': iou_obj})
+                                                     'iou_score': iou_score,
+                                                     'obj_score': obj_score})
         key_features_p3 = torch.stack(key_features_p3, dim=0) if key_features_p3 else torch.empty(0, 128)
         key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128)
         key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128)
@@ -881,8 +878,10 @@ class YOLOXHead(nn.Module):
     ):
         bbox_preds = outputs[:, :, :4]  # [batch, n_anchors_all, 4]
         obj_preds = outputs[:, :, 4].unsqueeze(-1)  # [batch, n_anchors_all, 1]
-        cls_preds = outputs[:, :, 5:]  # [batch, n_anchors_all, n_cls]
-
+        cls_end = 5 + self.num_classes
+        cls_preds = outputs[:, :, 5:cls_end]  # [batch, n_anchors_all, n_cls]
+        if iou_output is None and outputs.shape[-1] > cls_end:
+            iou_output = outputs[:, :, cls_end:cls_end + 1]
         # calculate targets
         mixup = labels.shape[2] > 5
         if mixup:
@@ -1100,7 +1099,7 @@ class YOLOXHead(nn.Module):
             # iou_output: raw logits [B, n_anchors_all, 1].
             # iou_targets: actual IoU in [0,1] for fg anchors, 0 for bg
             loss_iou_pred = (
-                self.bcewithlog_loss(iou_output.view(-1, 1), iou_targets)
+                self.bcewithlog_loss(iou_output.reshape(-1, 1), iou_targets)
             ).sum() / num_fg
         else:
             loss_iou_pred = 0.0
@@ -1406,12 +1405,18 @@ class YOLOXHead(nn.Module):
             else:
                 iou_pred = image_pred.new_ones(image_pred.shape[0])
 
-            # Detections ordered as (x1, y1, x2, y2, obj_conf, class_conf, class_pred, cls...)
+            # Detections ordered as (x1, y1, x2, y2, obj_conf, class_conf, class_pred, iou_pred, cls...)
             detections = torch.cat(
-                (image_pred[:, :5], class_conf, class_pred.float(), image_pred[:, 5: 5 + num_classes]), 1)
+                (
+                    image_pred[:, :5],
+                    class_conf,
+                    class_pred.float(),
+                    iou_pred.unsqueeze(-1),
+                    image_pred[:, 5: 5 + num_classes],
+                ),
+                1,
+            )
 
-            # Fold predicted IoU into objectness so downstream code keeps using col4 * col5.
-            detections[:, 4] = image_pred[:, 4] * iou_pred
 
             #take ota idxs as output in training mode
             if ota_idxs is not None and ota_idxs[i] is not None and len(ota_idxs[i]) > 0:
@@ -1423,19 +1428,20 @@ class YOLOXHead(nn.Module):
                 output_index[i] = topk_idx
                 continue
 
-            # Use the fused score for pre-NMS topK ranking
-            conf_score = detections[:, 4]
-            pre_n = min(self.Prenum, conf_score.shape[0])
-            top_pre = torch.topk(conf_score, k=pre_n)
+            # Pre-NMS: keep top-Prenum candidates ranked by predicted IoU
+            iou_score = detections[:, 7]
+            pre_n = min(self.Prenum, iou_score.shape[0])
+            top_pre = torch.topk(iou_score, k=pre_n)
             sort_idx = top_pre.indices[:pre_n]
             detections_temp = detections[sort_idx, :]
+
+            # NMS ranked by predicted IoU (disentangled ranking); cls scores replaced by fc_output downstream
             nms_out_index = torchvision.ops.batched_nms(
                 detections_temp[:, :4],
-                detections_temp[:, 4] * detections_temp[:, 5],
+                detections_temp[:, 7],
                 detections_temp[:, 6],
                 nms_thre,
             )
-
             topk_idx = sort_idx[nms_out_index[:self.topK]]
             output[i] = detections[topk_idx, :]
             output_index[i] = topk_idx
@@ -1477,7 +1483,7 @@ class YOLOXHead(nn.Module):
     ):
         bbox_preds = outputs[:, :, :4]  # [batch, n_anchors_all, 4]
         obj_preds = outputs[:, :, 4].unsqueeze(-1)  # [batch, n_anchors_all, 1]
-        cls_preds = outputs[:, :, 5:]  # [batch, n_anchors_all, n_cls]
+        cls_preds = outputs[:, :, 5:5 + self.num_classes]  # [batch, n_anchors_all, n_cls]
 
         # calculate targets
         mixup = labels.shape[2] > 5

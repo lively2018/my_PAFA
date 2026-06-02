@@ -212,7 +212,8 @@ class MemoryBank(nn.Module):
                 bboxes = result_item[:, :4]
                 conf_scores = result_item[:, 4] * result_item[:, 5]
                 cls_scores = result_item[:, 5]
-                iou_objs = result_item[:, 4]
+                iou_scores = result_item[:, 7]
+                obj_scores = result_item[:, 4]
                 for i, bbox in enumerate(bboxes):
                     for j, info in enumerate(self.feat_info):
                         info_bbox = info['bbox']
@@ -225,7 +226,8 @@ class MemoryBank(nn.Module):
                             #print(f"before conf_score: {self.feat_info[j]['conf']}")
                             self.feat_info[j]['conf'] = conf_scores[i].item()
                             self.feat_info[j]['cls_score'] = cls_scores[i].item()
-                            self.feat_info[j]['iou_obj'] = iou_objs[i].item()
+                            self.feat_info[j]['iou_score'] = iou_scores[i].item()
+                            self.feat_info[j]['obj_score'] = obj_scores[i].item()
                             #print(f"after conf_score: {self.feat_info[j]['conf']}")
             if self.updating_policy == 'conf':
                 if len(self.feat) >= self.max_length:
@@ -257,12 +259,10 @@ class MemoryBank(nn.Module):
                     self.feat = new_feat_combined
                     del self.feat_info
                     self.feat_info = new_feat_info_combined
-            elif self.updating_policy == 'iou_obj':
+            elif self.updating_policy == 'iou_score':
                 if len(self.feat) >= self.max_length:
-                    #print(f"updating_policy: {self.updating_policy}")
-                    #print(f"self.feat length {len(self.feat)} is larger than max_length {self.max_length}")
                     sorted_indices = sorted(range(len(self.feat_info)),
-                                        key=lambda j: self.feat_info[j].get('iou_obj', 0.0),
+                                        key=lambda j: self.feat_info[j].get('iou_score', 0.0),
                                         reverse=True)
                     self.feat_info = [self.feat_info[j] for j in sorted_indices]
                     self.feat = self.feat[sorted_indices]
@@ -272,10 +272,10 @@ class MemoryBank(nn.Module):
                     self.feat = new_feat_combined
                     del self.feat_info
                     self.feat_info = new_feat_info_combined
-            elif self.updating_policy == 'iou_score':
+            elif self.updating_policy == 'obj_score':
                 if len(self.feat) >= self.max_length:
                     sorted_indices = sorted(range(len(self.feat_info)),
-                                        key=lambda j: self.feat_info[j].get('iou_score', 0.0),
+                                        key=lambda j: self.feat_info[j].get('obj_score', 0.0),
                                         reverse=True)
                     self.feat_info = [self.feat_info[j] for j in sorted_indices]
                     self.feat = self.feat[sorted_indices]
@@ -294,8 +294,9 @@ class MemoryBank(nn.Module):
                     continue
                 bboxes = result_item[:, :4]
                 conf_scores = result_item[:, 4] * result_item[:, 5]
-                iou_objs = result_item[:, 4]
+                iou_scores = result_item[:, 7]
                 cls_scores = result_item[:, 5]
+                obj_scores = result_item[:, 4]
                 old_end = len(self.feat_info) - self.update_length if self.update_length > 0 else len(self.feat_info)
                 for i, bbox in enumerate(bboxes):
                     for info in self.feat_info[old_end:]:
@@ -307,8 +308,9 @@ class MemoryBank(nn.Module):
                         if torch.allclose(info_bbox, bbox, atol=1.0):
                             #print(f"before confidence {info['conf']}")
                             info['conf'] = conf_scores[i].item()
-                            info['iou_obj'] = iou_objs[i].item()
+                            info['iou_score'] = iou_scores[i].item()
                             info['cls_score'] = cls_scores[i].item()
+                            info['obj_score'] = obj_scores[i].item()
                             #print(f"after confidence {info['conf']}")
             if self.updating_policy == 'conf':
                 if len(self.feat) >= self.max_length:
@@ -340,12 +342,12 @@ class MemoryBank(nn.Module):
                     self.feat = new_feat_combined
                     del self.feat_info
                     self.feat_info = new_feat_info_combined
-            elif self.updating_policy == 'iou_obj':
+            elif self.updating_policy == 'iou_score':
                 if len(self.feat) >= self.max_length:
                     #print(f"updating_policy: {self.updating_policy}")
                     #print(f"self.feat length {len(self.feat)} is larger than max_length {self.max_length}")
                     sorted_indices = sorted(range(len(self.feat_info)),
-                                        key=lambda j: self.feat_info[j].get('iou_obj', 0.0),
+                                        key=lambda j: self.feat_info[j].get('iou_score', 0.0),
                                         reverse=True)
                     self.feat_info = [self.feat_info[j] for j in sorted_indices]
                     self.feat = self.feat[sorted_indices]
@@ -355,10 +357,12 @@ class MemoryBank(nn.Module):
                     self.feat = new_feat_combined
                     del self.feat_info
                     self.feat_info = new_feat_info_combined
-            elif self.updating_policy == 'iou_score':
+            elif self.updating_policy == 'obj_score':
                 if len(self.feat) >= self.max_length:
+                    #print(f"updating_policy: {self.updating_policy}")
+                    #print(f"self.feat length {len(self.feat)} is larger than max_length {self.max_length}")
                     sorted_indices = sorted(range(len(self.feat_info)),
-                                        key=lambda j: self.feat_info[j].get('iou_score', 0.0),
+                                        key=lambda j: self.feat_info[j].get('obj_score', 0.0),
                                         reverse=True)
                     self.feat_info = [self.feat_info[j] for j in sorted_indices]
                     self.feat = self.feat[sorted_indices]
