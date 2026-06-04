@@ -248,7 +248,7 @@ class YOLOXHead(nn.Module):
                                              memory_length=self.memory_length_p5, key_length=self.key_length_p5,\
                                             updating_policy=self.updating_policy)
         #kssong
-        self.inplace_false_relu = nn.ReLU(inplace=False)
+        #self.inplace_false_relu = nn.ReLU(inplace=False)
         if m_conf is None:
             m_conf = [0, 0]
         elif not hasattr(m_conf, '__len__'):
@@ -434,7 +434,7 @@ class YOLOXHead(nn.Module):
                                     self.aggregator_p4.reset_memory_bank()
                                     self.aggregator_p4.init_memory_bank(ref_feats, None)
                                     agg_feat = reg_one + self.aggregator_p4(reg_one, None)
-                                    agg_feat = self.inplace_false_relu(agg_feat)
+                                    #agg_feat = self.inplace_false_relu(agg_feat)
                                     agg_feat = agg_feat.reshape(channel, height, width)
                                 elif k == 2:
                                     ref_feats = torch.cat(all_ref_feats, dim=0)
@@ -443,7 +443,7 @@ class YOLOXHead(nn.Module):
                                     self.aggregator_p5.reset_memory_bank()
                                     self.aggregator_p5.init_memory_bank(ref_feats, None)
                                     agg_feat = reg_one + self.aggregator_p5(reg_one, None)
-                                    agg_feat = self.inplace_false_relu(agg_feat)
+                                    #agg_feat = self.inplace_false_relu(agg_feat)
                                     agg_feat = agg_feat.reshape(channel, height, width)
                                 else:
                                     agg_feat = reg_one
@@ -458,7 +458,7 @@ class YOLOXHead(nn.Module):
                                 agg_result = self.aggregator_p4(reg_one, None)
                                 if agg_result is not None:
                                     agg_feat = reg_one + agg_result
-                                    agg_feat = self.inplace_false_relu(agg_feat)
+                                    #agg_feat = self.inplace_false_relu(agg_feat)
                                 else:
                                     agg_feat = reg_one
                                 agg_feat = agg_feat.reshape(channel, height, width)
@@ -469,7 +469,7 @@ class YOLOXHead(nn.Module):
                                 agg_result = self.aggregator_p5(reg_one, None)
                                 if agg_result is not None:
                                     agg_feat = reg_one + agg_result
-                                    agg_feat = self.inplace_false_relu(agg_feat)
+                                    #agg_feat = self.inplace_false_relu(agg_feat)
                                 else:
                                     agg_feat = reg_one
                                 agg_feat = agg_feat.reshape(channel, height, width)
