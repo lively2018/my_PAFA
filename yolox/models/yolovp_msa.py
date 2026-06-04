@@ -691,7 +691,7 @@ class YOLOXHead(nn.Module):
                 idx=pred_idx,
                 pred_res = pred_result,
                 conf_output = conf_output,
-                iou_output = iou_outputs_flat,
+                iou_output = None,
             )
         else:
             result, result_ori = postprocess(copy.deepcopy(pred_result),
@@ -779,7 +779,6 @@ class YOLOXHead(nn.Module):
             if idx_list is None:
                 raise ValueError("idx_list is None")
             pred_result = pred_results[i]
-            iou_list = pred_result[:, 7]
             key_features_p3 = []
             key_features_p4 = []
             key_features_p5 = []

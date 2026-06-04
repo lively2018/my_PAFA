@@ -34,9 +34,9 @@ def postprocess(prediction, num_classes, fc_outputs,
         scores = torch.gather(tmp_cls_score[cls_loc[0]],dim=-1,index=cls_loc[1].unsqueeze(1))#[:,cls_loc[1]]#tmp_cls_score[torch.stack(cls_loc).T]#torch.gather(tmp_cls_score, dim=1, index=torch.stack(cls_loc).T)
 
         detections[:, -num_classes:] = tmp_cls_score
-        detections_raw = detections[:, :7]
+        detections_raw = detections[:, :8]
         new_detetions = detections_raw[cls_loc[0]]
-        new_detetions[:, -1] = cls_loc[1]
+        new_detetions[:, 6] = cls_loc[1]
         new_detetions[:,5] = scores.squeeze()
         detections_high = new_detetions  # new_detetions
         detections_ori = prediction_ori[i]
