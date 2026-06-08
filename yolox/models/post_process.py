@@ -4,6 +4,58 @@ import torchvision
 import random
 import time
 from yolox.utils import bboxes_iou
+
+
+def iou_guided_nms(boxes, iou_scores, cls_scores, cls_ids, iou_threshold):
+    """IoU-guided NMS (Algorithm 1, IoU-Net, Jiang et al. 2018).
+
+    Ranks boxes by predicted IoU (localization confidence) instead of
+    classification confidence.  When box b_m suppresses overlapping box b_j,
+    b_m's classification score is updated to max(s, S(b_j)) — collecting the
+    most confident class prediction from the suppressed cluster.
+
+    Args:
+        boxes (Tensor):       [N, 4]  x1y1x2y2 coordinates.
+        iou_scores (Tensor):  [N]     predicted IoU (localization confidence, col7).
+        cls_scores (Tensor):  [N]     classification confidence (col5).
+        cls_ids (LongTensor): [N]     class index per detection (col6).
+        iou_threshold (float): suppression threshold (nms_thre).
+
+    Returns:
+        keep (list[int]):      indices of surviving detections into the input N.
+        updated_cls (Tensor):  [N] cls_scores with cluster-max applied to kept boxes.
+    """
+    updated_cls = cls_scores.clone()
+    keep = []
+
+    for cls in cls_ids.unique():
+        cls_mask = (cls_ids == cls).nonzero(as_tuple=True)[0]
+        c_boxes = boxes[cls_mask]
+        c_iou   = iou_scores[cls_mask]
+        c_cls   = cls_scores[cls_mask]
+
+        order = c_iou.argsort(descending=True).tolist()
+        while order:
+            m = order.pop(0)                          # box with highest iou_score
+            global_m = cls_mask[m].item()
+            keep.append(global_m)
+            if not order:
+                break
+            ious = torchvision.ops.box_iou(
+                c_boxes[m].unsqueeze(0), c_boxes[order]
+            )[0]                                      # [len(order)]
+            suppress = ious > iou_threshold
+            if suppress.any():
+                cluster = torch.cat([
+                    c_cls[m].unsqueeze(0),
+                    c_cls[order][suppress],
+                ])
+                updated_cls[global_m] = cluster.max()
+            order = [r for r, s in zip(order, suppress.tolist()) if not s]
+
+    return keep, updated_cls
+
+
 def postprocess(prediction, num_classes, fc_outputs,
                 conf_output, conf_thre=0.001, nms_thre=0.5,
                 cls_sig=True,return_idx=False):
@@ -33,6 +85,7 @@ def postprocess(prediction, num_classes, fc_outputs,
         cls_loc = torch.where(cls_mask)
         scores = torch.gather(tmp_cls_score[cls_loc[0]],dim=-1,index=cls_loc[1].unsqueeze(1))#[:,cls_loc[1]]#tmp_cls_score[torch.stack(cls_loc).T]#torch.gather(tmp_cls_score, dim=1, index=torch.stack(cls_loc).T)
 
+
         detections[:, -num_classes:] = tmp_cls_score
         detections_raw = detections[:, :8]
         new_detetions = detections_raw[cls_loc[0]]
@@ -49,14 +102,16 @@ def postprocess(prediction, num_classes, fc_outputs,
             continue
         if len(detections_high.shape)==3:
             detections_high = detections_high[0]
-        nms_out_index = torchvision.ops.batched_nms(
+
+        keep, updated_cls = iou_guided_nms(
             detections_high[:, :4],
-            detections_high[:, 4] * detections_high[:, 5],
-            detections_high[:, 6],
+            detections_high[:, 7],
+            detections_high[:, 5],
+            detections_high[:, 6].long(),
             nms_thre,
         )
-
-        detections_high = detections_high[nms_out_index]
+        detections_high = detections_high[keep]
+        detections_high[:, 5] = updated_cls[keep]
         output[i] = detections_high
         detections_ori = detections_ori[:, :7]
         conf_mask = detections_ori[:, 4] * detections_ori[:, 5] >= conf_thre
