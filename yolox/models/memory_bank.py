@@ -28,7 +28,7 @@ class MemoryBank(nn.Module):
         #kssong
         self.feat = None
         self.feat_info = None
-        self.update_lenght = 0
+        self.update_length = 0
 
         # self.aggregator = SelsaAggregator(in_channels)
 
@@ -52,6 +52,8 @@ class MemoryBank(nn.Module):
         Returns:
 
         """
+        if self.max_length == 0:
+            return 0, 0
         #kssong
         #self.feat = feat
         #self.feat_num, self.feat_dim, self.feat_channel  = feat.shape
@@ -77,6 +79,8 @@ class MemoryBank(nn.Module):
 
     def sample(self):
         #kssong
+        if self.max_length == 0 or self.key_length == 0:
+            return []
         if self.feat is None:
             # write first
             return []
@@ -95,6 +99,8 @@ class MemoryBank(nn.Module):
             raise NotImplementedError
 
     def update(self, new_feat, new_feat_info):
+        if self.max_length == 0:
+            return 0, 0
         new_feat = new_feat.to('cuda')
         update_length = 0
         new_feat_info_combined = None
@@ -204,6 +210,8 @@ class MemoryBank(nn.Module):
         return result_item[keep]
 
     def post_init_memory(self, result):
+        if self.max_length == 0:
+            return
         if self.feat is not None and self.feat_info is not None:
             for result_item in result:
                 result_item = self._unique_bbox_max_conf(result_item)
@@ -287,6 +295,8 @@ class MemoryBank(nn.Module):
                     self.feat_info = new_feat_info_combined
 
     def post_update_memory(self, result):
+        if self.max_length == 0:
+            return 0
         if self.feat is not None and self.feat_info is not None:
             for result_item in result:
                 result_item = self._unique_bbox_max_conf(result_item)

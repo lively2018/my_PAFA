@@ -435,15 +435,21 @@ class YOLOXHead(nn.Module):
                                 if k == 0:
                                     self.aggregator_p3.reset_memory_bank()
                                     self.aggregator_p3.init_memory_bank(ref_feats, None)
-                                    agg_feat = reg_one + self.aggregator_p3(reg_one, None)
+                                    agg_result = self.aggregator_p3(reg_one, None)
+                                    if agg_result is not None:
+                                        agg_feat = reg_one + agg_result
                                 elif k == 1:
                                     self.aggregator_p4.reset_memory_bank()
                                     self.aggregator_p4.init_memory_bank(ref_feats, None)
-                                    agg_feat = reg_one + self.aggregator_p4(reg_one, None)
+                                    agg_result = self.aggregator_p4(reg_one, None)
+                                    if agg_result is not None:
+                                        agg_feat = reg_one + agg_result
                                 else:
                                     self.aggregator_p5.reset_memory_bank()
                                     self.aggregator_p5.init_memory_bank(ref_feats, None)
-                                    agg_feat = reg_one + self.aggregator_p5(reg_one, None)
+                                    agg_result = self.aggregator_p5(reg_one, None)
+                                    if agg_result is not None:
+                                        agg_feat = reg_one + agg_result
                                 #logger.info("after aggreagtaion")
                                 #agg_feat = self.inplace_false_relu(agg_feat)
                                 agg_feat = agg_feat.reshape(channel, height, width)
