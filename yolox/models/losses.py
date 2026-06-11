@@ -44,6 +44,53 @@ class IOUloss(nn.Module):
             area_c = torch.prod(c_br - c_tl, 1)
             giou = iou - (area_c - area_u) / area_c.clamp(1e-16)
             loss = 1 - giou.clamp(min=-1.0, max=1.0)
+        elif self.loss_type == "diou":
+            c_tl = torch.min(
+                (pred[:, :2] - pred[:, 2:] / 2), (target[:, :2] - target[:, 2:] / 2)
+            )
+            c_br = torch.max(
+                (pred[:, :2] + pred[:, 2:] / 2), (target[:, :2] + target[:, 2:] / 2)
+            )
+            center_distance = torch.sum((pred[:, :2] - target[:, :2]) ** 2, dim=1)
+            diagonal_length = torch.sum((c_br - c_tl) ** 2, dim=1) + 1e-16
+            diou = iou - center_distance / diagonal_length
+            loss = 1 - diou.clamp(min=-1.0, max=1.0)
+        elif self.loss_type == "ciou":
+            c_tl = torch.min(
+                (pred[:, :2] - pred[:, 2:] / 2), (target[:, :2] - target[:, 2:] / 2)
+            )
+            c_br = torch.max(
+                (pred[:, :2] + pred[:, 2:] / 2), (target[:, :2] + target[:, 2:] / 2)
+            )
+            center_distance = torch.sum((pred[:, :2] - target[:, :2]) ** 2, dim=1)
+            diagonal_length = torch.sum((c_br - c_tl) ** 2, dim=1) + 1e-16
+
+            v = (
+                (torch.atan(target[:, 2] / target[:, 3]) - torch.atan(pred[:, 2] / pred[:, 3]))
+                * 2
+                / torch.pi
+            ) ** 2
+            with torch.no_grad():
+                alpha = v / (1 - iou + v)
+
+            ciou = iou - (center_distance / diagonal_length + alpha * v)
+            loss = 1 - ciou.clamp(min=-1.0, max=1.0)
+        elif self.loss_type == "siou":
+            c_tl = torch.min(
+                (pred[:, :2] - pred[:, 2:] / 2), (target[:, :2] - target[:, 2:] / 2)
+            )
+            c_br = torch.max(
+                (pred[:, :2] + pred[:, 2:] / 2), (target[:, :2] + target[:, 2:] / 2)
+            )
+            center_distance = torch.sum((pred[:, :2] - target[:, :2]) ** 2, dim=1)
+            diagonal_length = torch.sum((c_br - c_tl) ** 2, dim=1) + 1e-16
+
+            sigma = torch.sqrt(center_distance) / torch.sqrt(diagonal_length)
+            alpha = sigma / (sigma + iou - sigma * iou + 1e-16)
+
+            siou = iou - (center_distance / diagonal_length + alpha * sigma)
+            loss = 1 - siou.clamp(min=-1.0, max=1.0)
+
 
         if self.reduction == "mean":
             loss = loss.mean()

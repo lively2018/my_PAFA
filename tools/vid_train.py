@@ -108,6 +108,7 @@ def make_parser():
     parser.add_argument('--key_length', default=[480, 480, 480], type=int, nargs=3, metavar=('P3', 'P4', 'P5'),
                         help='per-level features key length (P3 P4 P5)')
     parser.add_argument('--updating_policy', default='random', type=str, help="updating policy for memory")
+    parser.add_argument('--loss_type', default="iou", type=str, help='loss function type')
     return parser
 
 @logger.catch
@@ -154,6 +155,7 @@ if __name__ == "__main__":
     exp.updating_policy = args.updating_policy
     exp.nmsthre = args.nms
     exp.pre_nms = args.pre_nms
+    exp.loss_type = args.loss_type
     num_gpu = get_num_devices() if args.devices is None else args.devices
     assert num_gpu <= get_num_devices()
     args.machine_rank = 1
