@@ -152,19 +152,21 @@ class Trainer:
 
         iter_start_time = time.time()
 
-        #kssong        
+        #kssong
         #inps, targets,_ = self.prefetcher.next()
         inps, targets, _, _, paths, _ = self.prefetcher.next()
         inps = inps.to(self.data_type)
         targets = targets.to(self.data_type)
-        targets.requires_grad = False        
+        targets.requires_grad = False
         inps, targets = self.exp.preprocess(inps, targets, self.input_size,)
+        logger.info("path: {}".format(paths[0]))
         video_path = os.path.basename(os.path.dirname(paths[0]))
         prev_video_path = self.prev_video_path
         if prev_video_path == video_path:
             first_frame = False
         else:
             first_frame = True
+            logger.info("first frame of video: {}".format(video_path))
             #if prev_video_path is not None:
                 #logger.info("previous path: {} video path: {}", prev_video_path, video_path)
             self.prev_video_path = video_path
@@ -351,14 +353,14 @@ class Trainer:
                 )
                 + (", size: {:d}, {}".format(self.input_size[0], eta_str))
             )
-            self.meter.clear_meters()            
+            self.meter.clear_meters()
 
         # random resizing
-        if (self.progress_in_iter + 1) % 10 == 0:            
+        if (self.progress_in_iter + 1) % 10 == 0:
             self.input_size = self.exp.random_resize(
                 None, self.epoch, self.rank, self.is_distributed
             )
-        if self.iter % 2000 ==0:            
+        if self.iter % 2000 ==0:
             self.save_ckpt(ckpt_name='latest')
 
     @property

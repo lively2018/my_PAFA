@@ -85,10 +85,11 @@ class VIDRefDataset(torchDataset):
         #kssong
         res = []
         dataset = np.load(dataset_path,allow_pickle=True).tolist()
-        video_idx  = 0
+        #video_idx  = 0
         #logger.info(f"{self.mode}")
+        first_frame = True
         for element in dataset:
-            video_idx += 1
+            #video_idx += 1
             ele_len = len(element)
             if ele_len<lframe+gframe:
                 #TODO fix the unsolved part
@@ -149,6 +150,9 @@ class VIDRefDataset(torchDataset):
                         res.append(seq)
 
 
+                elif self.mode == 'consecutive':
+                    res.append(element)
+
                 elif self.mode == 'linear':
                     if lframe == 0:
                         split_num = int(ele_len / gframe)
@@ -197,8 +201,11 @@ class VIDRefDataset(torchDataset):
             else:
                 return res[:self.tnum]
         else:
-            random.shuffle(res)
-            return res[:self.tseq]
+            if self.mode == 'consecutive':
+                return res[:self.tseq]
+            else:
+                random.shuffle(res)
+                return res[:self.tseq]
             #return res
 
     def get_annotation(self,path,test_size):
@@ -836,7 +843,7 @@ class DataPrefetcher:
         ims_info = self.next_ims_info
         tar_ori = self.next_tar_ori
         paths = self.next_paths
-        time_ebdding = self.time_ebdding        
+        time_ebdding = self.time_ebdding
         if input is not None:
             self.record_stream(input)
         if target is not None:
