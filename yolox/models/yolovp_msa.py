@@ -762,36 +762,42 @@ class YOLOXHead(nn.Module):
         all_scores = torch.cat(all_scores)
         return features_cls, features_reg, cls_scores, fg_scores, locs, all_scores
 
-    def select_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results):
+    def select_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results, top_k_train=15):
         key_features_list = []
 
         for i in range(reg_features.shape[0]):
             reg_feature = reg_features[i]
-            if reg_features is None:
-                raise ValueError("reg_feature is None")
             idx_list = pred_idx[i]
-            if idx_list is None:
-                raise ValueError("idx_list is None")
             pred_result = pred_results[i]
+
             key_features_p4 = []
             key_features_p5 = []
             iou_list = pred_result[:, 7]
+
+            p4_candidates = []
+            p5_candidates = []
+
             for j, idx in enumerate(idx_list):
-                iou_score = iou_list[j]
-                if idx >= 6400 and idx < 8000:
-                    if iou_score > self.m_conf_p4:
-                        key_features_p4.append(reg_feature[idx].unsqueeze(0))
+                iou_score = iou_list[j].item()
+                if 6400 <= idx < 8000:
+                    p4_candidates.append((iou_score, idx))
                 elif idx >= 8000:
-                    if iou_score > self.m_conf_p5:
-                        key_features_p5.append(reg_feature[idx].unsqueeze(0))
+                    p5_candidates.append((iou_score, idx))
 
-            if len(key_features_p4) == 0:
-                "key_feature_p4 is empty"
-            if len(key_features_p5) ==0:
-                "key_feature_p5 is empty"
+            p4_candidates.sort(key=lambda x: x[0], reverse=True)
+            p5_candidates.sort(key=lambda x: x[0], reverse=True)
 
-            key_features =[key_features_p4, key_features_p5]
+            for score, idx in p4_candidates[:top_k_train]:
+                if self.training or score > self.m_conf_p4:
+                    key_features_p4.append(reg_feature[idx].unsqueeze(0))
+
+            for score, idx in p5_candidates[:top_k_train]:
+                if self.training or score > self.m_conf_p5:
+                    key_features_p5.append(reg_feature[idx].unsqueeze(0))
+
+            key_features = [key_features_p4, key_features_p5]
             key_features_list.append(key_features)
+
         return key_features_list
 
     def select_level_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results):
