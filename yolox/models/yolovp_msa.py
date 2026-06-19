@@ -57,6 +57,7 @@ class YOLOXHead(nn.Module):
             key_length=None,
             updating_policy="random",
             loss_type = "iou",
+            topk_train=15,
             **kwargs
     ):
         """
@@ -258,6 +259,7 @@ class YOLOXHead(nn.Module):
             m_conf = [m_conf, m_conf, m_conf]
 
         self.m_conf_p3, self.m_conf_p4, self.m_conf_p5 = m_conf[0], m_conf[1], m_conf[2]
+        self.topk_train = topk_train
 
 
     def initialize_biases(self, prior_prob):
@@ -391,7 +393,7 @@ class YOLOXHead(nn.Module):
                 [x.flatten(start_dim=2) for x in before_nms_regf], dim=2
                 ).permute(0, 2, 1)
             #Generate reference features from 16 batch files
-            ref_feature_reg = self.select_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result)
+            ref_feature_reg = self.select_key_feature_in_reg_feature(reg_feat_flatten, pred_idx, pred_result, top_k_train=self.topk_train)
         del outputs, outputs_decode, origin_preds, x_shifts, y_shifts, expanded_strides, before_nms_features, before_nms_regf
         outputs = []
         outputs_decode = []
@@ -781,7 +783,7 @@ class YOLOXHead(nn.Module):
         all_scores = torch.cat(all_scores)
         return features_cls, features_reg, cls_scores, fg_scores, locs, all_scores
 
-    def select_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results):
+    def select_key_feature_in_reg_feature(self, reg_features, pred_idx, pred_results, top_k_train=15):
         key_features_list = []
 
         for i in range(reg_features.shape[0]):
@@ -796,25 +798,36 @@ class YOLOXHead(nn.Module):
             key_features_p4 = []
             key_features_p5 = []
             iou_list = pred_result[:, 7]
-            for j, idx in enumerate(idx_list):
-                iou_score = iou_list[j]
-                if idx >= 0 and idx < 6400:
-                    if iou_score > self.m_conf_p3:
-                        key_features_p3.append(reg_feature[idx].unsqueeze(0))
-                elif idx >= 6400 and idx < 8000:
-                    if iou_score > self.m_conf_p4:
-                        key_features_p4.append(reg_feature[idx].unsqueeze(0))
-                else:
-                    if iou_score > self.m_conf_p5:
-                        key_features_p5.append(reg_feature[idx].unsqueeze(0))
-            if len(key_features_p3) == 0:
-                "key_feature_p3 is empty"
-            if len(key_features_p4) == 0:
-                "key_feature_p4 is empty"
-            if len(key_features_p5) ==0:
-                "key_feature_p5 is empty"
+            p3_candidates = []
+            p4_candidates = []
+            p5_candidates = []
 
-            key_features =[key_features_p3, key_features_p4, key_features_p5]
+            for j, idx in enumerate(idx_list):
+                iou_score = iou_list[j].item()
+                if idx >= 0 and idx < 6400:
+                    p3_candidates.append((iou_score, idx))
+                if 6400 <= idx < 8000:
+                    p4_candidates.append((iou_score, idx))
+                elif idx >= 8000:
+                    p5_candidates.append((iou_score, idx))
+
+            p3_candidates.sort(key=lambda x: x[0], reverse=True)
+            p4_candidates.sort(key=lambda x: x[0], reverse=True)
+            p5_candidates.sort(key=lambda x: x[0], reverse=True)
+
+            for score, idx in p3_candidates[:top_k_train]:
+                if self.training or score > self.m_conf_p3:
+                    key_features_p3.append(reg_feature[idx].unsqueeze(0))
+
+            for score, idx in p4_candidates[:top_k_train]:
+                if self.training or score > self.m_conf_p4:
+                    key_features_p4.append(reg_feature[idx].unsqueeze(0))
+
+            for score, idx in p5_candidates[:top_k_train]:
+                if self.training or score > self.m_conf_p5:
+                    key_features_p5.append(reg_feature[idx].unsqueeze(0))
+
+            key_features = [key_features_p3, key_features_p4, key_features_p5]
             key_features_list.append(key_features)
         return key_features_list
 
