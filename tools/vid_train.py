@@ -109,6 +109,7 @@ def make_parser():
                         help='per-level features key length (P3 P4 P5)')
     parser.add_argument('--updating_policy', default='random', type=str, help="updating policy for memory")
     parser.add_argument('--loss_type', default="iou", type=str, help='loss function type')
+    parser.add_argument('--topk_train', default=15, type=int, help='top-k candidates per level for training reference features')
     return parser
 
 @logger.catch
@@ -156,6 +157,7 @@ if __name__ == "__main__":
     exp.nmsthre = args.nms
     exp.pre_nms = args.pre_nms
     exp.loss_type = args.loss_type
+    exp.topk_train = args.topk_train
     num_gpu = get_num_devices() if args.devices is None else args.devices
     assert num_gpu <= get_num_devices()
     args.machine_rank = 1
