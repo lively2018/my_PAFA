@@ -251,7 +251,7 @@ class YOLOXHead(nn.Module):
         self.aggregator_p5 = MambaAggregator(in_channels=128, num_attention_blocks=1,\
                                               memory_length=self.memory_length_p5, key_length=self.key_length_p5,\
                                               updating_policy=self.updating_policy)
-        #self.inplace_false_relu = nn.ReLU(inplace=False)
+        self.inplace_false_relu = nn.ReLU(inplace=False)
         if m_conf is None:
             m_conf = [0, 0, 0]
         elif not hasattr(m_conf, '__len__'):
@@ -275,13 +275,7 @@ class YOLOXHead(nn.Module):
             b = conv.bias.view(self.n_anchors, -1)
             b.data.fill_(-math.log((1 - prior_prob) / prior_prob))
             conv.bias = torch.nn.Parameter(b.view(-1), requires_grad=True)
-    #kssong
-    def first_frame_preprocess(self, xin, ref_xin):
-        # initialize memory bank
-        self.aggreator.reset_memory_bank()
-        # aggreate xin and ref_xin
-        new_xin = xin + self.aggreator(xin, ref_xin)
-        return new_xin
+
     # kssong
     def forward(self, xin, first, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32):
     #def forward(self, xin, ref_xin, labels=None, imgs=None, nms_thresh=0.5, lframe=0, gframe=32):
@@ -457,7 +451,7 @@ class YOLOXHead(nn.Module):
                                     else:
                                         agg_feat = x_one
                                 #logger.info("after aggreagtaion")
-                                #agg_feat = self.inplace_false_relu(agg_feat)
+                                agg_feat = self.inplace_false_relu(agg_feat)
                                 agg_feat = agg_feat.reshape(channel, height, width)
                             else:
                                 agg_feat = x_one
@@ -471,14 +465,14 @@ class YOLOXHead(nn.Module):
                                 agg_result = self.aggregator_p3(x_one, None)
                                 if agg_result is not None:
                                     agg_feat = x_one + agg_result
-                                    #agg_feat = self.inplace_false_relu(agg_feat)
+                                    agg_feat = self.inplace_false_relu(agg_feat)
                                 else:
                                     agg_feat = x_one
                             elif k == 1:
                                 agg_result = self.aggregator_p4(x_one, None)
                                 if agg_result is not None:
                                     agg_feat = x_one + agg_result
-                                    #agg_feat = self.inplace_false_relu(agg_feat)
+                                    agg_feat = self.inplace_false_relu(agg_feat)
                                 else:
                                     agg_feat = x_one
 
@@ -486,7 +480,7 @@ class YOLOXHead(nn.Module):
                                 agg_result = self.aggregator_p5(x_one, None)
                                 if agg_result is not None:
                                     agg_feat = x_one + agg_result
-                                    #agg_feat = self.inplace_false_relu(agg_feat)
+                                    agg_feat = self.inplace_false_relu(agg_feat)
                                 else:
                                     agg_feat = x_one
                             #logger.info(f"agg_feat.shape: {agg_feat.shape}")
@@ -820,12 +814,18 @@ class YOLOXHead(nn.Module):
                 else:
                     if iou_score > self.m_conf_p5:
                         key_features_p5.append(raw_feature[idx].unsqueeze(0))
-            #if len(key_features_p3) == 0:
-            #    print("key_feature_p3 is empty")
-            #if len(key_features_p4) == 0:
-            #    print("key_feature_p4 is empty")
-            #if len(key_features_p5) ==0:
-            #    print("key_feature_p5 is empty")
+            if len(key_features_p3) == 0:
+                print("key_feature_p3 is empty")
+            else:
+                print(f"key_feature_p3 length: {len(key_features_p3)}")
+            if len(key_features_p4) == 0:
+                print("key_feature_p4 is empty")
+            else:
+                print(f"key_feature_p4 length: {len(key_features_p4)}")
+            if len(key_features_p5) ==0:
+                print("key_feature_p5 is empty")
+            else:
+                print(f"key_feature_p5 length: {len(key_features_p5)}")
 
             key_features =[key_features_p3, key_features_p4, key_features_p5]
             key_features_list.append(key_features)
