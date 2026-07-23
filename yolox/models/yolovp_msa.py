@@ -251,7 +251,7 @@ class YOLOXHead(nn.Module):
         self.aggregator_p5 = MambaAggregator(in_channels=128, num_attention_blocks=1,\
                                               memory_length=self.memory_length_p5, key_length=self.key_length_p5,\
                                               updating_policy=self.updating_policy)
-        #self.inplace_false_relu = nn.ReLU(inplace=False)
+        self.inplace_false_relu = nn.ReLU(inplace=False)
         if m_conf is None:
             m_conf = [0, 0, 0]
         elif not hasattr(m_conf, '__len__'):
@@ -457,7 +457,7 @@ class YOLOXHead(nn.Module):
                                     else:
                                         agg_feat = reg_one
                                 #logger.info("after aggreagtaion")
-                                #agg_feat = self.inplace_false_relu(agg_feat)
+                                agg_feat = self.inplace_false_relu(agg_feat)
                                 agg_feat = agg_feat.reshape(channel, height, width)
                             else:
                                 agg_feat = reg_one
@@ -471,14 +471,14 @@ class YOLOXHead(nn.Module):
                                 agg_result = self.aggregator_p3(reg_one, None)
                                 if agg_result is not None:
                                     agg_feat = reg_one + agg_result
-                                    #agg_feat = self.inplace_false_relu(agg_feat)
+                                    agg_feat = self.inplace_false_relu(agg_feat)
                                 else:
                                     agg_feat = reg_one
                             elif k == 1:
                                 agg_result = self.aggregator_p4(reg_one, None)
                                 if agg_result is not None:
                                     agg_feat = reg_one + agg_result
-                                    #agg_feat = self.inplace_false_relu(agg_feat)
+                                    agg_feat = self.inplace_false_relu(agg_feat)
                                 else:
                                     agg_feat = reg_one
 
@@ -486,7 +486,7 @@ class YOLOXHead(nn.Module):
                                 agg_result = self.aggregator_p5(reg_one, None)
                                 if agg_result is not None:
                                     agg_feat = reg_one + agg_result
-                                    #agg_feat = self.inplace_false_relu(agg_feat)
+                                    agg_feat = self.inplace_false_relu(agg_feat)
                                 else:
                                     agg_feat = reg_one
                             #logger.info(f"agg_feat.shape: {agg_feat.shape}")
