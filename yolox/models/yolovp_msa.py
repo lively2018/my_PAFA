@@ -310,6 +310,16 @@ class YOLOXHead(nn.Module):
         else:
             need_aggregation = True
 
+        #kssong: profiling hooks - enable with model kwargs profile_time=True
+        profile_time = self.kwargs.get('profile_time', False)
+
+        def _tic():
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            return time.time()
+
+        agg_time_total = 0.0
+
         if self.training:
             for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
                     zip(self.cls_convs, self.cls_convs2, self.reg_convs, self.strides, xin)
@@ -420,6 +430,8 @@ class YOLOXHead(nn.Module):
 
 
             if need_aggregation:
+                if profile_time:
+                    _t_agg0 = _tic()
                 agg_feats = []
                 #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")
                 for reg_one in reg_feat:
@@ -498,6 +510,8 @@ class YOLOXHead(nn.Module):
                     #logger.info(f"agg_feat.type: {agg_feat.type}")
                 reg_feat = torch.stack(agg_feats, dim=0)
                 #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")
+                if profile_time:
+                    agg_time_total += _tic() - _t_agg0
 
             # this part should be the same as the original model
             obj_output = self.obj_preds[k](reg_feat)
@@ -546,6 +560,8 @@ class YOLOXHead(nn.Module):
             outputs_decode.append(output_decode)
         self.hw = [x.shape[-2:] for x in outputs_decode]
 
+        if profile_time:
+            logger.info(f"[PROFILE] aggregation time: {agg_time_total * 1000:.2f} ms")
 
         outputs_decode = torch.cat([x.flatten(start_dim=2) for x in outputs_decode], dim=2
                                    ).permute(0, 2, 1)
@@ -603,6 +619,8 @@ class YOLOXHead(nn.Module):
         if not self.training and need_aggregation:
             #half = len(pred_idx[1]) // 2
             #new_idx = [p[:half] for p in pred_idx]
+            if profile_time:
+                _t_upd0 = _tic()
             if first:
                 # reset all level memory banks
                 self.aggregator_p3.reset_memory_bank()
@@ -623,6 +641,8 @@ class YOLOXHead(nn.Module):
                 self.aggregator_p3.update_memory_bank(key_features_p3, key_feature_p3_info)
                 self.aggregator_p4.update_memory_bank(key_features_p4, key_feature_p4_info)
                 self.aggregator_p5.update_memory_bank(key_features_p5, key_feature_p5_info)
+            if profile_time:
+                logger.info(f"[PROFILE] update_memory_bank time: {(_tic() - _t_upd0) * 1000:.2f} ms")
 
         (features_cls, features_reg, cls_scores,
          fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
@@ -713,6 +733,8 @@ class YOLOXHead(nn.Module):
                                              conf_output = conf_output,
                                              nms_thre=nms_thresh,
                                              )
+            if profile_time:
+                _t_post0 = _tic()
             if first:
                 self.aggregator_p3.post_init_memory_bank(result)
                 self.aggregator_p4.post_init_memory_bank(result)
@@ -721,6 +743,8 @@ class YOLOXHead(nn.Module):
                 self.aggregator_p3.post_update_memory_bank(result)
                 self.aggregator_p4.post_update_memory_bank(result)
                 self.aggregator_p5.post_update_memory_bank(result)
+            if profile_time:
+                logger.info(f"[PROFILE] post_update_memory_bank time: {(_tic() - _t_post0) * 1000:.2f} ms")
             return result, result_ori  # result
 
     def get_output_and_grid(self, output, k, stride, dtype):
