@@ -114,7 +114,9 @@ def make_parser():
                         help='per-level features memory size (P3 P4 P5)')
     parser.add_argument('--key_length', default=[480, 480, 480], type=int, nargs=3, metavar=('P3', 'P4', 'P5'),
                         help='per-level features key length (P3 P4 P5)')
-    parser.add_argument('--updating_policy', default='random', type=str, help="updating policy for memory")	
+    parser.add_argument('--updating_policy', default='random', type=str, help="updating policy for memory")
+    parser.add_argument('--profile_time', default=False, action="store_true",
+                        help='log per-frame aggregation/memory-bank timings')	
     return parser
 
 
@@ -178,6 +180,7 @@ if __name__ == "__main__":
     exp.memory_length = args.memory_length
     exp.key_length = args.key_length
     exp.updating_policy = args.updating_policy
+    exp.profile_time = args.profile_time
     num_gpu = get_num_devices() if args.devices is None else args.devices
     assert num_gpu <= get_num_devices()
     args.machine_rank = 1

@@ -200,14 +200,44 @@ class MemoryBank(nn.Module):
             return result_item
         confs = result_item[:, 4] * result_item[:, 5]   # obj_score * cls_score
         bboxes = result_item[:, :4]
+        # single device->host transfer instead of one per row
+        bboxes_list = bboxes.tolist()
+        confs_list = confs.tolist()
         best = {}   # bbox_key -> (max_conf, row_idx)
-        for idx in range(len(result_item)):
-            key = tuple(bboxes[idx].tolist())
-            conf = confs[idx].item()
+        for idx, (bbox_vals, conf) in enumerate(zip(bboxes_list, confs_list)):
+            key = tuple(bbox_vals)
             if key not in best or conf > best[key][0]:
                 best[key] = (conf, idx)
         keep = [v[1] for v in best.values()]
         return result_item[keep]
+
+    @staticmethod
+    def _stack_bboxes(feat_info, device, dtype):
+        """Stack the 'bbox' entries of a feat_info list into a single [M, 4] tensor."""
+        if len(feat_info) == 0:
+            return torch.empty((0, 4), device=device, dtype=dtype)
+        bbox_list = []
+        for info in feat_info:
+            b = info['bbox']
+            if not isinstance(b, torch.Tensor):
+                b = torch.as_tensor(b, dtype=dtype)
+            bbox_list.append(b)
+        return torch.stack(bbox_list).to(device=device, dtype=dtype)
+
+    @staticmethod
+    def _match_bbox_pairs(query_bboxes, ref_bboxes, atol=1.0, rtol=1e-5):
+        """Vectorized equivalent of:
+            [(i, j) for i, q in enumerate(query_bboxes)
+                    for j, r in enumerate(ref_bboxes) if torch.allclose(r, q, atol=atol)]
+        Returns a [K, 2] long tensor of (query_idx, ref_idx) pairs.
+        """
+        if len(query_bboxes) == 0 or len(ref_bboxes) == 0:
+            return torch.empty((0, 2), dtype=torch.long, device=query_bboxes.device)
+        # torch.allclose(input=ref, other=query) tolerance: atol + rtol * |query|
+        diff = (ref_bboxes.unsqueeze(0) - query_bboxes.unsqueeze(1)).abs()  # [n, m, 4]
+        tol = atol + rtol * query_bboxes.abs().unsqueeze(1)  # [n, 1, 4]
+        match = (diff <= tol).all(dim=-1)  # [n, m]
+        return match.nonzero(as_tuple=False)  # [K, 2] -> (query_idx, ref_idx)
 
     def post_init_memory(self, result):
         if self.max_length == 0:
@@ -222,21 +252,18 @@ class MemoryBank(nn.Module):
                 cls_scores = result_item[:, 5]
                 iou_scores = result_item[:, 7]
                 obj_scores = result_item[:, 4]
-                for i, bbox in enumerate(bboxes):
-                    for j, info in enumerate(self.feat_info):
-                        info_bbox = info['bbox']
-                        if not isinstance(info_bbox, torch.Tensor):
-                            info_bbox = torch.tensor(info_bbox, device=bbox.device, dtype=bbox.dtype)
-                        else:
-                            info_bbox = info_bbox.to(device=bbox.device, dtype=bbox.dtype)
-                        if torch.allclose(info_bbox, bbox, atol=1.0):
-                            #print(f"info_bbox:{info_bbox} bbox: {bbox}")
-                            #print(f"before conf_score: {self.feat_info[j]['conf']}")
-                            self.feat_info[j]['conf'] = conf_scores[i].item()
-                            self.feat_info[j]['cls_score'] = cls_scores[i].item()
-                            self.feat_info[j]['iou_score'] = iou_scores[i].item()
-                            self.feat_info[j]['obj_score'] = obj_scores[i].item()
-                            #print(f"after conf_score: {self.feat_info[j]['conf']}")
+                ref_bboxes = self._stack_bboxes(self.feat_info, bboxes.device, bboxes.dtype)
+                pairs = self._match_bbox_pairs(bboxes, ref_bboxes, atol=1.0)
+                if len(pairs):
+                    conf_scores_list = conf_scores.tolist()
+                    cls_scores_list = cls_scores.tolist()
+                    iou_scores_list = iou_scores.tolist()
+                    obj_scores_list = obj_scores.tolist()
+                    for i, j in pairs.tolist():
+                        self.feat_info[j]['conf'] = conf_scores_list[i]
+                        self.feat_info[j]['cls_score'] = cls_scores_list[i]
+                        self.feat_info[j]['iou_score'] = iou_scores_list[i]
+                        self.feat_info[j]['obj_score'] = obj_scores_list[i]
             if self.updating_policy == 'conf':
                 if len(self.feat) >= self.max_length:
                     #print(f"updating_policy: {self.updating_policy}")
@@ -308,20 +335,20 @@ class MemoryBank(nn.Module):
                 cls_scores = result_item[:, 5]
                 obj_scores = result_item[:, 4]
                 old_end = len(self.feat_info) - self.update_length if self.update_length > 0 else len(self.feat_info)
-                for i, bbox in enumerate(bboxes):
-                    for info in self.feat_info[old_end:]:
-                        info_bbox = info['bbox']
-                        if not isinstance(info_bbox, torch.Tensor):
-                            info_bbox = torch.tensor(info_bbox, device=bbox.device, dtype=bbox.dtype)
-                        else:
-                            info_bbox = info_bbox.to(device=bbox.device, dtype=bbox.dtype)
-                        if torch.allclose(info_bbox, bbox, atol=1.0):
-                            #print(f"before confidence {info['conf']}")
-                            info['conf'] = conf_scores[i].item()
-                            info['iou_score'] = iou_scores[i].item()
-                            info['cls_score'] = cls_scores[i].item()
-                            info['obj_score'] = obj_scores[i].item()
-                            #print(f"after confidence {info['conf']}")
+                new_feat_info = self.feat_info[old_end:]
+                ref_bboxes = self._stack_bboxes(new_feat_info, bboxes.device, bboxes.dtype)
+                pairs = self._match_bbox_pairs(bboxes, ref_bboxes, atol=1.0)
+                if len(pairs):
+                    conf_scores_list = conf_scores.tolist()
+                    iou_scores_list = iou_scores.tolist()
+                    cls_scores_list = cls_scores.tolist()
+                    obj_scores_list = obj_scores.tolist()
+                    for i, j in pairs.tolist():
+                        info = new_feat_info[j]
+                        info['conf'] = conf_scores_list[i]
+                        info['iou_score'] = iou_scores_list[i]
+                        info['cls_score'] = cls_scores_list[i]
+                        info['obj_score'] = obj_scores_list[i]
             if self.updating_policy == 'conf':
                 if len(self.feat) >= self.max_length:
                     #print(f"updating_policy: {self.updating_policy}")
