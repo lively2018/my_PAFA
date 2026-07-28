@@ -14,6 +14,7 @@ from loguru import logger
 
 from yolox.models.post_process import postprocess,get_linking_mat
 from yolox.models.post_trans import MSA_yolov, LocalAggregation
+from yolox.models.trans_aggregator import MemoryCrossAggregator
 from yolox.utils import bboxes_iou
 from yolox.utils.box_op import box_cxcywh_to_xyxy, generalized_box_iou
 from .losses import IOUloss
@@ -242,16 +243,12 @@ class YOLOXHead(nn.Module):
         self.updating_policy = updating_policy
         self.key_length_p3, self.key_length_p4, self.key_length_p5 = key_length[0], key_length[1], key_length[2]
 
-        self.aggregator_p3 = MambaAggregator(in_channels=128, num_attention_blocks=1,\
-                                              memory_length=self.memory_length_p3, key_length=self.key_length_p3,\
+        self.aggregator_p3 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p3, key_length=self.key_length_p3,\
                                             updating_policy=self.updating_policy )
-        self.aggregator_p4 = MambaAggregator(in_channels=128, num_attention_blocks=1, \
-                                             memory_length=self.memory_length_p4, key_length=self.key_length_p4,\
+        self.aggregator_p4 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p4, key_length=self.key_length_p4,\
                                                 updating_policy=self.updating_policy)
-        self.aggregator_p5 = MambaAggregator(in_channels=128, num_attention_blocks=1,\
-                                              memory_length=self.memory_length_p5, key_length=self.key_length_p5,\
+        self.aggregator_p5 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p5, key_length=self.key_length_p5,\
                                               updating_policy=self.updating_policy)
-        self.inplace_false_relu = nn.ReLU(inplace=False)
         if m_conf is None:
             m_conf = [0, 0, 0]
         elif not hasattr(m_conf, '__len__'):
@@ -441,29 +438,15 @@ class YOLOXHead(nn.Module):
                                 if k == 0:
                                     self.aggregator_p3.reset_memory_bank()
                                     self.aggregator_p3.init_memory_bank(ref_feats, None)
-                                    agg_result = self.aggregator_p3(x_one, None)
-                                    if agg_result is not None:
-                                        agg_feat = x_one + agg_result
-                                    else:
-                                        agg_feat = x_one
+                                    agg_feat = self.aggregator_p3(x_one)
                                 elif k == 1:
                                     self.aggregator_p4.reset_memory_bank()
                                     self.aggregator_p4.init_memory_bank(ref_feats, None)
-                                    agg_result = self.aggregator_p4(x_one, None)
-                                    if agg_result is not None:
-                                        agg_feat = x_one + agg_result
-                                    else:
-                                        agg_feat = x_one
+                                    agg_feat = self.aggregator_p4(x_one)
                                 else:
                                     self.aggregator_p5.reset_memory_bank()
                                     self.aggregator_p5.init_memory_bank(ref_feats, None)
-                                    agg_result = self.aggregator_p5(x_one, None)
-                                    if agg_result is not None:
-                                        agg_feat = x_one + agg_result
-                                    else:
-                                        agg_feat = x_one
-                                #logger.info("after aggreagtaion")
-                                agg_feat = self.inplace_false_relu(agg_feat)
+                                    agg_feat = self.aggregator_p5(x_one)
                                 agg_feat = agg_feat.reshape(channel, height, width)
                             else:
                                 agg_feat = x_one
@@ -474,27 +457,12 @@ class YOLOXHead(nn.Module):
                             x_one = x_one.reshape(-1, channel)
                             #logger.info(f"reg_one.shape: {reg_one.shape}")
                             if k == 0:
-                                agg_result = self.aggregator_p3(x_one, None)
-                                if agg_result is not None:
-                                    agg_feat = x_one + agg_result
-                                    agg_feat = self.inplace_false_relu(agg_feat)
-                                else:
-                                    agg_feat = x_one
+                                agg_feat = self.aggregator_p3(x_one)
                             elif k == 1:
-                                agg_result = self.aggregator_p4(x_one, None)
-                                if agg_result is not None:
-                                    agg_feat = x_one + agg_result
-                                    agg_feat = self.inplace_false_relu(agg_feat)
-                                else:
-                                    agg_feat = x_one
+                                agg_feat = self.aggregator_p4(x_one)
 
                             else:
-                                agg_result = self.aggregator_p5(x_one, None)
-                                if agg_result is not None:
-                                    agg_feat = x_one + agg_result
-                                    agg_feat = self.inplace_false_relu(agg_feat)
-                                else:
-                                    agg_feat = x_one
+                                agg_feat = self.aggregator_p5(x_one)
                             #logger.info(f"agg_feat.shape: {agg_feat.shape}")
                             agg_feat = agg_feat.reshape(channel, height, width)
                         else:
@@ -837,18 +805,18 @@ class YOLOXHead(nn.Module):
                 else:
                     if iou_score > self.m_conf_p5:
                         key_features_p5.append(raw_feature[idx].unsqueeze(0))
-            if len(key_features_p3) == 0:
-                print("key_feature_p3 is empty")
-            else:
-                print(f"key_feature_p3 length: {len(key_features_p3)}")
-            if len(key_features_p4) == 0:
-                print("key_feature_p4 is empty")
-            else:
-                print(f"key_feature_p4 length: {len(key_features_p4)}")
-            if len(key_features_p5) ==0:
-                print("key_feature_p5 is empty")
-            else:
-                print(f"key_feature_p5 length: {len(key_features_p5)}")
+            #if len(key_features_p3) == 0:
+            #    print("key_feature_p3 is empty")
+            #else:
+            #    print(f"key_feature_p3 length: {len(key_features_p3)}")
+            #if len(key_features_p4) == 0:
+            #    print("key_feature_p4 is empty")
+            #else:
+            #     print(f"key_feature_p4 length: {len(key_features_p4)}")
+            # if len(key_features_p5) ==0:
+                # print("key_feature_p5 is empty")
+            # else:
+            #     print(f"key_feature_p5 length: {len(key_features_p5)}")
 
             key_features =[key_features_p3, key_features_p4, key_features_p5]
             key_features_list.append(key_features)
