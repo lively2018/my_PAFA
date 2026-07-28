@@ -12,5 +12,5 @@ from .yolox import YOLOX
 from .yolo_pafpn import YOLOPAFPN,YOLOPAFPN_ResNet, YOLOPAFPN_Swin,YOLOPAFPN_focal
 from .resnet import ResNet
 # kssong
-from .memory_bank import MemoryBank
+from .ioumemory_bank import IoUMemoryBank
 from .mamba_aggregator import MambaAggregator

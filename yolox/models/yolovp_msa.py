@@ -58,6 +58,7 @@ class YOLOXHead(nn.Module):
             key_length=None,
             updating_policy="random",
             loss_type = "iou",
+            diverse_threshold=0.5,
             **kwargs
     ):
         """
@@ -241,14 +242,15 @@ class YOLOXHead(nn.Module):
         elif not hasattr(key_length, '__len__'):
             key_length = [key_length, key_length, key_length]
         self.updating_policy = updating_policy
+        self.diverse_threshold = diverse_threshold
         self.key_length_p3, self.key_length_p4, self.key_length_p5 = key_length[0], key_length[1], key_length[2]
 
         self.aggregator_p3 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p3, key_length=self.key_length_p3,\
-                                            updating_policy=self.updating_policy )
+                                            updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold)
         self.aggregator_p4 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p4, key_length=self.key_length_p4,\
-                                                updating_policy=self.updating_policy)
+                                                updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold)
         self.aggregator_p5 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p5, key_length=self.key_length_p5,\
-                                              updating_policy=self.updating_policy)
+                                              updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold)
         if m_conf is None:
             m_conf = [0, 0, 0]
         elif not hasattr(m_conf, '__len__'):
@@ -612,9 +614,16 @@ class YOLOXHead(nn.Module):
                 key_features_p3, key_features_p4, key_features_p5,\
                      key_feature_p3_info, key_feature_p4_info, key_feature_p5_info = self.select_level_key_feature_in_agg_x_feature(agg_x_flatten, pred_idx, pred_result)
                 # Update all level memory banks
-                self.aggregator_p3.update_memory_bank(key_features_p3, key_feature_p3_info)
-                self.aggregator_p4.update_memory_bank(key_features_p4, key_feature_p4_info)
-                self.aggregator_p5.update_memory_bank(key_features_p5, key_feature_p5_info)
+                if self.updating_policy == "diverse":
+                    self.aggregator_p3.pre_update_candidate_memory_bank(key_features_p3, key_feature_p3_info)
+                    self.aggregator_p4.pre_update_candidate_memory_bank(key_features_p4, key_feature_p4_info)
+                    self.aggregator_p5.pre_update_candidate_memory_bank(key_features_p5, key_feature_p5_info)
+
+                else:
+                    self.aggregator_p3.update_memory_bank(key_features_p3, key_feature_p3_info)
+                    self.aggregator_p4.update_memory_bank(key_features_p4, key_feature_p4_info)
+                    self.aggregator_p5.update_memory_bank(key_features_p5, key_feature_p5_info)
+
             if profile_time:
                 logger.info(f"[PROFILE] update_memory_bank time: {(_tic() - _t_upd0) * 1000:.2f} ms")
 
@@ -714,9 +723,14 @@ class YOLOXHead(nn.Module):
                 self.aggregator_p4.post_init_memory_bank(result)
                 self.aggregator_p5.post_init_memory_bank(result)
             else:
-                self.aggregator_p3.post_update_memory_bank(result)
-                self.aggregator_p4.post_update_memory_bank(result)
-                self.aggregator_p5.post_update_memory_bank(result)
+                if self.updating_policy == "diverse":
+                    self.aggregator_p3.post_update_candidate_memory_bank(result)
+                    self.aggregator_p4.post_update_candidate_memory_bank(result)
+                    self.aggregator_p5.post_update_candidate_memory_bank(result)
+                else:
+                    self.aggregator_p3.post_update_memory_bank(result)
+                    self.aggregator_p4.post_update_memory_bank(result)
+                    self.aggregator_p5.post_update_memory_bank(result)
             if profile_time:
                 logger.info(f"[PROFILE] post_update_memory_bank time: {(_tic() - _t_post0) * 1000:.2f} ms")
             return result, result_ori  # result
