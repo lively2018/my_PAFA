@@ -154,6 +154,7 @@ if __name__ == "__main__":
     exp.memory_length = args.memory_length
     exp.key_length = args.key_length
     exp.updating_policy = args.updating_policy
+    exp.loss_type = args.loss_type
     exp.nmsthre = args.nms
     exp.pre_nms = args.pre_nms
     exp.diverse_threshold = args.diverse_threshold
