@@ -149,7 +149,10 @@ class MemoryCrossAggregator(nn.Module):
         memory_feats = self.memory_bank.sample()
         if len(memory_feats) != 0:
             x = x_cur.unsqueeze(0)
-            memory_feats = memory_feats.unsqueeze(0)
+            # self.memory_bank.feat is a plain tensor attribute, not a registered
+            # buffer, so module-wide dtype/device casts (e.g. model.half() before
+            # eval) never touch it; it can lag behind x_cur's dtype/device.
+            memory_feats = memory_feats.unsqueeze(0).to(dtype=x_cur.dtype, device=x_cur.device)
             for layer in self.layers:
                 x = layer(x, memory_feats)
             x_cur = x.squeeze(0)
