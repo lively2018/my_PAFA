@@ -77,8 +77,8 @@ class Exp(BaseExp):
         #global frames for training
         self.gframe = 16
         #globale frames for validation
-        #self.gframe_val = 32
-        self.gframe_val = 16
+        self.gframe_val = 32
+        #self.gframe_val = 16
         #sequence number for validation,-1 denote all
         self.tnum = -1
         #sequence number for train,-1 denote all
@@ -220,6 +220,7 @@ class Exp(BaseExp):
         self.loss_type = "iou"  # iou, giou, diou, ciou, l2 or bce
         self.profile_time = False  # log per-frame aggregation/memory-bank timings
         self.diverse_threshold = 0.3  # threshold for diverse sampling
+        self.diversity_sim_score_thresh = 0.5  # cosine-similarity threshold for diverse_sim_score policy
     def get_model(self):
         # rewrite get model func from yolox
         if self.backbone_name == 'MCSP':
@@ -295,6 +296,7 @@ class Exp(BaseExp):
                      'vid_cls':self.vid_cls,'vid_reg':self.vid_reg,'conf_sim_thresh':self.conf_sim_thresh,
                      'profile_time':self.profile_time,
                      'diverse_threshold':self.diverse_threshold,
+                     'diversity_sim_score_thresh':self.diversity_sim_score_thresh,
                      }
 
         head = YOLOXHead(self.num_classes, self.width, in_channels=in_channels, heads=self.head, drop=self.drop_rate,

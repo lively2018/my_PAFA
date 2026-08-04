@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 #kssong
 #from mmcv.runner import BaseModule
 # from ..aggregators.selsa_aggregator import SelsaAggregator
@@ -20,6 +21,7 @@ class IoUMemoryBank(nn.Module):
                  max_length=4800, key_length=480,
                  sampling_policy='random', updating_policy='random',
                  diversity_iou_thresh=0.5, quality_upgrade_margin=0.1,
+                 diversity_sim_score_thresh=0.5
                  ):
         super().__init__()
         #kssong
@@ -37,7 +39,7 @@ class IoUMemoryBank(nn.Module):
         self.candidate_length = 0
         self.candidate_info = None
         self.candidate_feat = None
-
+        self.diversity_sim_score_thresh = diversity_sim_score_thresh  # for cosine-similarity-based policy
         # self.aggregator = SelsaAggregator(in_channels)
 
     def reset(self):
@@ -343,19 +345,7 @@ class IoUMemoryBank(nn.Module):
                     self.feat = new_feat_combined
                     del self.feat_info
                     self.feat_info = new_feat_info_combined
-
     def post_update_candidate_memory(self, result):
-        """
-        Score-refine staged candidates (from pre_update_candidate_memory) against the postprocess
-        `result`, then merge the confirmed ones into the permanent memory (self.feat /
-        self.feat_info) using a diversity-based insertion + redundancy-eviction policy:
-          - a candidate is inserted only if its bbox is spatially novel relative to
-            same-class entries already in memory (IoU_max < diversity_iou_thresh);
-          - if it instead overlaps an existing same-class slot, that slot is upgraded
-            in place when the candidate's predicted IoU quality is clearly higher;
-          - when memory is full, room is made by evicting the lower-quality member of
-            whichever same-class pair in memory currently has the highest mutual IoU.
-        """
         if self.max_length == 0:
             return 0
         if self.candidate_feat is not None and self.candidate_info is not None:
@@ -383,14 +373,116 @@ class IoUMemoryBank(nn.Module):
                         self.candidate_info[j]['iou_score'] = iou_scores_list[i]
                         self.candidate_info[j]['obj_score'] = obj_scores_list[i]
                         self.candidate_info[j]['cls_id'] = cls_ids_list[i]
+        if self.updating_policy == 'diverse':
+            return self.post_update_diverse_candidate_memory(self.candidate_info)
+        elif self.updating_policy == 'diverse_sim_score':
+            return self.post_update_diverse_sim_score_candidate_memory(self.candidate_info)
 
-            # Only candidates confirmed by postprocess (i.e. matched above, so they
-            # carry a 'cls_id') are eligible for insertion into permanent memory.
-            for cand_idx in range(len(self.candidate_feat)):
-                cand_info = self.candidate_info[cand_idx]
-                if 'cls_id' not in cand_info:
-                    continue
-                self._try_insert_candidate(self.candidate_feat[cand_idx], cand_info)
+    def post_update_diverse_sim_score_candidate_memory(self, candidate_info):
+        """
+        Score-refine staged candidates (from pre_update_candidate_memory) against the postprocess
+        `result`, then merge the confirmed ones into the permanent memory (self.feat /
+        self.feat_info) using a feature-similarity diversity-insertion + IoU-redundancy-eviction
+        policy:
+          - a candidate is inserted only if its cosine similarity to every same-class feature
+            already in memory is below diversity_iou_thresh (S_max < tau_sim), i.e. it represents
+            a novel visual state / unrepresented object pose or scale;
+          - if it is instead redundant with existing memory, the candidate is simply dropped;
+          - when memory is full, room is made by finding the same-class pair anywhere in memory
+            with the highest mutual cosine similarity and evicting whichever of the two has the
+            lower predicted IoU quality.
+        """
+        # Only candidates confirmed by postprocess (i.e. matched above, so they
+        # carry a 'cls_id') are eligible for insertion into permanent memory.
+        for cand_idx in range(len(self.candidate_feat)):
+            cand_info = self.candidate_info[cand_idx]
+            if 'cls_id' not in cand_info:
+                continue
+            self._try_insert_candidate_sim_score(self.candidate_feat[cand_idx], cand_info)
+
+        if self.candidate_feat is None:
+            return 0
+
+        return len(self.candidate_feat)
+
+    def _try_insert_candidate_sim_score(self, cand_feat, cand_info):
+        """Diversity-based insertion using cosine similarity between features (instead of
+        bbox IoU) as the novelty signal; eviction still ranks on predicted IoU quality."""
+        cand_cls = cand_info['cls_id']
+
+        if self.feat is None or len(self.feat) == 0:
+            # Empty memory: S_max is 0 by definition, so accept unconditionally.
+            self._append_slot(cand_feat, cand_info)
+            return
+
+        same_cls_idx = [j for j, info in enumerate(self.feat_info) if info.get('cls_id') == cand_cls]
+        if len(same_cls_idx) == 0:
+            sim_max = 0.0
+        else:
+            same_cls_feats = self.feat[same_cls_idx]
+            sims = F.cosine_similarity(cand_feat.view(1, -1), same_cls_feats, dim=1)
+            sim_max = torch.max(sims).item()
+
+        if sim_max < self.diversity_sim_score_thresh:
+            # Novel feature relative to existing same-class memory -> insert (evicting if full).
+            if len(self.feat) >= self.max_length:
+                if not self._evict_most_redundant_pair_sim_score():
+                    return  # memory full and no redundant same-class pair to free up
+            self._append_slot(cand_feat, cand_info)
+        # else: redundant with existing memory -> drop the candidate.
+
+    def _evict_most_redundant_pair_sim_score(self):
+        """Find the same-class pair anywhere in memory with the highest mutual cosine
+        similarity and evict whichever of the two has the lower predicted IoU quality,
+        freeing one slot. Returns False if no such same-class pair exists."""
+        buckets = {}
+        for j, info in enumerate(self.feat_info):
+            buckets.setdefault(info.get('cls_id'), []).append(j)
+
+        best_sim, best_pair = -1.0, None
+        for idxs in buckets.values():
+            if len(idxs) < 2:
+                continue
+            feats = F.normalize(self.feat[idxs], dim=1)
+            sims = feats @ feats.t()
+            sims.fill_diagonal_(-1.0)
+            flat_idx = torch.argmax(sims).item()
+            a_local, b_local = divmod(flat_idx, len(idxs))
+            sim_val = sims[a_local, b_local].item()
+            if sim_val > best_sim:
+                best_sim, best_pair = sim_val, (idxs[a_local], idxs[b_local])
+
+        if best_pair is None:
+            return False
+
+        a_j, b_j = best_pair
+        q_a = self.feat_info[a_j].get('iou_score', 0.0)
+        q_b = self.feat_info[b_j].get('iou_score', 0.0)
+        evict_j = a_j if q_a <= q_b else b_j
+        self._remove_slot(evict_j)
+        return True
+
+    def post_update_diverse_candidate_memory(self, candidate_info):
+        """
+        Score-refine staged candidates (from pre_update_candidate_memory) against the postprocess
+        `result`, then merge the confirmed ones into the permanent memory (self.feat /
+        self.feat_info) using a diversity-based insertion + redundancy-eviction policy:
+          - a candidate is inserted only if its bbox is spatially novel relative to
+            same-class entries already in memory (IoU_max < diversity_iou_thresh);
+          - if it instead overlaps an existing same-class slot, that slot is upgraded
+            in place when the candidate's predicted IoU quality is clearly higher;
+          - when memory is full, room is made by evicting the lower-quality member of
+            whichever same-class pair in memory currently has the highest mutual IoU.
+        """
+
+
+        # Only candidates confirmed by postprocess (i.e. matched above, so they
+        # carry a 'cls_id') are eligible for insertion into permanent memory.
+        for cand_idx in range(len(self.candidate_feat)):
+            cand_info = self.candidate_info[cand_idx]
+            if 'cls_id' not in cand_info:
+                continue
+            self._try_insert_candidate(self.candidate_feat[cand_idx], cand_info)
 
         if self.candidate_feat is None:
             return 0

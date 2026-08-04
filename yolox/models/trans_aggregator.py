@@ -106,7 +106,8 @@ class MemoryCrossAggregator(nn.Module):
     aggregator reading from that level's memory bank.
     """
     def __init__(self, dim, num_heads=8, blocks=1, mlp_ratio=4.,
-                 qkv_bias=False, dropout=0., attn_drop=0., drop_path=0., memory_length=4800, key_length=480, updating_policy="random", diverse_threshold=0.5):
+                 qkv_bias=False, dropout=0., attn_drop=0., drop_path=0., memory_length=4800, key_length=480, updating_policy="random", diverse_threshold=0.5,
+                 diversity_sim_score_thresh=0.5):
         super().__init__()
         self.blocks = blocks
         self.layers = nn.ModuleList([
@@ -120,7 +121,8 @@ class MemoryCrossAggregator(nn.Module):
                 drop_path=drop_path
             ) for _ in range(blocks)
         ])
-        self.memory_bank = IoUMemoryBank(max_length=memory_length, key_length=key_length, updating_policy=updating_policy, diversity_iou_thresh=diverse_threshold)
+        self.memory_bank = IoUMemoryBank(max_length=memory_length, key_length=key_length, updating_policy=updating_policy, diversity_iou_thresh=diverse_threshold,
+                                          diversity_sim_score_thresh=diversity_sim_score_thresh)
     def reset_memory_bank(self):
         #logger.info("reset_memory_bank")
         self.memory_bank.reset()

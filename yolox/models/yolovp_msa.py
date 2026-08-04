@@ -59,6 +59,7 @@ class YOLOXHead(nn.Module):
             updating_policy="random",
             loss_type = "iou",
             diverse_threshold=0.5,
+            diversity_sim_score_thresh=0.5,
             **kwargs
     ):
         """
@@ -243,14 +244,18 @@ class YOLOXHead(nn.Module):
             key_length = [key_length, key_length, key_length]
         self.updating_policy = updating_policy
         self.diverse_threshold = diverse_threshold
+        self.diversity_sim_score_thresh = diversity_sim_score_thresh
         self.key_length_p3, self.key_length_p4, self.key_length_p5 = key_length[0], key_length[1], key_length[2]
 
         self.aggregator_p3 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p3, key_length=self.key_length_p3,\
-                                            updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold)
+                                            updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold,
+                                            diversity_sim_score_thresh=self.diversity_sim_score_thresh)
         self.aggregator_p4 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p4, key_length=self.key_length_p4,\
-                                                updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold)
+                                                updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold,
+                                                diversity_sim_score_thresh=self.diversity_sim_score_thresh)
         self.aggregator_p5 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p5, key_length=self.key_length_p5,\
-                                              updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold)
+                                              updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold,
+                                              diversity_sim_score_thresh=self.diversity_sim_score_thresh)
         if m_conf is None:
             m_conf = [0, 0, 0]
         elif not hasattr(m_conf, '__len__'):

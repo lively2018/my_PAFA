@@ -110,6 +110,8 @@ def make_parser():
     parser.add_argument('--updating_policy', default='random', type=str, help="updating policy for memory")
     parser.add_argument('--loss_type', default="iou", type=str, help='loss function type')
     parser.add_argument('--diverse_threshold', default=0.3, type=float, help='threshold for diverse sampling')
+    parser.add_argument('--diversity_sim_score_thresh', default=0.5, type=float,
+                        help='cosine-similarity threshold for the diverse_sim_score updating policy')
     return parser
 
 @logger.catch
@@ -158,6 +160,7 @@ if __name__ == "__main__":
     exp.nmsthre = args.nms
     exp.pre_nms = args.pre_nms
     exp.diverse_threshold = args.diverse_threshold
+    exp.diversity_sim_score_thresh = args.diversity_sim_score_thresh
     num_gpu = get_num_devices() if args.devices is None else args.devices
     assert num_gpu <= get_num_devices()
     args.machine_rank = 1
