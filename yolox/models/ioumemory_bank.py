@@ -421,7 +421,7 @@ class IoUMemoryBank(nn.Module):
             best_iou, best_local = torch.max(ious, dim=0)
             iou_max, best_j = best_iou.item(), same_cls_idx[best_local.item()]
 
-        if iou_max < self.diversity_iou_thresh:
+        if best_j is None or iou_max < self.diversity_iou_thresh:
             # Goal 1: spatially novel candidate -> insert (evicting if memory is full).
             if len(self.feat) >= self.max_length:
                 if not self._evict_most_redundant_pair():
