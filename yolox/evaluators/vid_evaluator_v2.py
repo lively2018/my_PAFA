@@ -76,6 +76,8 @@ class VIDEvaluator:
         self.lframe = lframe
         self.gframe = gframe
         self.kwargs = kwargs
+        self.motion_metadata = kwargs.get('motion_metadata', {})
+        self.degradation_map = kwargs.get('blur_map', {})
         self.vid_to_coco = {
             'info': {
                 'description': 'nothing',
@@ -474,7 +476,9 @@ class VIDEvaluator:
             trt_file=None,
             decoder=None,
             test_size=None,
-            img_path=None
+            img_path=None,
+            motion_speed_eval=False,
+            motion_blur_eval=False,
     ):
         """
         COCO average precision (AP) Evaluation. Iterate inference on the test dataset
@@ -544,7 +548,7 @@ class VIDEvaluator:
                 info_imgs = [info_imgs[0]]
                 label = [label[0]]
             #logger.info("label: {}".format(label))
-            temp_data_list, temp_label_list = self.convert_to_coco_format(outputs, info_imgs, copy.deepcopy(label))
+            temp_data_list, temp_label_list = self.convert_to_coco_format(outputs, info_imgs, copy.deepcopy(label), path)
             data_list.extend(temp_data_list)
             labels_list.extend(temp_label_list)
             #logger.info("temp_labels_list: {}".format(temp_label_list))
@@ -568,23 +572,183 @@ class VIDEvaluator:
             data_list = gather(data_list, dst=0)
             data_list = list(itertools.chain(*data_list))
             torch.distributed.reduce(statistics, dst=0)
+        eval_results = self.evaluate_prediction(data_list, statistics)
+        if motion_speed_eval and is_main_process() and self.motion_metadata:
+            motion_summary = self.evaluate_motion_subsets(data_list)
+            if len(eval_results) >= 3:
+                new_info = eval_results[2] + "\n" + motion_summary
+                eval_results = (eval_results[0], eval_results[1], new_info)
+        if motion_blur_eval and is_main_process():
+            degradation_results = self.evaluate_degradation_subsets(data_list)
+            eval_results = (*eval_results[:-1], eval_results[-1] + '\n' + degradation_results)
 
         del labels_list
-        eval_results = self.evaluate_prediction(data_list, statistics)
         del data_list
         self.vid_to_coco['annotations'] = []
 
         #kssong
         synchronize() #results in deadlock
         return eval_results
+    def filter_by_motion(self, data_list, gt_annotations, all_images, group_name):
+        # Search 'all_images' (the copy) instead of 'self.vid_to_coco['images']'
+        subset_imgs = [
+            img for img in all_images
+            if img.get('motion_group') == group_name
+        ]
+        valid_image_ids = {img['id'] for img in subset_imgs}
+        filtered_dt = [dt for dt in data_list if dt['image_id'] in valid_image_ids]
+        filtered_gt = [gt for gt in gt_annotations if gt['image_id'] in valid_image_ids]
 
-    def convert_to_coco_format(self, outputs, info_imgs, labels):
+        return filtered_dt, filtered_gt, subset_imgs
+    def calculate_subset_metrics(self, subset_dt, subset_gt, subset_imgs):
+        """
+        Calculates mAP and mAP50 for a specific subset using a local COCO object.
+        """
+        # 1. Create a local COCO-format dictionary for this subset
+        subset_coco_dict = {
+            'images': subset_imgs,
+            'annotations': subset_gt,
+            'categories': copy.deepcopy(self.vid_to_coco['categories'])
+        }
+
+        # --- DEBUG CODE START ---
+        # Extract unique IDs from all sources
+        #gt_ids = {ann['category_id'] for ann in subset_gt}
+        #dt_ids = {dt['category_id'] for dt in subset_dt}
+        #valid_ids = {cat['id'] for cat in subset_coco_dict['categories']}
+
+
+        # Check for IDs in data that aren't in the category definition list
+        #invalid_gt = gt_ids - valid_ids
+        #invalid_dt = dt_ids - valid_ids
+
+        #if invalid_gt:
+        #    logger.error(f"  CRITICAL: GT has category IDs {invalid_gt} not defined in 'categories'!")
+        #if invalid_dt:
+        #    logger.error(f"  CRITICAL: DT has category IDs {invalid_dt} not defined in 'categories'!")
+
+        # Check if GT and DT are misaligned (Informational)
+        #if gt_ids != dt_ids:
+        #    logger.warning(f"  INFO: GT and DT category sets differ. "
+        #                   f"GT unique: {gt_ids - dt_ids}, DT unique: {dt_ids - gt_ids}")
+        # --- DEBUG CODE END ---
+
+        # 2. Write Ground Truth to a temporary file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json') as tmp_gt:
+            json.dump(subset_coco_dict, tmp_gt)
+            tmp_gt.flush()
+
+            cocoGt = pycocotools.coco.COCO(tmp_gt.name)
+
+            # 3. Write Detections to a temporary file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json') as tmp_dt:
+                json.dump(subset_dt, tmp_dt)
+                tmp_dt.flush()
+
+                # Safety check for empty detections
+                if not subset_dt:
+                    logger.warning("No detections found for this motion group.")
+                    return 0.0, 0.0
+
+                cocoDt = cocoGt.loadRes(tmp_dt.name)
+
+                # 4. Run Evaluation
+                try:
+                    from yolox.layers import COCOeval_opt as COCOeval
+                except ImportError:
+                    from pycocotools.cocoeval import COCOeval
+
+                cocoEval = COCOeval(cocoGt, cocoDt, 'bbox')
+                cocoEval.evaluate()
+                cocoEval.accumulate()
+
+                # CRITICAL: Populate the 'stats' list
+                cocoEval.summarize()
+
+                # Final check before return to avoid IndexError
+                if hasattr(cocoEval, 'stats') and len(cocoEval.stats) > 0:
+                    return cocoEval.stats[0], cocoEval.stats[1]
+                else:
+                    logger.error("COCOeval.stats is empty after summarize(). Check category consistency.")
+                    return 0.0, 0.0
+
+    def evaluate_motion_subsets(self, data_list):
+        motion_results = "----Motion Evaluation Results ---\n"
+        categories = ['slow', 'med', 'fast']
+
+        # These are your 'safe' backups of the full dataset
+        original_gt_ann = copy.deepcopy(self.vid_to_coco['annotations'])
+        original_gt_img = copy.deepcopy(self.vid_to_coco['images'])
+        motion_results += f"Total N: {len(data_list)}\n"
+        for cat in categories:
+            # CRITICAL FIX: Always pass the FULL image list (original_gt_img)
+            subset_dt, subset_gt, subset_imgs = self.filter_by_motion(
+                data_list, original_gt_ann, original_gt_img, cat
+            )
+
+            #logger.info(f"Group {cat}: Images found: {len(subset_imgs)}, GT found: {len(subset_gt)}")
+
+            if not subset_gt:
+                motion_results += f"Group {cat.upper()}: No ground truth data found.\n"
+                continue
+
+            # These temporary overrides are now safe for calculate_subset_metrics
+            self.vid_to_coco['annotations'] = subset_gt
+            self.vid_to_coco['images'] = subset_imgs
+
+            mAP, mAP50 = self.calculate_subset_metrics(subset_dt, subset_gt, subset_imgs)
+            motion_results += f"Group {cat.upper()}: mAP@50:95={mAP:.4f}, mAP@50={mAP50:.4f} N: {len(subset_dt)}\n"
+
+        # Restore the master lists for the next evaluation epoch
+        self.vid_to_coco['annotations'] = original_gt_ann
+        self.vid_to_coco['images'] = original_gt_img
+
+        return motion_results
+
+    def filter_by_degradation(self, data_list, gt_annotations, all_images, group_name):
+        subset_imgs = [
+            img for img in all_images
+            if img.get('degradation_group') == group_name
+        ]
+        valid_image_ids = {img['id'] for img in subset_imgs}
+        filtered_dt = [dt for dt in data_list if dt['image_id'] in valid_image_ids]
+        filtered_gt = [gt for gt in gt_annotations if gt['image_id'] in valid_image_ids]
+        return filtered_dt, filtered_gt, subset_imgs
+
+    def evaluate_degradation_subsets(self, data_list):
+        degradation_results = "----Degradation Evaluation Results ---\n"
+        categories = ['clean', 'blur']
+
+        original_gt_ann = copy.deepcopy(self.vid_to_coco['annotations'])
+        original_gt_img = copy.deepcopy(self.vid_to_coco['images'])
+        degradation_results += f"Total N: {len(data_list)}\n"
+        for cat in categories:
+            subset_dt, subset_gt, subset_imgs = self.filter_by_degradation(
+                data_list, original_gt_ann, original_gt_img, cat
+            )
+
+            if not subset_gt:
+                degradation_results += f"Group {cat.upper()}: No ground truth data found.\n"
+                continue
+
+            self.vid_to_coco['annotations'] = subset_gt
+            self.vid_to_coco['images'] = subset_imgs
+
+            mAP, mAP50 = self.calculate_subset_metrics(subset_dt, subset_gt, subset_imgs)
+            degradation_results += f"Group {cat.upper()}: mAP@50:95={mAP:.4f}, mAP@50={mAP50:.4f} N: {len(subset_dt)}\n"
+
+        self.vid_to_coco['annotations'] = original_gt_ann
+        self.vid_to_coco['images'] = original_gt_img
+
+        return degradation_results
+
+    def convert_to_coco_format(self, outputs, info_imgs, labels, paths):
         data_list = []
         label_list = []
         frame_now = 0
 
-        for (output, info_img, _label) in zip(
-                outputs, info_imgs, labels
+        for (output, info_img, _label, full_path) in zip(
+                outputs, info_imgs, labels, paths
         ):
             # if frame_now>=self.lframe: break
             scale = min(
@@ -594,6 +758,16 @@ class VIDEvaluator:
             bboxes_label /= scale
             bboxes_label = xyxy2xywh(bboxes_label)
             cls_label = _label[:, 0]
+            # Build path_key for degradation lookup
+            parts = full_path.replace("\\", "/").split("/")
+
+            # parts[-2] is the video name
+            # parts[-1] is the filename (e.g., '000084.JPEG')
+            video_name = parts[-2]
+            frame_name = os.path.splitext(parts[-1])[0]
+            path_key = f"{video_name}/{frame_name}"
+            motion_group = self.motion_metadata.get(path_key, "slow")
+            degradation_group = self.degradation_map.get(path_key, "clean")
             for ind in range(bboxes_label.shape[0]):
                 label_pred_data = {
                     "image_id": int(self.id),
@@ -602,11 +776,18 @@ class VIDEvaluator:
                     "segmentation": [],
                     'id': self.box_id,
                     "iscrowd": 0,
-                    'area': int(bboxes_label[ind][2] * bboxes_label[ind][3])
+                    'area': int(bboxes_label[ind][2] * bboxes_label[ind][3]),
+                    'motion_group': motion_group,
+                    'degradation_group': degradation_group,
                 }  # COCO json format
                 self.box_id = self.box_id + 1
                 label_list.append(label_pred_data)
-            self.vid_to_coco['images'].append({'id': self.id})
+            self.vid_to_coco['images'].append({
+                'id': self.id,
+                'file_name': path_key,
+                'motion_group': motion_group,
+                'degradation_group': degradation_group,
+            })
 
             if output is None:
                 self.id = self.id + 1
@@ -629,6 +810,8 @@ class VIDEvaluator:
                     "bbox": bboxes[ind].numpy().tolist(),
                     "score": scores[ind].numpy().item(),
                     "segmentation": [],
+                    'motion_group': motion_group,
+                    'degradation_group': degradation_group,
                 }  # COCO json format
                 data_list.append(pred_data)
             self.id = self.id + 1

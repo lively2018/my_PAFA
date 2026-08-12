@@ -19,6 +19,7 @@ from yolox.utils import configure_nccl, configure_omp, get_num_devices
 from yolox.data.data_augment import Vid_Val_Transform
 from yolox.data.datasets import vid
 
+from eval_molrp import compute_molrp, VID_CLASSES
 
 def make_parser():
     parser = argparse.ArgumentParser("YOLOX train parser")
@@ -119,6 +120,30 @@ def make_parser():
                         help='log per-frame aggregation/memory-bank timings')
     parser.add_argument('--diverse_threshold', default=0.3, type=float, help='threshold for diverse sampling')
 
+    parser.add_argument(
+        "--motion_speed_eval",
+        dest="motion_speed_eval",
+        default=False,
+        action="store_true",
+        help="evalutating motion speed",
+    )
+    parser.add_argument(
+        "--motion_blur_eval",
+        dest="motion_blur_eval",
+        default=False,
+        action="store_true",
+        help="additionally report mAP separately for clean frames and motion-blur-degraded frames",
+    )
+    parser.add_argument(
+        "--lrp",
+        dest="lrp_eval",
+        default=False,
+        action="store_true",
+        help="also compute moLRP (and its IoU/FP/FN components) after evaluation",
+    )
+    parser.add_argument(
+        "--lrp_tau", type=float, default=0.5, help="IoU matching threshold for moLRP"
+    )
     return parser
 
 
@@ -198,3 +223,11 @@ if __name__ == "__main__":
         dist_url=dist_url,
         args=(exp, args),
     )
+
+    if args.lrp_eval:
+        # matches VIDEvaluator.evaluate_prediction's fixed dump paths for the
+        # (non-"ori") refined GT/detections of the run that just finished
+        compute_molrp(
+            "./gt_refined.json", "./refined_pred.json", exp.num_classes,
+            tau=args.lrp_tau, class_names=VID_CLASSES[:exp.num_classes],
+        )

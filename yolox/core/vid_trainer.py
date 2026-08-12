@@ -455,7 +455,9 @@ class Trainer:
             val_loader=self.val_loader
         )
         summary = self.exp.eval(
-            evalmodel, self.evaluator, self.is_distributed, self.amp_training
+            evalmodel, self.evaluator, self.is_distributed, self.amp_training,
+            motion_speed_eval=getattr(self.args, "motion_speed_eval", False),
+            motion_blur_eval=getattr(self.args, "motion_blur_eval", False),
         )
         self.model.train()
         if self.rank == 0:

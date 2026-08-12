@@ -146,6 +146,10 @@ class Exp(BaseExp):
         # name of annotation file for training
         self.vid_train_path = './yolox/data/datasets/train_seq.npy'
         self.vid_val_path = './yolox/data/datasets/val_seq.npy'
+        # path to motion speed metadata json for per-group mAP evaluation
+        self.motion_metadata_path = "./vid_motion_metadata.json"
+        # path to motion blur metadata json for per-group mAP evaluation
+        self.blur_metadata_path = "./motion_blur_metadata.json"
         # path to vid name list
 
         # --------------- transform config ----------------- #
@@ -484,7 +488,23 @@ class Exp(BaseExp):
 
     # rewrite evaluation func
     def get_evaluator(self, val_loader):
+        import json
         from yolox.evaluators.vid_evaluator_v2 import VIDEvaluator
+
+        motion_metadata = {}
+        if os.path.isfile(self.motion_metadata_path):
+            with open(self.motion_metadata_path, 'r') as f:
+                motion_metadata = json.load(f)
+
+        blur_map = {}
+        if os.path.isfile(self.blur_metadata_path):
+            with open(self.blur_metadata_path, 'r') as f:
+                blur_entries = json.load(f)
+            for entry in blur_entries:
+                parts = entry['file_name'].replace("\\", "/").split("/")
+                video_name = parts[-2]
+                frame_name = os.path.splitext(parts[-1])[0]
+                blur_map[f"{video_name}/{frame_name}"] = entry['degradation_group']
 
         # val_loader = self.get_eval_loader(batch_size, is_distributed, testdev, legacy)
         evaluator = VIDEvaluator(
@@ -496,6 +516,8 @@ class Exp(BaseExp):
             lframe=self.lframe_val,
             gframe=self.gframe_val,
             first_only = False,
+            motion_metadata=motion_metadata,
+            blur_map=blur_map,
         )
         return evaluator
 
@@ -505,5 +527,8 @@ class Exp(BaseExp):
         # NOTE: trainer shouldn't be an attribute of exp object
         return trainer
 
-    def eval(self, model, evaluator, is_distributed, half=False):
-        return evaluator.evaluate(model, is_distributed, half)
+    def eval(self, model, evaluator, is_distributed, half=False, motion_speed_eval=False, motion_blur_eval=False):
+        return evaluator.evaluate(
+            model, is_distributed, half,
+            motion_speed_eval=motion_speed_eval, motion_blur_eval=motion_blur_eval,
+        )
