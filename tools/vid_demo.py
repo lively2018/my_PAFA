@@ -100,6 +100,15 @@ def make_parser():
     parser.add_argument('--repp_cfg', default='./tools/yolo_repp_cfg.json' ,help='repp cfg filename', type=str)
     parser.add_argument("--format", default="video", type=str, help="input format files or video")
     parser.add_argument('--save_annotation', default=True)
+    parser.add_argument('--m_conf', default=[0, 0, 0], type=float, nargs=3, metavar=('P3', 'P4', 'P5'),
+                        help='per-level minimum conf score for selecting reference features (P3 P4 P5)')
+    parser.add_argument('--memory_length', default=[4800, 4800, 4800], type=int, nargs=3, metavar=('P3', 'P4', 'P5'),
+                        help='per-level features memory size (P3 P4 P5)')
+    parser.add_argument('--key_length', default=[480, 480, 480], type=int, nargs=3, metavar=('P3', 'P4', 'P5'),
+                        help='per-level features key length (P3 P4 P5)')
+    parser.add_argument('--updating_policy', default='random', type=str, help="updating policy for memory")
+    parser.add_argument('-loss_type', '--loss_type', default='iou', type=str, help='loss function type')
+    parser.add_argument('--diverse_threshold', default=0.3, type=float, help='threshold for diverse sampling')
     return parser
 
 
@@ -233,6 +242,8 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
     for (output,img, file_name) in zip(outputs,ori_frames[:len(outputs)],file_names):
         if args.post:
             ratio = 1
+        if output is None:
+            continue
         result_frame = predictor.visual(output,img,ratio,cls_conf=args.conf,color_idx=12)
         bboxes = output[:, 0:4]
         cls = output[:, 6].unsqueeze(1)
@@ -373,6 +384,12 @@ def main(exp, args):
         exp.nmsthre = args.nms
     if args.tsize is not None:
         exp.test_size = (args.tsize, args.tsize)
+    exp.m_conf = args.m_conf
+    exp.memory_length = args.memory_length
+    exp.key_length = args.key_length
+    exp.updating_policy = args.updating_policy
+    exp.loss_type = args.loss_type
+    exp.diverse_threshold = args.diverse_threshold
 
     model = exp.get_model()
     logger.info("Model Summary: {}".format(get_model_info(model, exp.test_size)))
