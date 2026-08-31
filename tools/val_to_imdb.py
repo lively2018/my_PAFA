@@ -205,7 +205,8 @@ class Predictor(object):
             pred_res.append(pred)
         return pred_res
 
-    def visual(self, output, img, ratio, cls_conf=0.0, color_idx=None):
+    def visual(self, output, img, ratio, cls_conf=0.0, color_idx=None, gt_boxes=None, text_pos="top-left",
+               one_class=False, font_size=0.4):
 
         if output is None:
             return img
@@ -217,7 +218,8 @@ class Predictor(object):
         cls = output[:, 6]
         scores = output[:, 4] * output[:, 5]
 
-        vis_res = vis(img, bboxes, scores, cls, cls_conf, self.cls_names, color_idx=color_idx)
+        vis_res = vis(img, bboxes, scores, cls, cls_conf, self.cls_names, t_size=font_size, color_idx=color_idx,
+                      gt_boxes=gt_boxes, text_pos=text_pos, one_class=one_class)
         return vis_res
 
     def convert_to_post(self,pred_res,ratio,img_size):

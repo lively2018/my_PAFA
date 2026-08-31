@@ -24,6 +24,7 @@ import json
 import REPP
 import numpy as np
 from collections import OrderedDict
+from xml.dom import minidom
 
 IMAGE_EXT = [".jpg", ".jpeg", ".webp", ".bmp", ".png",".JPEG"]
 
@@ -109,7 +110,40 @@ def make_parser():
     parser.add_argument('--updating_policy', default='random', type=str, help="updating policy for memory")
     parser.add_argument('-loss_type', '--loss_type', default='iou', type=str, help='loss function type')
     parser.add_argument('--diverse_threshold', default=0.3, type=float, help='threshold for diverse sampling')
+    parser.add_argument('--draw_gt', default=False, action="store_true",
+                        help="draw ground-truth bounding boxes (no class label text) on the saved images, "
+                             "read from the ILSVRC VID XML annotations next to the input images")
+    parser.add_argument('--text_pos', default='top-left', type=str,
+                        choices=['top-left', 'bottom-left', 'top-right', 'bottom-right', 'center'],
+                        help="corner (or center) of the predicted box where the label text is drawn")
+    parser.add_argument('--one_class', default=False, action="store_true",
+                        help="for each predicted class, draw only the detection with the highest IoU "
+                             "against the ground truth (requires --draw_gt); other detections of that "
+                             "class above --conf are dropped")
+    parser.add_argument('--font_size', default=0.4, type=float,
+                        help="font scale of the predicted label text")
     return parser
+
+
+def get_gt_boxes(image_path):
+    xml_path = os.path.splitext(image_path)[0].replace("Data", "Annotations") + ".xml"
+    if not os.path.exists(xml_path):
+        return []
+    root = minidom.parse(xml_path).documentElement
+    boxes = []
+    for obj in root.getElementsByTagName("object"):
+        xmin = int(obj.getElementsByTagName("xmin")[0].firstChild.data)
+        ymin = int(obj.getElementsByTagName("ymin")[0].firstChild.data)
+        xmax = int(obj.getElementsByTagName("xmax")[0].firstChild.data)
+        ymax = int(obj.getElementsByTagName("ymax")[0].firstChild.data)
+        boxes.append((xmin, ymin, xmax, ymax))
+    return boxes
+
+
+def draw_gt_boxes(img, boxes, color=(0, 0, 255), thickness=2):
+    for x1, y1, x2, y2 in boxes:
+        cv2.rectangle(img, (x1, y1), (x2, y2), color, thickness)
+    return img
 
 
 def get_image_list(path):
@@ -239,12 +273,16 @@ def imagedir_demo(predictor, vis_folder, current_time, args,exp):
 
     logger.info("Saving detection result in {}".format(img_save_path))
     img_anno_res = {}
-    for (output,img, file_name) in zip(outputs,ori_frames[:len(outputs)],file_names):
+    for (output,img, file_name, file_path) in zip(outputs,ori_frames[:len(outputs)],file_names,files):
         if args.post:
             ratio = 1
         if output is None:
             continue
-        result_frame = predictor.visual(output,img,ratio,cls_conf=args.conf,color_idx=12)
+        gt_boxes = get_gt_boxes(file_path) if args.draw_gt else None
+        result_frame = predictor.visual(output,img,ratio,cls_conf=args.conf,color_idx=12,gt_boxes=gt_boxes,
+                                         text_pos=args.text_pos,one_class=args.one_class,font_size=args.font_size)
+        if args.draw_gt:
+            result_frame = draw_gt_boxes(result_frame, gt_boxes)
         bboxes = output[:, 0:4]
         cls = output[:, 6].unsqueeze(1)
         scores = (output[:, 4] * output[:, 5]).unsqueeze(1)
