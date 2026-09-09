@@ -20,6 +20,55 @@ __all__ = [
 ]
 
 
+def _profile_video_aggregators(model: nn.Module, tsize: Sequence[int]):
+    """
+    Params/FLOPs for the per-level memory cross-attention aggregators
+    (head.aggregator_p3/p4/p5), profiled standalone.
+
+    The main get_model_info() forward pass always profiles a single dummy
+    frame, which is exactly the condition yolovp_msa.py uses to mean
+    "no memory bank yet" (need_aggregation=False), so those aggregators'
+    forward() never runs there and thop's forward-hook-based counters never
+    see them. Even a forced multi-frame dummy pass wouldn't help: the dummy
+    image is all zeros, so detection would yield no candidates, the memory
+    bank would stay empty, and MemoryCrossAggregator.forward() short-circuits
+    on an empty memory bank too. So they're profiled in isolation here, with
+    a synthetically populated memory bank standing in for a warmed-up one.
+    """
+    if not torch.cuda.is_available():
+        return 0.0, 0.0
+
+    head = getattr(model, "head", None)
+    strides = getattr(head, "strides", None)
+    if head is None or strides is None:
+        return 0.0, 0.0
+
+    total_flops, total_params = 0.0, 0.0
+    for level, name in enumerate(("aggregator_p3", "aggregator_p4", "aggregator_p5")):
+        aggregator = getattr(head, name, None)
+        if aggregator is None or level >= len(strides):
+            continue
+
+        key_length = aggregator.memory_bank.key_length
+        if key_length <= 0:
+            continue
+
+        dim = aggregator.layers[0].attn.q_proj.in_features
+        stride_this_level = strides[level]
+        n_curr = max(1, tsize[0] // stride_this_level) * max(1, tsize[1] // stride_this_level)
+
+        agg = deepcopy(aggregator).cuda()
+        agg.reset_memory_bank()
+        agg.init_memory_bank(torch.zeros(key_length, dim, device="cuda"), None)
+        x_cur = torch.zeros(n_curr, dim, device="cuda")
+
+        f, p = profile(agg, inputs=(x_cur,), verbose=False)
+        total_flops += f
+        total_params += p
+
+    return total_flops, total_params
+
+
 def get_model_info(model: nn.Module, tsize: Sequence[int]) -> str:
     stride = 640
     img = torch.zeros((1, 3, stride, stride), device=next(model.parameters()).device)
@@ -30,6 +79,11 @@ def get_model_info(model: nn.Module, tsize: Sequence[int]) -> str:
     params /= 1e6
     flops /= 1e9
     flops *= tsize[0] * tsize[1] / stride / stride * 2  # Gflops
+
+    agg_flops, agg_params = _profile_video_aggregators(model, tsize)
+    params += agg_params / 1e6
+    flops += agg_flops / 1e9 * 2  # MACs -> FLOPs, same convention as above
+
     info = "Params: {:.2f}M, Gflops: {:.2f}".format(params, flops)
     return info
 
