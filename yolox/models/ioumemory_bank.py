@@ -21,7 +21,8 @@ class IoUMemoryBank(nn.Module):
                  max_length=4800, key_length=480,
                  sampling_policy='random', updating_policy='random',
                  diversity_iou_thresh=0.5, quality_upgrade_margin=0.1,
-                 candidate_diversity_metric='iou', diversity_sim_score_thresh=0.9,
+                 candidate_diversity_metric='iou',
+                 combined_score_alpha=0.5,
                  ):
         super().__init__()
         #kssong
@@ -33,9 +34,10 @@ class IoUMemoryBank(nn.Module):
         self.diversity_iou_thresh = diversity_iou_thresh
         self.quality_upgrade_margin = quality_upgrade_margin
         # which novelty signal to use when deciding whether a candidate is diverse
-        # enough to insert: 'iou' (bbox overlap) or 'sim_score' (feature cosine similarity)
+        # enough to insert: 'iou' (bbox overlap), 'sim_score' (feature cosine similarity),
+        # or 'combined_score' (alpha * sim_score + (1 - alpha) * iou)
         self.candidate_diversity_metric = candidate_diversity_metric
-        self.diversity_sim_score_thresh = diversity_sim_score_thresh
+        self.combined_score_alpha = combined_score_alpha
         #kssong
         self.feat = None
         self.feat_info = None
@@ -365,10 +367,13 @@ class IoUMemoryBank(nn.Module):
             room is made by evicting the lower-quality member of whichever same-class pair in
             memory currently has the highest mutual IoU.
           - 'sim_score': a candidate is inserted only if its feature is novel relative to
-            same-class entries already in memory (cosine similarity max < diversity_sim_score_thresh);
+            same-class entries already in memory (cosine similarity max < diversity_iou_thresh);
             otherwise it is dropped. When memory is full, room is made by evicting the
             lower-quality member of whichever same-class pair in memory currently has the
             highest mutual cosine similarity.
+          - 'combined_score': same as 'sim_score', but novelty is judged on a weighted
+            blend of both signals, combined = combined_score_alpha * sim_score +
+            (1 - combined_score_alpha) * iou, compared against diversity_iou_thresh.
         """
         if self.max_length == 0:
             return 0
@@ -406,6 +411,8 @@ class IoUMemoryBank(nn.Module):
                     continue
                 if self.candidate_diversity_metric == 'sim_score':
                     self._try_insert_candidate_sim_score(self.candidate_feat[cand_idx], cand_info)
+                elif self.candidate_diversity_metric == 'combined_score':
+                    self._try_insert_candidate_combined_score(self.candidate_feat[cand_idx], cand_info)
                 else:
                     self._try_insert_candidate(self.candidate_feat[cand_idx], cand_info)
 
@@ -516,7 +523,7 @@ class IoUMemoryBank(nn.Module):
             sims = F.cosine_similarity(cand_feat.view(1, -1), same_cls_feats, dim=1)
             sim_max = torch.max(sims).item()
 
-        if sim_max < self.diversity_sim_score_thresh:
+        if sim_max < self.diversity_iou_thresh:
             # Novel feature relative to existing same-class memory -> insert (evicting if full).
             if len(self.feat) >= self.max_length:
                 if not self._evict_most_redundant_pair_sim_score():
@@ -544,6 +551,77 @@ class IoUMemoryBank(nn.Module):
             sim_val = sims[a_local, b_local].item()
             if sim_val > best_sim:
                 best_sim, best_pair = sim_val, (idxs[a_local], idxs[b_local])
+
+        if best_pair is None:
+            return False
+
+        a_j, b_j = best_pair
+        q_a = self.feat_info[a_j].get('iou_score', 0.0)
+        q_b = self.feat_info[b_j].get('iou_score', 0.0)
+        evict_j = a_j if q_a <= q_b else b_j
+        self._remove_slot(evict_j)
+        return True
+
+    def _try_insert_candidate_combined_score(self, cand_feat, cand_info):
+        """Diversity-based insertion using a weighted blend of feature cosine similarity
+        and bbox IoU as the novelty signal: combined = alpha * sim_score + (1 - alpha) * iou."""
+        device, dtype = cand_feat.device, cand_feat.dtype
+        cand_bbox = cand_info['bbox']
+        if not isinstance(cand_bbox, torch.Tensor):
+            cand_bbox = torch.as_tensor(cand_bbox, dtype=dtype)
+        cand_bbox = cand_bbox.to(device=device, dtype=dtype).view(1, 4)
+        cand_cls = cand_info['cls_id']
+
+        if self.feat is None or len(self.feat) == 0:
+            # Empty memory: combined score is 0 by definition, so accept unconditionally.
+            self._append_slot(cand_feat, cand_info)
+            return
+
+        same_cls_idx = [j for j, info in enumerate(self.feat_info) if info.get('cls_id') == cand_cls]
+        if len(same_cls_idx) == 0:
+            combined_max = 0.0
+        else:
+            same_cls_feats = self.feat[same_cls_idx]
+            same_cls_bboxes = self._stack_bboxes([self.feat_info[j] for j in same_cls_idx], device, dtype)
+            sims = F.cosine_similarity(cand_feat.view(1, -1), same_cls_feats, dim=1)
+            ious = bboxes_iou(cand_bbox, same_cls_bboxes, xyxy=True)[0]
+            alpha = self.combined_score_alpha
+            combined = alpha * sims + (1 - alpha) * ious
+            combined_max = torch.max(combined).item()
+
+        if combined_max < self.diversity_iou_thresh:
+            # Novel relative to existing same-class memory -> insert (evicting if full).
+            if len(self.feat) >= self.max_length:
+                if not self._evict_most_redundant_pair_combined_score():
+                    return  # memory full and no redundant same-class pair to free up
+            self._append_slot(cand_feat, cand_info)
+        # else: redundant with existing memory -> drop the candidate.
+
+    def _evict_most_redundant_pair_combined_score(self):
+        """Find the same-class pair anywhere in memory with the highest mutual combined
+        score (alpha * cosine similarity + (1 - alpha) * IoU) and evict whichever of the
+        two has the lower predicted IoU quality, freeing one slot. Returns False if no
+        such same-class pair exists."""
+        buckets = {}
+        for j, info in enumerate(self.feat_info):
+            buckets.setdefault(info.get('cls_id'), []).append(j)
+
+        alpha = self.combined_score_alpha
+        best_score, best_pair = -1.0, None
+        for idxs in buckets.values():
+            if len(idxs) < 2:
+                continue
+            feats = F.normalize(self.feat[idxs], dim=1)
+            sims = feats @ feats.t()
+            bboxes = self._stack_bboxes([self.feat_info[j] for j in idxs], self.feat.device, self.feat.dtype)
+            ious = bboxes_iou(bboxes, bboxes, xyxy=True)
+            combined = alpha * sims + (1 - alpha) * ious
+            combined.fill_diagonal_(-1.0)
+            flat_idx = torch.argmax(combined).item()
+            a_local, b_local = divmod(flat_idx, len(idxs))
+            score_val = combined[a_local, b_local].item()
+            if score_val > best_score:
+                best_score, best_pair = score_val, (idxs[a_local], idxs[b_local])
 
         if best_pair is None:
             return False

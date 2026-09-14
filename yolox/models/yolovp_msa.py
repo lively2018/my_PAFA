@@ -59,6 +59,7 @@ class YOLOXHead(nn.Module):
             updating_policy="random",
             loss_type = "iou",
             diverse_threshold=0.5,
+            combined_score_alpha=0.5,
             **kwargs
     ):
         """
@@ -243,20 +244,28 @@ class YOLOXHead(nn.Module):
             key_length = [key_length, key_length, key_length]
         self.updating_policy = updating_policy
         self.diverse_threshold = diverse_threshold
-        # "diverse_sim_score" is a variant of the "diverse_iou" candidate-memory path that
-        # judges novelty by feature cosine similarity instead of bbox IoU (see IoUMemoryBank).
-        self.candidate_diversity_metric = "sim_score" if self.updating_policy == "diverse_sim_score" else "iou"
+        self.combined_score_alpha = combined_score_alpha
+        # "diverse_sim_score" and "diverse_combined_score" are variants of the "diverse_iou"
+        # candidate-memory path that judge novelty by feature cosine similarity, or by a
+        # weighted blend of cosine similarity and bbox IoU, instead of bbox IoU alone
+        # (see IoUMemoryBank).
+        if self.updating_policy == "diverse_sim_score":
+            self.candidate_diversity_metric = "sim_score"
+        elif self.updating_policy == "diverse_combined_score":
+            self.candidate_diversity_metric = "combined_score"
+        else:
+            self.candidate_diversity_metric = "iou"
         self.key_length_p3, self.key_length_p4, self.key_length_p5 = key_length[0], key_length[1], key_length[2]
 
         self.aggregator_p3 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p3, key_length=self.key_length_p3,\
                                             updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold,\
-                                            candidate_diversity_metric=self.candidate_diversity_metric)
+                                            candidate_diversity_metric=self.candidate_diversity_metric, combined_score_alpha=self.combined_score_alpha)
         self.aggregator_p4 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p4, key_length=self.key_length_p4,\
                                                 updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold,\
-                                                candidate_diversity_metric=self.candidate_diversity_metric)
+                                                candidate_diversity_metric=self.candidate_diversity_metric, combined_score_alpha=self.combined_score_alpha)
         self.aggregator_p5 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p5, key_length=self.key_length_p5,\
                                               updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold,\
-                                              candidate_diversity_metric=self.candidate_diversity_metric)
+                                              candidate_diversity_metric=self.candidate_diversity_metric, combined_score_alpha=self.combined_score_alpha)
         if m_conf is None:
             m_conf = [0, 0, 0]
         elif not hasattr(m_conf, '__len__'):
@@ -620,7 +629,7 @@ class YOLOXHead(nn.Module):
                 key_features_p3, key_features_p4, key_features_p5,\
                      key_feature_p3_info, key_feature_p4_info, key_feature_p5_info = self.select_level_key_feature_in_agg_x_feature(agg_x_flatten, pred_idx, pred_result)
                 # Update all level memory banks
-                if self.updating_policy in ("diverse_iou", "diverse_sim_score"):
+                if self.updating_policy in ("diverse_iou", "diverse_sim_score", "diverse_combined_score"):
                     self.aggregator_p3.pre_update_candidate_memory_bank(key_features_p3, key_feature_p3_info)
                     self.aggregator_p4.pre_update_candidate_memory_bank(key_features_p4, key_feature_p4_info)
                     self.aggregator_p5.pre_update_candidate_memory_bank(key_features_p5, key_feature_p5_info)
@@ -729,7 +738,7 @@ class YOLOXHead(nn.Module):
                 self.aggregator_p4.post_init_memory_bank(result)
                 self.aggregator_p5.post_init_memory_bank(result)
             else:
-                if self.updating_policy in ("diverse_iou", "diverse_sim_score"):
+                if self.updating_policy in ("diverse_iou", "diverse_sim_score", "diverse_combined_score"):
                     self.aggregator_p3.post_update_candidate_memory_bank(result)
                     self.aggregator_p4.post_update_candidate_memory_bank(result)
                     self.aggregator_p5.post_update_candidate_memory_bank(result)

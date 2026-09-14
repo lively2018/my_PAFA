@@ -107,7 +107,8 @@ class MemoryCrossAggregator(nn.Module):
     """
     def __init__(self, dim, num_heads=8, blocks=1, mlp_ratio=4.,
                  qkv_bias=False, dropout=0., attn_drop=0., drop_path=0., memory_length=4800, key_length=480, updating_policy="random", diverse_threshold=0.5,
-                 candidate_diversity_metric="iou", diversity_sim_score_thresh=0.9):
+                 candidate_diversity_metric="iou",
+                 combined_score_alpha=0.5):
         super().__init__()
         self.blocks = blocks
         self.layers = nn.ModuleList([
@@ -122,7 +123,8 @@ class MemoryCrossAggregator(nn.Module):
             ) for _ in range(blocks)
         ])
         self.memory_bank = IoUMemoryBank(max_length=memory_length, key_length=key_length, updating_policy=updating_policy, diversity_iou_thresh=diverse_threshold,
-                                          candidate_diversity_metric=candidate_diversity_metric, diversity_sim_score_thresh=diversity_sim_score_thresh)
+                                          candidate_diversity_metric=candidate_diversity_metric,
+                                          combined_score_alpha=combined_score_alpha)
     def reset_memory_bank(self):
         #logger.info("reset_memory_bank")
         self.memory_bank.reset()

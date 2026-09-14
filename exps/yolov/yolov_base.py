@@ -224,6 +224,7 @@ class Exp(BaseExp):
         self.loss_type = "iou"  # iou, giou, diou, ciou, l2 or bce
         self.profile_time = False  # log per-frame aggregation/memory-bank timings
         self.diverse_threshold = 0.3  # threshold for diverse sampling
+        self.combined_score_alpha = 0.5  # weight on sim_score vs iou for updating_policy="diverse_combined_score"
     def get_model(self):
         # rewrite get model func from yolox
         if self.backbone_name == 'MCSP':
@@ -299,6 +300,7 @@ class Exp(BaseExp):
                      'vid_cls':self.vid_cls,'vid_reg':self.vid_reg,'conf_sim_thresh':self.conf_sim_thresh,
                      'profile_time':self.profile_time,
                      'diverse_threshold':self.diverse_threshold,
+                     'combined_score_alpha':self.combined_score_alpha,
                      }
 
         head = YOLOXHead(self.num_classes, self.width, in_channels=in_channels, heads=self.head, drop=self.drop_rate,

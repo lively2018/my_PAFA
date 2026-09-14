@@ -119,6 +119,8 @@ def make_parser():
     parser.add_argument('--profile_time', default=False, action="store_true",
                         help='log per-frame aggregation/memory-bank timings')
     parser.add_argument('--diverse_threshold', default=0.3, type=float, help='threshold for diverse sampling')
+    parser.add_argument('--combined_score_alpha', default=0.5, type=float,
+                        help='weight on sim_score vs iou when updating_policy=diverse_combined_score')
 
     parser.add_argument(
         "--motion_speed_eval",
@@ -209,6 +211,7 @@ if __name__ == "__main__":
     exp.updating_policy = args.updating_policy
     exp.profile_time = args.profile_time
     exp.diverse_threshold = args.diverse_threshold
+    exp.combined_score_alpha = args.combined_score_alpha
     exp.m_conf = args.m_conf
     num_gpu = get_num_devices() if args.devices is None else args.devices
     assert num_gpu <= get_num_devices()
