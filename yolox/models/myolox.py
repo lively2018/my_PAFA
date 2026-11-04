@@ -6,6 +6,7 @@ import torch.nn as nn
 
 #kssong
 import torch
+import time
 def gpu_mem_usage():
     """
     Compute the GPU memory usage for the current device (MB).
@@ -30,7 +31,15 @@ class YOLOX(nn.Module):
     def forward(self, x, first, targets=None,nms_thresh=0.5,lframe=0,gframe=32):
         #print(f"Before YOLOX forward: {gpu_mem_usage():.0f}")
         # fpn output content features of [dark3, dark4, dark5]
+        # backbone+FPN timing for the head's [PROFILE] line (eval, profile_time=True only)
+        profile_time = (not self.training) and getattr(self.head, 'kwargs', {}).get('profile_time', False)
+        if profile_time:
+            torch.cuda.synchronize()
+            _t_bb0 = time.time()
         fpn_outs = self.backbone(x)
+        if profile_time:
+            torch.cuda.synchronize()
+            self.head.profile_backbone_ms = (time.time() - _t_bb0) * 1000
         #print(f"After backbone in YOLOX forward: {gpu_mem_usage():.0f}")
         if self.training:
             assert targets is not None

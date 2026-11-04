@@ -312,7 +312,36 @@ class YOLOXHead(nn.Module):
                 torch.cuda.synchronize()
             return time.time()
 
-        agg_time_total = 0.0
+        # Contiguous laps (eval only): each _lap(name) adds the time since the previous
+        # lap to prof[name], so the sections sum to the whole head forward.
+        prof_on = profile_time and not self.training
+        prof = {}
+        _t_last = [_tic() if prof_on else 0.0]
+
+        def _lap(name):
+            if prof_on:
+                now = _tic()
+                prof[name] = prof.get(name, 0.0) + (now - _t_last[0])
+                _t_last[0] = now
+
+        def _report():
+            if not prof_on:
+                return
+            order = ['head', 'aggregation', 'proposal_select', 'memory_update_pre',
+                     'msa_refine', 'nms', 'memory_update_post']
+            parts = []
+            bb = getattr(self, 'profile_backbone_ms', None)
+            total = 0.0
+            if bb is not None:
+                parts.append(f"backbone_fpn={bb:.2f}")
+                total += bb
+            for name in order:
+                if name in prof:
+                    ms = prof[name] * 1000
+                    parts.append(f"{name}={ms:.2f}")
+                    total += ms
+            logger.info(f"[PROFILE] frames={imgs.shape[0]} first={bool(first)} "
+                        + " ".join(parts) + f" total={total:.2f} ms")
 
         if self.training:
             for k, (cls_conv, cls_conv2, reg_conv, stride_this_level, x) in enumerate(
@@ -421,10 +450,9 @@ class YOLOXHead(nn.Module):
                 zip(self.cls_convs, self.cls_convs2, self.reg_convs, self.strides, xin)
         ):
             x = self.stems[k](x)
+            _lap('head')
 
             if need_aggregation:
-                if profile_time:
-                    _t_agg0 = _tic()
                 agg_feats = []
                 #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")
                 for x_one in x:
@@ -476,6 +504,7 @@ class YOLOXHead(nn.Module):
                 #logger.info(f"reg_feat.shape: {reg_feat.shape} reg_feat.type: {reg_feat.type}")
             else:
                 agg_x = x
+            _lap('aggregation')
             reg_feat = reg_conv(agg_x)
             cls_feat = cls_conv(agg_x)
             cls_feat2 = cls_conv2(agg_x)
@@ -484,8 +513,6 @@ class YOLOXHead(nn.Module):
             cls_feat_list.append(cls_feat)
             cls_feat2_list.append(cls_feat2)
             agg_x_list.append(agg_x)
-            if profile_time and need_aggregation:
-                agg_time_total += _tic() - _t_agg0
             # this part should be the same as the original model
             obj_output = self.obj_preds[k](reg_feat)
             reg_output = self.reg_preds[k](reg_feat)
@@ -531,10 +558,8 @@ class YOLOXHead(nn.Module):
                 before_nms_features.append(cls_feat2)
                 before_nms_regf.append(reg_feat)
             outputs_decode.append(output_decode)
+            _lap('head')
         self.hw = [x.shape[-2:] for x in outputs_decode]
-
-        if profile_time:
-            logger.info(f"[PROFILE] aggregation time: {agg_time_total * 1000:.2f} ms")
 
         outputs_decode = torch.cat([x.flatten(start_dim=2) for x in outputs_decode], dim=2
                                    ).permute(0, 2, 1)
@@ -568,13 +593,17 @@ class YOLOXHead(nn.Module):
                                                      topK=self.Afternum,
                                                      ota_idxs=ota_idxs,
                                                      )
+        _lap('proposal_select')
         #kssong
         #pred_result_file = open('./pred_result.txt', 'a')
         #pred_result_file.write(f'{len(pred_result), pred_result[0].shape}\n')
         #pred_result_file.close()
 
         if not self.training and imgs.shape[0] == 1:
-            return self.postprocess_single_img(pred_result, self.num_classes)
+            single_out = self.postprocess_single_img(pred_result, self.num_classes)
+            _lap('nms')
+            _report()
+            return single_out
 
 
 
@@ -591,12 +620,11 @@ class YOLOXHead(nn.Module):
         #reg_feat_flatten_file = open('./reg_feat_flatten.txt', 'a')
         #reg_feat_flatten_file.write(f'{reg_feat_flatten.shape}\n')
         #reg_feat_flatten_file.close()
+        _lap('head')
 
         if not self.training and need_aggregation:
             #half = len(pred_idx[1]) // 2
             #new_idx = [p[:half] for p in pred_idx]
-            if profile_time:
-                _t_upd0 = _tic()
             if first:
                 # reset all level memory banks
                 self.aggregator_p3.reset_memory_bank()
@@ -623,9 +651,7 @@ class YOLOXHead(nn.Module):
                     self.aggregator_p3.update_memory_bank(key_features_p3, key_feature_p3_info)
                     self.aggregator_p4.update_memory_bank(key_features_p4, key_feature_p4_info)
                     self.aggregator_p5.update_memory_bank(key_features_p5, key_feature_p5_info)
-
-            if profile_time:
-                logger.info(f"[PROFILE] update_memory_bank time: {(_tic() - _t_upd0) * 1000:.2f} ms")
+        _lap('memory_update_pre')
 
         (features_cls, features_reg, cls_scores,
          fg_scores, locs, all_scores) = self.find_feature_score(cls_feat_flatten,
@@ -690,6 +716,7 @@ class YOLOXHead(nn.Module):
             conf_output = torch.reshape(conf_output, [-1, self.Afternum])
         else:
             conf_output = None
+        _lap('msa_refine')
 
         if self.training:
             if self.both_mode:
@@ -716,8 +743,7 @@ class YOLOXHead(nn.Module):
                                              conf_output = conf_output,
                                              nms_thre=nms_thresh,
                                              )
-            if profile_time:
-                _t_post0 = _tic()
+            _lap('nms')
             if first:
                 self.aggregator_p3.post_init_memory_bank(result)
                 self.aggregator_p4.post_init_memory_bank(result)
@@ -731,8 +757,8 @@ class YOLOXHead(nn.Module):
                     self.aggregator_p3.post_update_memory_bank(result)
                     self.aggregator_p4.post_update_memory_bank(result)
                     self.aggregator_p5.post_update_memory_bank(result)
-            if profile_time:
-                logger.info(f"[PROFILE] post_update_memory_bank time: {(_tic() - _t_post0) * 1000:.2f} ms")
+            _lap('memory_update_post')
+            _report()
             return result, result_ori  # result
 
     def get_output_and_grid(self, output, k, stride, dtype):
