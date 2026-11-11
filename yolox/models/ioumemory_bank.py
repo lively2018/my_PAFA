@@ -37,6 +37,13 @@ class IoUMemoryBank(nn.Module):
         self.candidate_length = 0
         self.candidate_info = None
         self.candidate_feat = None
+        # Tensors mirroring feat_info's 'cls_id' / 'bbox' / 'iou_score', kept in sync at
+        # every self.feat_info mutation. Used only by the diverse-insertion fast path
+        # (_try_insert_candidate / _evict_most_redundant_pair) to avoid O(len(feat_info))
+        # Python loops over feat_info on every candidate/eviction.
+        self.cls_ids = None
+        self.bboxes = None
+        self.quality = None
 
         # self.aggregator = SelsaAggregator(in_channels)
 
@@ -49,7 +56,29 @@ class IoUMemoryBank(nn.Module):
         if self.feat_info is not None:
             del self.feat_info
         self.feat_info = None
+        self.cls_ids = None
+        self.bboxes = None
+        self.quality = None
         return 0, 0
+
+    def _rebuild_parallel_tensors(self):
+        """Rebuild cls_ids / bboxes / quality from feat_info. Called only at low-frequency
+        points (video init, first-frame refinement) -- the hot path (_try_insert_candidate,
+        _append_slot, _remove_slot, _evict_most_redundant_pair) updates these incrementally
+        instead of calling this."""
+        if self.feat is None or self.feat_info is None or len(self.feat_info) == 0:
+            self.cls_ids = None
+            self.bboxes = None
+            self.quality = None
+            return
+        device, dtype = self.feat.device, self.feat.dtype
+        self.cls_ids = torch.as_tensor(
+            [info.get('cls_id', -1) for info in self.feat_info], device=device, dtype=torch.long
+        )
+        self.bboxes = self._stack_bboxes(self.feat_info, device, dtype)
+        self.quality = torch.as_tensor(
+            [info.get('iou_score', 0.0) for info in self.feat_info], device=device, dtype=dtype
+        )
 
     def init_memory(self, feat, feat_info):
         """
@@ -83,6 +112,7 @@ class IoUMemoryBank(nn.Module):
             update_length = len(feat)
         #print(f"init_memory, memory bank max size: {self.max_length}, memory_bank key size: {self.key_length}")
         self.update_length = update_length
+        self._rebuild_parallel_tensors()
         return len(self.feat), update_length
 
     def sample(self):
@@ -343,6 +373,7 @@ class IoUMemoryBank(nn.Module):
                     self.feat = new_feat_combined
                     del self.feat_info
                     self.feat_info = new_feat_info_combined
+            self._rebuild_parallel_tensors()
 
     def post_update_candidate_memory(self, result):
         """
@@ -412,14 +443,20 @@ class IoUMemoryBank(nn.Module):
             self._append_slot(cand_feat, cand_info)
             return
 
-        same_cls_idx = [j for j, info in enumerate(self.feat_info) if info.get('cls_id') == cand_cls]
-        if len(same_cls_idx) == 0:
+        # Vectorized equivalent of scanning feat_info in Python for same-class slots:
+        # cls_ids/bboxes are tensors kept in sync with feat_info (see _append_slot,
+        # _remove_slot, _rebuild_parallel_tensors), so this is a single masked index
+        # instead of an O(len(feat_info)) Python loop + per-call tensor rebuild.
+        same_mask = self.cls_ids == cand_cls
+        if not same_mask.any():
             iou_max, best_j = 0.0, None
         else:
-            same_cls_bboxes = self._stack_bboxes([self.feat_info[j] for j in same_cls_idx], device, dtype)
+            same_cls_bboxes = self.bboxes[same_mask].to(device=device, dtype=dtype)
             ious = bboxes_iou(cand_bbox, same_cls_bboxes, xyxy=True)[0]
             best_iou, best_local = torch.max(ious, dim=0)
-            iou_max, best_j = best_iou.item(), same_cls_idx[best_local.item()]
+            same_cls_idx = same_mask.nonzero(as_tuple=True)[0]
+            best_j = same_cls_idx[best_local].item()
+            iou_max = best_iou.item()
 
         if best_j is None or iou_max < self.diversity_iou_thresh:
             # Goal 1: spatially novel candidate -> insert (evicting if memory is full).
@@ -430,53 +467,74 @@ class IoUMemoryBank(nn.Module):
         else:
             # Redundant with an existing slot: upgrade it in place if the candidate is
             # clearly higher quality, otherwise drop the candidate.
-            best_q = self.feat_info[best_j].get('iou_score', 0.0)
+            best_q = self.quality[best_j].item()
             if cand_q > best_q + self.quality_upgrade_margin:
                 self.feat[best_j] = cand_feat.detach().clone()
                 self.feat_info[best_j] = cand_info
+                self.bboxes[best_j] = cand_bbox.view(4).to(self.bboxes.dtype)
+                self.quality[best_j] = cand_q
+                # cls_ids[best_j] unchanged: best_j was matched by same class already.
 
     def _append_slot(self, feat_row, info):
         feat_row = feat_row.detach().clone().to('cuda').view(1, -1)
+        cls_val = info.get('cls_id', -1)
+        q_val = info.get('iou_score', 0.0)
+        bbox_val = info['bbox']
+        if not isinstance(bbox_val, torch.Tensor):
+            bbox_val = torch.as_tensor(bbox_val)
+        bbox_val = bbox_val.to(device=feat_row.device, dtype=feat_row.dtype).view(1, 4)
         if self.feat is None:
             self.feat = feat_row
             self.feat_info = [info]
+            self.cls_ids = torch.as_tensor([cls_val], device=feat_row.device, dtype=torch.long)
+            self.bboxes = bbox_val
+            self.quality = torch.as_tensor([q_val], device=feat_row.device, dtype=feat_row.dtype)
         else:
             self.feat = torch.cat([self.feat, feat_row], dim=0)
             self.feat_info.append(info)
+            self.cls_ids = torch.cat([
+                self.cls_ids, torch.as_tensor([cls_val], device=self.cls_ids.device, dtype=torch.long)
+            ])
+            self.bboxes = torch.cat([self.bboxes, bbox_val.to(self.bboxes.dtype)], dim=0)
+            self.quality = torch.cat([
+                self.quality, torch.as_tensor([q_val], device=self.quality.device, dtype=self.quality.dtype)
+            ])
 
     def _remove_slot(self, idx):
         keep_mask = torch.ones(len(self.feat), dtype=torch.bool, device=self.feat.device)
         keep_mask[idx] = False
         self.feat = self.feat[keep_mask]
         del self.feat_info[idx]
+        self.cls_ids = self.cls_ids[keep_mask]
+        self.bboxes = self.bboxes[keep_mask]
+        self.quality = self.quality[keep_mask]
 
     def _evict_most_redundant_pair(self):
         """Goal 2: find the same-class pair anywhere in memory with the highest mutual
         spatial IoU and evict whichever of the two has the lower predicted IoU quality,
-        freeing one slot. Returns False if no such same-class pair exists."""
-        buckets = {}
-        for j, info in enumerate(self.feat_info):
-            buckets.setdefault(info.get('cls_id'), []).append(j)
+        freeing one slot. Returns False if no such same-class pair exists.
 
-        best_iou, best_pair = -1.0, None
-        for idxs in buckets.values():
-            if len(idxs) < 2:
-                continue
-            bboxes = self._stack_bboxes([self.feat_info[j] for j in idxs], self.feat.device, self.feat.dtype)
-            ious = bboxes_iou(bboxes, bboxes, xyxy=True)
-            ious.fill_diagonal_(-1.0)
-            flat_idx = torch.argmax(ious).item()
-            a_local, b_local = divmod(flat_idx, len(idxs))
-            iou_val = ious[a_local, b_local].item()
-            if iou_val > best_iou:
-                best_iou, best_pair = iou_val, (idxs[a_local], idxs[b_local])
-
-        if best_pair is None:
+        Vectorized equivalent of the original per-class-bucket loop: computing one global
+        [N, N] IoU matrix masked to same-class, off-diagonal pairs and taking its argmax
+        gives the same (highest cross-bucket IoU) pair the original found by scanning each
+        class bucket's local argmax and keeping the best across buckets.
+        """
+        n = len(self.feat)
+        if n < 2:
+            return False
+        same_cls = self.cls_ids.unsqueeze(0) == self.cls_ids.unsqueeze(1)
+        eye = torch.eye(n, dtype=torch.bool, device=same_cls.device)
+        mask = same_cls & ~eye
+        if not mask.any():
             return False
 
-        a_j, b_j = best_pair
-        q_a = self.feat_info[a_j].get('iou_score', 0.0)
-        q_b = self.feat_info[b_j].get('iou_score', 0.0)
+        ious = bboxes_iou(self.bboxes, self.bboxes, xyxy=True)
+        ious_masked = ious.masked_fill(~mask, -1.0)
+        flat_idx = torch.argmax(ious_masked).item()
+        a_j, b_j = divmod(flat_idx, n)
+
+        q_a = self.quality[a_j].item()
+        q_b = self.quality[b_j].item()
         evict_j = a_j if q_a <= q_b else b_j
         self._remove_slot(evict_j)
         return True
