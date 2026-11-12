@@ -118,6 +118,9 @@ def make_parser():
     parser.add_argument('--profile_time', default=False, action="store_true",
                         help='log per-frame aggregation/memory-bank timings')
     parser.add_argument('--diverse_threshold', default=0.3, type=float, help='threshold for diverse sampling')
+    parser.add_argument('--topk', default=None, type=int,
+                        help='K: proposals kept per frame after IoU-ranked NMS (exp.defualt_p, default 30); '
+                             'used for aggregation and as memory-update candidates')
 
     return parser
 
@@ -142,6 +145,9 @@ def main(exp, args):
     gframe = int(args.gframe)
     exp.vid_val_path = args.path
     exp.m_conf = args.m_conf
+    if args.topk is not None:
+        exp.defualt_p = args.topk
+    logger.info(f'topk (defualt_p): {exp.defualt_p}')
 #    dataset_val = vid.VIDDataset(file_path='./yolox/data/datasets/val_seq.npy',
 #                                 img_size=(args.tsize, args.tsize), preproc=Vid_Val_Transform(), lframe=lframe,
 #                                 gframe=gframe, val=True,mode=args.mode,dataset_pth=exp.data_dir,tnum=int(args.tnum),
