@@ -109,6 +109,9 @@ def make_parser():
                         help='per-level features key length (P3 P4 P5)')
     parser.add_argument('--updating_policy', default='random', type=str, help="updating policy for memory")
     parser.add_argument('--loss_type', default="iou", type=str, help='loss function type')
+    parser.add_argument('--topk', default=None, type=int,
+                        help='K: proposals kept per frame after IoU-ranked NMS (exp.defualt_p, default 30); '
+                             'used for aggregation and as memory-update candidates in training and validation')
     parser.add_argument('--diverse_threshold', default=0.3, type=float, help='threshold for diverse sampling')
     return parser
 
@@ -158,6 +161,9 @@ if __name__ == "__main__":
     exp.nmsthre = args.nms
     exp.pre_nms = args.pre_nms
     exp.diverse_threshold = args.diverse_threshold
+    if args.topk is not None:
+        exp.defualt_p = args.topk
+    logger.info(f'topk (defualt_p): {exp.defualt_p}')
     num_gpu = get_num_devices() if args.devices is None else args.devices
     assert num_gpu <= get_num_devices()
     args.machine_rank = 1
