@@ -59,6 +59,7 @@ class YOLOXHead(nn.Module):
             updating_policy="random",
             loss_type = "iou",
             diverse_threshold=0.5,
+            selection_criterion="iou",
             **kwargs
     ):
         """
@@ -243,6 +244,12 @@ class YOLOXHead(nn.Module):
             key_length = [key_length, key_length, key_length]
         self.updating_policy = updating_policy
         self.diverse_threshold = diverse_threshold
+        # E2 ablation: score used to rank/admit top-K candidates in postpro_woclass.
+        # "iou" (default) = predicted IoU, matches submitted model. "cls_conf" = classification
+        # confidence, the B5 contrastive baseline. Does not affect the IoU head's own prediction
+        # (detections[:, 7]), which memory eviction/quality still relies on regardless of this flag.
+        assert selection_criterion in ("iou", "cls_conf"), f"unsupported selection_criterion: {selection_criterion}"
+        self.selection_criterion = selection_criterion
         self.key_length_p3, self.key_length_p4, self.key_length_p5 = key_length[0], key_length[1], key_length[2]
 
         self.aggregator_p3 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p3, key_length=self.key_length_p3,\
@@ -1484,17 +1491,27 @@ class YOLOXHead(nn.Module):
                 output_index[i] = topk_idx
                 continue
 
-            # Pre-NMS: keep top-Prenum candidates ranked by predicted IoU
-            iou_score = detections[:, 7]
-            pre_n = min(self.Prenum, iou_score.shape[0])
-            top_pre = torch.topk(iou_score, k=pre_n)
+            # Pre-NMS: keep top-Prenum candidates ranked by the selection criterion (E2 ablation).
+            # "iou" (default) = predicted IoU (column 7, matches submitted model).
+            # "cls_conf" = classification confidence (column 5, B5 contrastive baseline).
+            # Column 7 itself is left untouched either way, so downstream memory quality/eviction
+            # (which reads the IoU head's prediction directly) is unaffected by this flag.
+            if self.selection_criterion == "cls_conf":
+                sel_score = detections[:, 5]
+                nms_score_col = 5
+            else:
+                sel_score = detections[:, 7]
+                nms_score_col = 7
+            pre_n = min(self.Prenum, sel_score.shape[0])
+            top_pre = torch.topk(sel_score, k=pre_n)
             sort_idx = top_pre.indices[:pre_n]
             detections_temp = detections[sort_idx, :]
 
-            # NMS ranked by predicted IoU (disentangled ranking); cls scores replaced by fc_output downstream
+            # NMS ranked by the same selection criterion (disentangled ranking); cls scores
+            # replaced by fc_output downstream
             nms_out_index = torchvision.ops.batched_nms(
                 detections_temp[:, :4],
-                detections_temp[:, 7],
+                detections_temp[:, nms_score_col],
                 detections_temp[:, 6],
                 nms_thre,
             )

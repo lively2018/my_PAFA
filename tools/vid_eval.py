@@ -118,6 +118,8 @@ def make_parser():
     parser.add_argument('--profile_time', default=False, action="store_true",
                         help='log per-frame aggregation/memory-bank timings')
     parser.add_argument('--diverse_threshold', default=0.3, type=float, help='threshold for diverse sampling')
+    parser.add_argument('--selection_criterion', default='iou', type=str, choices=['iou', 'cls_conf'],
+                        help="top-K admission score: iou (ours) or cls_conf (E2 baseline)")
 
     return parser
 
@@ -184,6 +186,7 @@ if __name__ == "__main__":
     exp.updating_policy = args.updating_policy
     exp.profile_time = args.profile_time
     exp.diverse_threshold = args.diverse_threshold
+    exp.selection_criterion = args.selection_criterion
     exp.m_conf = args.m_conf
     num_gpu = get_num_devices() if args.devices is None else args.devices
     assert num_gpu <= get_num_devices()

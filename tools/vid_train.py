@@ -110,6 +110,8 @@ def make_parser():
     parser.add_argument('--updating_policy', default='random', type=str, help="updating policy for memory")
     parser.add_argument('--loss_type', default="iou", type=str, help='loss function type')
     parser.add_argument('--diverse_threshold', default=0.3, type=float, help='threshold for diverse sampling')
+    parser.add_argument('--selection_criterion', default='iou', type=str, choices=['iou', 'cls_conf'],
+                        help="top-K admission score: iou (ours) or cls_conf (E2 baseline)")
     return parser
 
 @logger.catch
@@ -155,6 +157,7 @@ if __name__ == "__main__":
     exp.key_length = args.key_length
     exp.updating_policy = args.updating_policy
     exp.loss_type = args.loss_type
+    exp.selection_criterion = args.selection_criterion
     exp.nmsthre = args.nms
     exp.pre_nms = args.pre_nms
     exp.diverse_threshold = args.diverse_threshold
