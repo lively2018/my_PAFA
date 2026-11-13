@@ -225,6 +225,7 @@ class Exp(BaseExp):
         self.profile_time = False  # log per-frame aggregation/memory-bank timings
         self.diverse_threshold = 0.3  # threshold for diverse sampling
         self.combined_score_alpha = 0.5  # weight on sim_score vs iou for updating_policy="diverse_combined_score"
+        self.selection_criterion = "iou"  # top-K admission score: "iou" (ours) or "cls_conf" (E2 baseline)
     def get_model(self):
         # rewrite get model func from yolox
         if self.backbone_name == 'MCSP':
@@ -308,7 +309,8 @@ class Exp(BaseExp):
                          pre_nms=self.pre_nms, ave=self.ave, defulat_pre=self.defualt_pre, test_conf=self.test_conf,
                          use_mask=self.use_mask,gmode=self.gmode,lmode=self.lmode,both_mode=self.both_mode,
                          localBlocks = self.localBlocks,m_conf=self.m_conf, memory_length=self.memory_length,\
-                         key_length=self.key_length, updating_policy=self.updating_policy, loss_type=self.loss_type, **more_args)
+                         key_length=self.key_length, updating_policy=self.updating_policy, loss_type=self.loss_type,
+                         selection_criterion=self.selection_criterion, **more_args)
 
         for layer in head.stems.parameters():
             layer.requires_grad = False  # set stem fixed

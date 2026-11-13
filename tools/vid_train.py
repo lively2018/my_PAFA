@@ -112,6 +112,8 @@ def make_parser():
     parser.add_argument('--diverse_threshold', default=0.3, type=float, help='threshold for diverse sampling')
     parser.add_argument('--combined_score_alpha', default=0.5, type=float,
                         help='weight on sim_score vs iou when updating_policy=diverse_combined_score')
+    parser.add_argument('--selection_criterion', default='iou', type=str, choices=['iou', 'cls_conf'],
+                        help="top-K admission score: iou (ours) or cls_conf (E2 baseline)")
     return parser
 
 @logger.catch
@@ -157,6 +159,7 @@ if __name__ == "__main__":
     exp.key_length = args.key_length
     exp.updating_policy = args.updating_policy
     exp.loss_type = args.loss_type
+    exp.selection_criterion = args.selection_criterion
     exp.nmsthre = args.nms
     exp.pre_nms = args.pre_nms
     exp.diverse_threshold = args.diverse_threshold
