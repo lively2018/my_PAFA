@@ -20,6 +20,7 @@ class IoUMemoryBank(nn.Module):
                  max_length=4800, key_length=480,
                  sampling_policy='random', updating_policy='random',
                  diversity_iou_thresh=0.5, quality_upgrade_margin=0.1,
+                 selection_criterion='iou',
                  ):
         super().__init__()
         #kssong
@@ -27,6 +28,10 @@ class IoUMemoryBank(nn.Module):
         self.key_length = key_length
         self.sampling_policy = sampling_policy
         self.updating_policy = updating_policy
+        # E2 ablation: which refreshed score (post-NMS) counts as admission/eviction
+        # quality in post_init_memory/post_update_candidate_memory/post_update_memory.
+        # 'iou' (default) = predicted IoU, 'cls_conf' = refined classification confidence.
+        self.selection_criterion = selection_criterion
         # diversity-based candidate insertion (see post_update_candidate_memory)
         self.diversity_iou_thresh = diversity_iou_thresh
         self.quality_upgrade_margin = quality_upgrade_margin
@@ -271,6 +276,7 @@ class IoUMemoryBank(nn.Module):
                 conf_scores = result_item[:, 4] * result_item[:, 5]
                 cls_scores = result_item[:, 5]
                 iou_scores = result_item[:, 7]
+                admission_scores = cls_scores if self.selection_criterion == 'cls_conf' else iou_scores
                 obj_scores = result_item[:, 4]
                 cls_ids = result_item[:, 6]
                 ref_bboxes = self._stack_bboxes(self.feat_info, bboxes.device, bboxes.dtype)
@@ -278,13 +284,13 @@ class IoUMemoryBank(nn.Module):
                 if len(pairs):
                     conf_scores_list = conf_scores.tolist()
                     cls_scores_list = cls_scores.tolist()
-                    iou_scores_list = iou_scores.tolist()
+                    admission_scores_list = admission_scores.tolist()
                     obj_scores_list = obj_scores.tolist()
                     cls_ids_list = cls_ids.tolist()
                     for i, j in pairs.tolist():
                         self.feat_info[j]['conf'] = conf_scores_list[i]
                         self.feat_info[j]['cls_score'] = cls_scores_list[i]
-                        self.feat_info[j]['iou_score'] = iou_scores_list[i]
+                        self.feat_info[j]['iou_score'] = admission_scores_list[i]
                         self.feat_info[j]['obj_score'] = obj_scores_list[i]
                         self.feat_info[j]['cls_id'] = cls_ids_list[i]
             if self.updating_policy == 'conf':
@@ -367,6 +373,7 @@ class IoUMemoryBank(nn.Module):
                 conf_scores = result_item[:, 4] * result_item[:, 5]
                 cls_scores = result_item[:, 5]
                 iou_scores = result_item[:, 7]
+                admission_scores = cls_scores if self.selection_criterion == 'cls_conf' else iou_scores
                 obj_scores = result_item[:, 4]
                 cls_ids = result_item[:, 6]
                 ref_bboxes = self._stack_bboxes(self.candidate_info, bboxes.device, bboxes.dtype)
@@ -374,13 +381,13 @@ class IoUMemoryBank(nn.Module):
                 if len(pairs):
                     conf_scores_list = conf_scores.tolist()
                     cls_scores_list = cls_scores.tolist()
-                    iou_scores_list = iou_scores.tolist()
+                    admission_scores_list = admission_scores.tolist()
                     obj_scores_list = obj_scores.tolist()
                     cls_ids_list = cls_ids.tolist()
                     for i, j in pairs.tolist():
                         self.candidate_info[j]['conf'] = conf_scores_list[i]
                         self.candidate_info[j]['cls_score'] = cls_scores_list[i]
-                        self.candidate_info[j]['iou_score'] = iou_scores_list[i]
+                        self.candidate_info[j]['iou_score'] = admission_scores_list[i]
                         self.candidate_info[j]['obj_score'] = obj_scores_list[i]
                         self.candidate_info[j]['cls_id'] = cls_ids_list[i]
 
@@ -492,6 +499,7 @@ class IoUMemoryBank(nn.Module):
                 conf_scores = result_item[:, 4] * result_item[:, 5]
                 iou_scores = result_item[:, 7]
                 cls_scores = result_item[:, 5]
+                admission_scores = cls_scores if self.selection_criterion == 'cls_conf' else iou_scores
                 obj_scores = result_item[:, 4]
                 cls_ids = result_item[:, 6]
                 old_end = len(self.feat_info) - self.update_length if self.update_length > 0 else len(self.feat_info)
@@ -500,14 +508,14 @@ class IoUMemoryBank(nn.Module):
                 pairs = self._match_bbox_pairs(bboxes, ref_bboxes, atol=1.0)
                 if len(pairs):
                     conf_scores_list = conf_scores.tolist()
-                    iou_scores_list = iou_scores.tolist()
+                    admission_scores_list = admission_scores.tolist()
                     cls_scores_list = cls_scores.tolist()
                     obj_scores_list = obj_scores.tolist()
                     cls_ids_list = cls_ids.tolist()
                     for i, j in pairs.tolist():
                         info = new_feat_info[j]
                         info['conf'] = conf_scores_list[i]
-                        info['iou_score'] = iou_scores_list[i]
+                        info['iou_score'] = admission_scores_list[i]
                         info['cls_score'] = cls_scores_list[i]
                         info['obj_score'] = obj_scores_list[i]
                         info['cls_id'] = cls_ids_list[i]

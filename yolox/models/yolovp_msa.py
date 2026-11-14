@@ -253,11 +253,11 @@ class YOLOXHead(nn.Module):
         self.key_length_p3, self.key_length_p4, self.key_length_p5 = key_length[0], key_length[1], key_length[2]
 
         self.aggregator_p3 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p3, key_length=self.key_length_p3,\
-                                            updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold)
+                                            updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold, selection_criterion=self.selection_criterion)
         self.aggregator_p4 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p4, key_length=self.key_length_p4,\
-                                                updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold)
+                                                updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold, selection_criterion=self.selection_criterion)
         self.aggregator_p5 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p5, key_length=self.key_length_p5,\
-                                              updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold)
+                                              updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold, selection_criterion=self.selection_criterion)
         if m_conf is None:
             m_conf = [0, 0, 0]
         elif not hasattr(m_conf, '__len__'):
@@ -649,7 +649,11 @@ class YOLOXHead(nn.Module):
                 key_features_p3, key_features_p4, key_features_p5,\
                      key_feature_p3_info, key_feature_p4_info, key_feature_p5_info = self.select_level_key_feature_in_agg_x_feature(agg_x_flatten, pred_idx, pred_result)
                 # Update all level memory banks
-                if self.updating_policy == "diverse":
+                # E2 ablation: diversity-aware eviction is predicated on IoU-quality
+                # admission (diverse geometric templates among well-localized boxes) -
+                # pairing it with confidence-based admission is conceptually incoherent,
+                # so cls_conf always falls through to the plain (non-diverse) update path.
+                if self.updating_policy == "diverse" and self.selection_criterion != 'cls_conf':
                     self.aggregator_p3.pre_update_candidate_memory_bank(key_features_p3, key_feature_p3_info)
                     self.aggregator_p4.pre_update_candidate_memory_bank(key_features_p4, key_feature_p4_info)
                     self.aggregator_p5.pre_update_candidate_memory_bank(key_features_p5, key_feature_p5_info)
@@ -756,7 +760,7 @@ class YOLOXHead(nn.Module):
                 self.aggregator_p4.post_init_memory_bank(result)
                 self.aggregator_p5.post_init_memory_bank(result)
             else:
-                if self.updating_policy == "diverse":
+                if self.updating_policy == "diverse" and self.selection_criterion != 'cls_conf':
                     self.aggregator_p3.post_update_candidate_memory_bank(result)
                     self.aggregator_p4.post_update_candidate_memory_bank(result)
                     self.aggregator_p5.post_update_candidate_memory_bank(result)
@@ -840,7 +844,7 @@ class YOLOXHead(nn.Module):
             key_features_p3 = []
             key_features_p4 = []
             key_features_p5 = []
-            iou_list = pred_result[:, 7]
+            iou_list = pred_result[:, 5] if self.selection_criterion == 'cls_conf' else pred_result[:, 7]
             for j, idx in enumerate(idx_list):
                 iou_score = iou_list[j]
                 if idx >= 0 and idx < 6400:
@@ -881,8 +885,8 @@ class YOLOXHead(nn.Module):
             idx_list = pred_idx[i]
             pred_result = pred_results[i]
             conf_list = pred_result[:, 4] * pred_result[:, 5]
-            iou_scorelist = pred_result[:, 7]
             cls_score_list = pred_result[:, 5]
+            iou_scorelist = cls_score_list if self.selection_criterion == 'cls_conf' else pred_result[:, 7]
             obj_score_list = pred_result[:, 4]
             bboxes_list = pred_result[:, :4]
             for j, idx in enumerate(idx_list):
@@ -1158,7 +1162,11 @@ class YOLOXHead(nn.Module):
         else:
             loss_rconf = 0.0
 
-        if iou_output is not None:
+        # E2 ablation: in cls_conf mode the IoU head's prediction is never used for
+        # admission/eviction (selection_criterion routes everything through class
+        # confidence instead), so training it would be a pointless, confounding
+        # difference from the iou-mode run - exclude it from the loss entirely.
+        if iou_output is not None and self.selection_criterion != 'cls_conf':
             # iou_output: raw logits [B, n_anchors_all, 1].
             # iou_targets: actual IoU in [0,1] for fg anchors, 0 for bg
             loss_iou_pred = (
