@@ -77,7 +77,18 @@ class VIDEvaluator:
         self.gframe = gframe
         self.kwargs = kwargs
         self.motion_metadata = kwargs.get('motion_metadata', {})
-        self.degradation_map = kwargs.get('blur_map', {})
+        # blur_map is keyed by the long file_name path from motion_blur_metadata.json
+        # (e.g. "ILSVRC2015/Data/VID/val/<video>/<frame>.JPEG"), but lookups below use
+        # the short "<video>/<frame>" key (no dir prefix, no extension) - normalize here
+        # so the two actually match (see path_key construction further down).
+        blur_map = kwargs.get('blur_map', {})
+        self.degradation_map = {}
+        for full_key, group in blur_map.items():
+            parts = full_key.replace("\\", "/").split("/")
+            video_name = parts[-2]
+            frame_name = os.path.splitext(parts[-1])[0]
+            short_key = f"{video_name}/{frame_name}"
+            self.degradation_map[short_key] = group
         self.vid_to_coco = {
             'info': {
                 'description': 'nothing',
