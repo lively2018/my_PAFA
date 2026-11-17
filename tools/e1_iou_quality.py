@@ -29,6 +29,8 @@ def main():
     ap.add_argument('--out', required=True, help='output prefix')
     ap.add_argument('--min_iou', type=float, default=None,
                     help='analyse only actual IoU above this (default: the collection threshold)')
+    ap.add_argument('--min_pred', type=float, default=None,
+                    help='analyse only predicted IoU >= this (e.g. 0.1; default: no limit)')
     ap.add_argument('--bins', type=int, default=10)
     args = ap.parse_args()
 
@@ -37,16 +39,20 @@ def main():
     g = d['gt_iou'].astype(np.float64)
     min_iou = float(d['min_iou']) if args.min_iou is None else args.min_iou
     m = g > min_iou
+    if args.min_pred is not None:
+        m &= p >= args.min_pred
     p, g = p[m], g[m]
     n = len(p)
     nf = len(d['frame_keys'])
     cand = d['frame_num_cand']
+    if args.min_pred is not None:
+        print(f"subset: predicted IoU >= {args.min_pred}")
     print(f"frames {nf}, candidates {n} (actual IoU > {min_iou}), "
           f"per frame mean {cand.mean():.1f} / median {np.median(cand):.0f} / max {cand.max()}")
 
     err = p - g
     res = {
-        'num_frames': int(nf), 'num_candidates': int(n), 'min_actual_iou': min_iou,
+        'num_frames': int(nf), 'num_candidates': int(n), 'min_actual_iou': min_iou, 'min_pred_iou': args.min_pred,
         'spearman_rho': float(stats.spearmanr(p, g).correlation),
         'pearson_r': float(stats.pearsonr(p, g)[0]),
         'mae': float(np.mean(np.abs(err))),
