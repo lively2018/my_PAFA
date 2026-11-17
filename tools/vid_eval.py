@@ -146,6 +146,12 @@ def make_parser():
     parser.add_argument(
         "--lrp_tau", type=float, default=0.5, help="IoU matching threshold for moLRP"
     )
+    parser.add_argument(
+        "--blur_metadata_path", type=str, default=None,
+        help="override exp.blur_metadata_path (default './motion_blur_metadata.json'); "
+             "use to evaluate against an alternative clean/blur split, e.g. the E6 "
+             "sharpness-based metadata, without touching the original file",
+    )
     return parser
 
 
@@ -213,6 +219,8 @@ if __name__ == "__main__":
     exp.diverse_threshold = args.diverse_threshold
     exp.combined_score_alpha = args.combined_score_alpha
     exp.m_conf = args.m_conf
+    if args.blur_metadata_path is not None:
+        exp.blur_metadata_path = args.blur_metadata_path
     num_gpu = get_num_devices() if args.devices is None else args.devices
     assert num_gpu <= get_num_devices()
     args.machine_rank = 1

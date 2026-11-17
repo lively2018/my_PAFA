@@ -126,7 +126,6 @@ class YOLOPAFPN(nn.Module):
 
         outputs = (pan_out2, pan_out1, pan_out0)
         del x0, x1, x2, f_out0, f_out1, p_out0, p_out1, out_features, features
-        torch.cuda.empty_cache()
 
         #print(f"After YOLOPAFPN forward: {gpu_mem_usage():.0f}")
         return outputs
