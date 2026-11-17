@@ -12,6 +12,7 @@ Saved per candidate (npz):
   cls_conf   max class probability, cls_pred its class index         -- saved only
   gt_cls_prob probability of the matched GT's class                  -- saved only
   gt_cls     class of the matched GT (largest IoU)
+  gt_idx     index of the matched GT box within the frame (identifies the object; per-object analysis)
   level      FPN level of the anchor (0 = stride 8, 1 = 16, 2 = 32)
   frame      index into `frame_keys` ('<video>/<frame>', same key as the motion/blur metadata)
 Also per frame: number of GT boxes and of kept candidates.
@@ -37,7 +38,7 @@ class E1IoUCollector:
         self.out_path = out_path
         self.min_iou = float(min_iou)
         self.cols = {k: [] for k in ('pred_iou', 'gt_iou', 'obj', 'cls_conf', 'cls_pred',
-                                     'gt_cls_prob', 'gt_cls', 'level', 'frame')}
+                                     'gt_cls_prob', 'gt_cls', 'gt_idx', 'level', 'frame')}
         self.frame_keys = []
         self.frame_num_gt = []
         self.frame_num_cand = []
@@ -80,6 +81,7 @@ class E1IoUCollector:
             self.cols['cls_pred'].append(cls_pred.to(torch.int16).cpu().numpy())
             self.cols['gt_cls_prob'].append(probs.gather(1, gt_cls.unsqueeze(1)).squeeze(1).cpu().numpy())
             self.cols['gt_cls'].append(gt_cls.to(torch.int16).cpu().numpy())
+            self.cols['gt_idx'].append(gi[keep].to(torch.int16).cpu().numpy())
             self.cols['level'].append(level_of[keep.cpu()].numpy())
             self.cols['frame'].append(np.full(n, fid, dtype=np.int32))
 
