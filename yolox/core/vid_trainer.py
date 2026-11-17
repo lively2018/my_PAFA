@@ -454,6 +454,13 @@ class Trainer:
         self.evaluator = self.exp.get_evaluator(
             val_loader=self.val_loader
         )
+        if getattr(self.args, "e1_dump", ""):
+            # E1: predicted-IoU accuracy -- collect every anchor prediction with its actual IoU
+            assert not self.is_distributed, "E1 collection is single-GPU"
+            from yolox.evaluators.e1_iou_collector import E1IoUCollector
+            self.evaluator.e1_collector = E1IoUCollector(self.args.e1_dump, self.args.e1_min_iou)
+            evalmodel.head.e1_collect = True
+            logger.info(f"[E1] collecting candidates with actual IoU > {self.args.e1_min_iou} -> {self.args.e1_dump}")
         summary = self.exp.eval(
             evalmodel, self.evaluator, self.is_distributed, self.amp_training,
             motion_speed_eval=getattr(self.args, "motion_speed_eval", False),

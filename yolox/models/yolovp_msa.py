@@ -583,6 +583,13 @@ class YOLOXHead(nn.Module):
                                                      topK=self.Afternum,
                                                      ota_idxs=ota_idxs,
                                                      )
+        # E1 (predicted-IoU accuracy): keep every anchor's prediction of this batch for the
+        # evaluator, which pairs it with the GT. Off unless the evaluator sets e1_collect.
+        # postpro_woclass() has turned decode_res[..., :4] into x1,y1,x2,y2 in place, so the
+        # columns are: x1, y1, x2, y2 (input-image pixels), objectness, 30 class probabilities,
+        # predicted IoU (all after sigmoid).
+        if not self.training and getattr(self, 'e1_collect', False):
+            self.e1_cache = {'pred': decode_res.detach(), 'hw': list(self.hw)}
         #kssong
         #pred_result_file = open('./pred_result.txt', 'a')
         #pred_result_file.write(f'{len(pred_result), pred_result[0].shape}\n')

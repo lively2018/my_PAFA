@@ -146,6 +146,13 @@ def make_parser():
     parser.add_argument(
         "--lrp_tau", type=float, default=0.5, help="IoU matching threshold for moLRP"
     )
+    parser.add_argument(
+        "--e1_dump", type=str, default="",
+        help="E1: save every anchor prediction (before NMS) with actual IoU > --e1_min_iou to this .npz",
+    )
+    parser.add_argument(
+        "--e1_min_iou", type=float, default=0.1, help="E1: keep candidates whose actual IoU is above this"
+    )
     return parser
 
 

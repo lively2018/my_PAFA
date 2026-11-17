@@ -551,6 +551,12 @@ class VIDEvaluator:
                 if is_time_record:
                     infer_end = time_synchronized()
                     inference_time += infer_end - start
+                # E1: pair every anchor prediction of this batch with the GT (outside the timing)
+                e1 = getattr(self, 'e1_collector', None)
+                if e1 is not None:
+                    head = model.module.head if hasattr(model, 'module') else model.head
+                    e1.update(head.e1_cache, label, path)
+                    head.e1_cache = None
             if self.gl_mode:
                 local_num = int(imgs.shape[0] / 2)
                 info_imgs = info_imgs[:local_num]
@@ -563,6 +569,9 @@ class VIDEvaluator:
             data_list.extend(temp_data_list)
             labels_list.extend(temp_label_list)
             #logger.info("temp_labels_list: {}".format(temp_label_list))
+
+        if getattr(self, 'e1_collector', None) is not None:
+            self.e1_collector.save()
 
         self.vid_to_coco['annotations'].extend(labels_list)
         #mean_iou = self.calculate_mean_iou(data_list, labels_list)
