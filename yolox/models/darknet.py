@@ -199,8 +199,6 @@ class CSPDarknet(nn.Module):
         selected_outputs = {k: v for k, v in outputs.items() if k in self.out_features}
 
         del x, outputs
-        gc.collect()
-        torch.cuda.empty_cache()
         #print(f"After CSPDarKnet: {gpu_mem_usage():.0f}")
         return selected_outputs
 
