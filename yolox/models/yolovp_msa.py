@@ -257,13 +257,13 @@ class YOLOXHead(nn.Module):
             self.candidate_diversity_metric = "iou"
         self.key_length_p3, self.key_length_p4, self.key_length_p5 = key_length[0], key_length[1], key_length[2]
 
-        self.aggregator_p3 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p3, key_length=self.key_length_p3,\
+        self.aggregator_p3 = MemoryCrossAggregator(dim=self.width, memory_length=self.memory_length_p3, key_length=self.key_length_p3,\
                                             updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold,\
                                             candidate_diversity_metric=self.candidate_diversity_metric, combined_score_alpha=self.combined_score_alpha)
-        self.aggregator_p4 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p4, key_length=self.key_length_p4,\
+        self.aggregator_p4 = MemoryCrossAggregator(dim=self.width, memory_length=self.memory_length_p4, key_length=self.key_length_p4,\
                                                 updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold,\
                                                 candidate_diversity_metric=self.candidate_diversity_metric, combined_score_alpha=self.combined_score_alpha)
-        self.aggregator_p5 = MemoryCrossAggregator(dim=128, memory_length=self.memory_length_p5, key_length=self.key_length_p5,\
+        self.aggregator_p5 = MemoryCrossAggregator(dim=self.width, memory_length=self.memory_length_p5, key_length=self.key_length_p5,\
                                               updating_policy=self.updating_policy, diverse_threshold=self.diverse_threshold,\
                                               candidate_diversity_metric=self.candidate_diversity_metric, combined_score_alpha=self.combined_score_alpha)
         if m_conf is None:
@@ -900,9 +900,9 @@ class YOLOXHead(nn.Module):
                                                      'cls_score': cls_score,
                                                      'iou_score': iou_score,
                                                      'obj_score': obj_score})
-        key_features_p3 = torch.stack(key_features_p3, dim=0) if key_features_p3 else torch.empty(0, 128, device=agg_x_features.device)
-        key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, 128, device=agg_x_features.device)
-        key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, 128, device=agg_x_features.device)
+        key_features_p3 = torch.stack(key_features_p3, dim=0) if key_features_p3 else torch.empty(0, self.width, device=agg_x_features.device)
+        key_features_p4 = torch.stack(key_features_p4, dim=0) if key_features_p4 else torch.empty(0, self.width, device=agg_x_features.device)
+        key_features_p5 = torch.stack(key_features_p5, dim=0) if key_features_p5 else torch.empty(0, self.width, device=agg_x_features.device)
         return key_features_p3, key_features_p4, key_features_p5, key_features_p3_info, key_features_p4_info, key_features_p5_info
 
     def get_losses(
